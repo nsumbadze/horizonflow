@@ -1,6 +1,11 @@
 # Release Notes
 
-## [Unreleased](https://github.com/laravel/horizon/compare/v5.29.1...5.x)
+## [Unreleased](https://github.com/laravel/horizon/compare/v5.29.2...5.x)
+
+## [v5.29.2](https://github.com/laravel/horizon/compare/v5.29.1...v5.29.2) - 2024-10-16
+
+* [5.x] Use `#[\Override]` PHP Attribute to detect breaking changes by [@crynobone](https://github.com/crynobone) in https://github.com/laravel/horizon/pull/1506
+* Improvement: Wont spawn extra queues by [@alexmontoanelli](https://github.com/alexmontoanelli) in https://github.com/laravel/horizon/pull/1508
 
 ## [v5.29.1](https://github.com/laravel/horizon/compare/v5.29.0...v5.29.1) - 2024-10-08
 
