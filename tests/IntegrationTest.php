@@ -20,24 +20,18 @@ abstract class IntegrationTest extends TestCase
      */
     protected function setUp(): void
     {
+        $this->afterApplicationCreated(function () {
+            Redis::flushall();
+        });
+
+        $this->beforeApplicationDestroyed(function () {
+            Redis::flushall();
+            WorkerCommandString::reset();
+            SupervisorCommandString::reset();
+            Horizon::$authUsing = null;
+        });
+
         parent::setUp();
-
-        Redis::flushall();
-    }
-
-    /**
-     * Tear down the test case.
-     *
-     * @return void
-     */
-    protected function tearDown(): void
-    {
-        parent::tearDown();
-
-        Redis::flushall();
-        WorkerCommandString::reset();
-        SupervisorCommandString::reset();
-        Horizon::$authUsing = null;
     }
 
     /**
