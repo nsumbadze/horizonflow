@@ -1,6 +1,11 @@
 # Release Notes
 
-## [Unreleased](https://github.com/laravel/horizon/compare/v5.29.2...5.x)
+## [Unreleased](https://github.com/laravel/horizon/compare/v5.29.3...5.x)
+
+## [v5.29.3](https://github.com/laravel/horizon/compare/v5.29.2...v5.29.3) - 2024-11-07
+
+* Test Improvements by [@crynobone](https://github.com/crynobone) in https://github.com/laravel/horizon/pull/1511
+* Remove the verbiage to publish assets in the upgrade guide by [@wsamoht](https://github.com/wsamoht) in https://github.com/laravel/horizon/pull/1515
 
 ## [v5.29.2](https://github.com/laravel/horizon/compare/v5.29.1...v5.29.2) - 2024-10-16
 
