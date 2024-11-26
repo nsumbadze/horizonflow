@@ -1,6 +1,11 @@
 # Release Notes
 
-## [Unreleased](https://github.com/laravel/horizon/compare/v5.29.3...5.x)
+## [Unreleased](https://github.com/laravel/horizon/compare/v5.29.4...5.x)
+
+## [v5.29.4](https://github.com/laravel/horizon/compare/v5.29.3...v5.29.4) - 2024-11-21
+
+* Allow to specify connection in ClearCommand by [@antennaio](https://github.com/antennaio) in https://github.com/laravel/horizon/pull/1516
+* [5.x] Supports PHP 8.4 by [@crynobone](https://github.com/crynobone) in https://github.com/laravel/horizon/pull/1507
 
 ## [v5.29.3](https://github.com/laravel/horizon/compare/v5.29.2...v5.29.3) - 2024-11-07
 
