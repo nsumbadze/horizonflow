@@ -10,9 +10,10 @@ use Illuminate\Notifications\Notification;
 use Illuminate\Notifications\Slack\BlockKit\Blocks\SectionBlock;
 use Illuminate\Notifications\Slack\SlackMessage as ChannelIdSlackMessage;
 use Illuminate\Support\Str;
+use Laravel\Horizon\Contracts\LongWaitDetectedNotification;
 use Laravel\Horizon\Horizon;
 
-class LongWaitDetected extends Notification
+class LongWaitDetected extends Notification implements LongWaitDetectedNotification
 {
     use Queueable;
 
