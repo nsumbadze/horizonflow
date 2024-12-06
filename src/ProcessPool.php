@@ -51,7 +51,7 @@ class ProcessPool implements Countable
      * @param  \Closure|null  $output
      * @return void
      */
-    public function __construct(SupervisorOptions $options, Closure $output = null)
+    public function __construct(SupervisorOptions $options, ?Closure $output = null)
     {
         $this->options = $options;
 
