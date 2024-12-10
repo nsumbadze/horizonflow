@@ -1,6 +1,11 @@
 # Release Notes
 
-## [Unreleased](https://github.com/laravel/horizon/compare/v5.29.4...5.x)
+## [Unreleased](https://github.com/laravel/horizon/compare/v5.30.0...5.x)
+
+## [v5.30.0](https://github.com/laravel/horizon/compare/v5.29.4...v5.30.0) - 2024-12-06
+
+* Add support for notification class overrides by [@lukemorcom](https://github.com/lukemorcom) in https://github.com/laravel/horizon/pull/1518
+* Replace implicitly nullable parameters for PHP 8.4 by [@txdFabio](https://github.com/txdFabio) in https://github.com/laravel/horizon/pull/1520
 
 ## [v5.29.4](https://github.com/laravel/horizon/compare/v5.29.3...v5.29.4) - 2024-11-21
 
