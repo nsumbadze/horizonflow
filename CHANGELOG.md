@@ -1,6 +1,10 @@
 # Release Notes
 
-## [Unreleased](https://github.com/laravel/horizon/compare/v5.30.0...5.x)
+## [Unreleased](https://github.com/laravel/horizon/compare/v5.30.1...5.x)
+
+## [v5.30.1](https://github.com/laravel/horizon/compare/v5.30.0...v5.30.1) - 2024-12-13
+
+* fix predis `clear()` when using redis 7.4 by [@vintagesucks](https://github.com/vintagesucks) in https://github.com/laravel/horizon/pull/1522
 
 ## [v5.30.0](https://github.com/laravel/horizon/compare/v5.29.4...v5.30.0) - 2024-12-06
 
