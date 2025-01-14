@@ -1,6 +1,10 @@
 # Release Notes
 
-## [Unreleased](https://github.com/laravel/horizon/compare/v5.30.1...5.x)
+## [Unreleased](https://github.com/laravel/horizon/compare/v5.30.2...5.x)
+
+## [v5.30.2](https://github.com/laravel/horizon/compare/v5.30.1...v5.30.2) - 2025-01-13
+
+* fix: cluster redis eval return false by [@seth-shi](https://github.com/seth-shi) in https://github.com/laravel/horizon/pull/1526
 
 ## [v5.30.1](https://github.com/laravel/horizon/compare/v5.30.0...v5.30.1) - 2024-12-13
 
