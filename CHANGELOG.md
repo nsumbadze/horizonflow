@@ -1,6 +1,11 @@
 # Release Notes
 
-## [Unreleased](https://github.com/laravel/horizon/compare/v5.30.2...5.x)
+## [Unreleased](https://github.com/laravel/horizon/compare/v5.30.3...5.x)
+
+## [v5.30.3](https://github.com/laravel/horizon/compare/v5.30.2...v5.30.3) - 2025-02-11
+
+* Supports Laravel 12 by [@crynobone](https://github.com/crynobone) in https://github.com/laravel/horizon/pull/1532
+* Bump vite from 5.4.6 to 5.4.14 by [@dependabot](https://github.com/dependabot) in https://github.com/laravel/horizon/pull/1533
 
 ## [v5.30.2](https://github.com/laravel/horizon/compare/v5.30.1...v5.30.2) - 2025-01-13
 
