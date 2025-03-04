@@ -1,6 +1,11 @@
 # Release Notes
 
-## [Unreleased](https://github.com/laravel/horizon/compare/v5.30.3...5.x)
+## [Unreleased](https://github.com/laravel/horizon/compare/v5.31.0...5.x)
+
+## [v5.31.0](https://github.com/laravel/horizon/compare/v5.30.3...v5.31.0) - 2025-03-04
+
+* Scale workers from min instead of max on startup by [@andre-hoffmann](https://github.com/andre-hoffmann) in https://github.com/laravel/horizon/pull/1537
+* Add `proxy_path` config for subfolder usage in Horizon's Vue front-end by [@andre-hoffmann](https://github.com/andre-hoffmann) in https://github.com/laravel/horizon/pull/1538
 
 ## [v5.30.3](https://github.com/laravel/horizon/compare/v5.30.2...v5.30.3) - 2025-02-11
 
