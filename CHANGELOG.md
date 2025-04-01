@@ -1,6 +1,10 @@
 # Release Notes
 
-## [Unreleased](https://github.com/laravel/horizon/compare/v5.31.0...5.x)
+## [Unreleased](https://github.com/laravel/horizon/compare/v5.31.1...5.x)
+
+## [v5.31.1](https://github.com/laravel/horizon/compare/v5.31.0...v5.31.1) - 2025-03-16
+
+* [5.x] Specify `WorkloadRepository@get()` return type by [@cosmastech](https://github.com/cosmastech) in https://github.com/laravel/horizon/pull/1542
 
 ## [v5.31.0](https://github.com/laravel/horizon/compare/v5.30.3...v5.31.0) - 2025-03-04
 
