@@ -1,6 +1,11 @@
 # Release Notes
 
-## [Unreleased](https://github.com/laravel/horizon/compare/v5.31.1...5.x)
+## [Unreleased](https://github.com/laravel/horizon/compare/v5.31.2...5.x)
+
+## [v5.31.2](https://github.com/laravel/horizon/compare/v5.31.1...v5.31.2) - 2025-04-18
+
+* Update logo by [@iamdavidhill](https://github.com/iamdavidhill) in https://github.com/laravel/horizon/pull/1543
+* Fixed deprecation warning  `Creation of dynamic property Laravel\Horizon\SupervisorOptions::$retryAfter` by [@fkrzski](https://github.com/fkrzski) in https://github.com/laravel/horizon/pull/1548
 
 ## [v5.31.1](https://github.com/laravel/horizon/compare/v5.31.0...v5.31.1) - 2025-03-16
 
