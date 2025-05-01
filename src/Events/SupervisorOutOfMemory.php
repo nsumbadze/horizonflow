@@ -44,7 +44,7 @@ class SupervisorOutOfMemory
     /**
      * Set the memory usage that was recorded when the event was dispatched.
      *
-     * @param  int|float $memoryUsage
+     * @param  int|float  $memoryUsage
      * @return $this
      */
     public function setMemoryUsage($memoryUsage)
