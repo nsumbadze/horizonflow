@@ -1,6 +1,11 @@
 # Release Notes
 
-## [Unreleased](https://github.com/laravel/horizon/compare/v5.31.2...5.x)
+## [Unreleased](https://github.com/laravel/horizon/compare/v5.32.0...5.x)
+
+## [v5.32.0](https://github.com/laravel/horizon/compare/v5.31.2...v5.32.0) - 2025-05-09
+
+* [5.x] Store memory used when dispatching `SupervisorOutOfMemory` by [@cosmastech](https://github.com/cosmastech) in https://github.com/laravel/horizon/pull/1550
+* Set AutoScaler logic to target process scaling based on queue size wh… by [@nick-potts](https://github.com/nick-potts) in https://github.com/laravel/horizon/pull/1552
 
 ## [v5.31.2](https://github.com/laravel/horizon/compare/v5.31.1...v5.31.2) - 2025-04-18
 
