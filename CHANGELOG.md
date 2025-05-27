@@ -1,6 +1,11 @@
 # Release Notes
 
-## [Unreleased](https://github.com/laravel/horizon/compare/v5.32.0...5.x)
+## [Unreleased](https://github.com/laravel/horizon/compare/v5.32.1...5.x)
+
+## [v5.32.1](https://github.com/laravel/horizon/compare/v5.32.0...v5.32.1) - 2025-05-19
+
+* Make $user = null the default in viewHorizon gate closure for better DX by [@mitoop](https://github.com/mitoop) in https://github.com/laravel/horizon/pull/1554
+* Bump axios from 1.7.4 to 1.8.2 by [@dependabot](https://github.com/dependabot) in https://github.com/laravel/horizon/pull/1557
 
 ## [v5.32.0](https://github.com/laravel/horizon/compare/v5.31.2...v5.32.0) - 2025-05-09
 
