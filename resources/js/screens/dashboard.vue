@@ -23,16 +23,6 @@
          */
         mounted() {
             document.title = "Horizon - Dashboard";
-
-            this.refreshStatsPeriodically();
-        },
-
-
-        /**
-         * Clean after the component is unmounted.
-         */
-        unmounted() {
-            clearTimeout(this.timeout);
         },
 
 
@@ -98,7 +88,7 @@
 
 
             /**
-             * Refresh the stats every period of time.
+             * Poll handler to refresh the stats at regular intervals.
              */
             refreshStatsPeriodically() {
                 Promise.all([
@@ -107,10 +97,6 @@
                     this.loadWorkload(),
                 ]).then(() => {
                     this.ready = true;
-
-                    this.timeout = setTimeout(() => {
-                        this.refreshStatsPeriodically();
-                    }, 5000);
                 });
             },
 
@@ -156,6 +142,8 @@
 
 <template>
     <div>
+        <poll @poll="refreshStatsPeriodically" :interval="5" />
+
         <div class="card overflow-hidden">
             <div class="card-header d-flex align-items-center justify-content-between">
                 <h2 class="h6 m-0">Overview</h2>

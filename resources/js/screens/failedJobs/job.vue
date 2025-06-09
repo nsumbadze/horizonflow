@@ -7,6 +7,7 @@
             'stack-trace': StackTrace,
         },
 
+
         /**
          * The component's data.
          */
@@ -26,18 +27,6 @@
             this.loadFailedJob(this.$route.params.jobId);
 
             document.title = "Horizon - Failed Jobs";
-
-            this.interval = setInterval(() => {
-                this.reloadRetries();
-            }, 3000);
-        },
-
-
-        /**
-         * Clean after the component is unmounted.
-         */
-        unmounted() {
-            clearInterval(this.interval);
         },
 
 
@@ -61,7 +50,6 @@
                 this.$http.get(Horizon.basePath + '/api/jobs/failed/' + this.$route.params.jobId)
                     .then(response => {
                         this.job.retried_by = response.data.retried_by;
-
                     });
             },
 
@@ -107,6 +95,8 @@
 
 <template>
     <div>
+        <poll @poll="reloadRetries" :immediate="false" />
+
         <div class="card overflow-hidden">
             <div class="card-header d-flex align-items-center justify-content-between">
                 <h2 class="h6 m-0" v-if="!ready">Job Preview</h2>

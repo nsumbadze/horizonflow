@@ -17,12 +17,14 @@
             };
         },
 
+
         /**
          * Components
          */
         components: {
             JobRow,
         },
+
 
         /**
          * Prepare the component.
@@ -31,15 +33,6 @@
             this.updatePageTitle();
 
             this.loadJobs();
-
-            this.refreshJobsPeriodically();
-        },
-
-        /**
-         * Clean after the component is unmounted.
-         */
-        unmounted() {
-            clearInterval(this.interval);
         },
 
 
@@ -91,16 +84,14 @@
 
 
             /**
-             * Refresh the jobs every period of time.
+             * Poll handler to refresh the jobs at regular intervals.
              */
             refreshJobsPeriodically() {
-                this.interval = setInterval(() => {
-                    if (this.page != 1) {
-                        return;
-                    }
+                if (this.page != 1) {
+                    return;
+                }
 
-                    this.loadJobs(-1, true);
-                }, 3000);
+                this.loadJobs(-1, true);
             },
 
 
@@ -131,6 +122,7 @@
                 this.hasNewEntries = false;
             },
 
+
             /**
              * Update the page title.
              */
@@ -149,6 +141,8 @@
 
 <template>
     <div>
+        <poll @poll="refreshJobsPeriodically" />
+
         <div class="card overflow-hidden">
             <div class="card-header d-flex align-items-center justify-content-between">
                 <h2 class="h6 m-0" v-if="$route.params.type == 'pending'">Pending Jobs</h2>

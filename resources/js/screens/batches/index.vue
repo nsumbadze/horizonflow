@@ -19,17 +19,6 @@
          */
         mounted() {
             document.title = "Horizon - Batches";
-
-            this.loadBatches();
-
-            this.refreshBatchesPeriodically();
-        },
-
-        /**
-         * Clean after the component is unmounted.
-         */
-        unmounted() {
-            clearInterval(this.interval);
         },
 
 
@@ -81,14 +70,12 @@
 
 
             /**
-             * Refresh the batches every period of time.
+             * Poll handler to refresh the batches at regular intervals.
              */
             refreshBatchesPeriodically() {
-                this.interval = setInterval(() => {
-                    if (this.page != 1) return;
+                if (this.page != 1) return;
 
-                    this.loadBatches('', true);
-                }, 3000);
+                this.loadBatches('', true);
             },
 
 
@@ -126,6 +113,8 @@
 
 <template>
     <div>
+        <poll @poll="refreshBatchesPeriodically" />
+
         <div class="card overflow-hidden">
             <div class="card-header d-flex align-items-center justify-content-between">
                 <h2 class="h6 m-0">Batches</h2>

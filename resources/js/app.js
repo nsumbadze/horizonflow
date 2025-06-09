@@ -7,6 +7,7 @@ import Base from './base';
 import Routes from './routes';
 import Alert from './components/Alert.vue';
 import SchemeToggler from './components/SchemeToggler.vue';
+import Poll from './components/Poll.vue';
 
 let token = document.head.querySelector("meta[name='csrf-token']");
 
@@ -53,6 +54,7 @@ app.use(router);
 app.component('vue-json-pretty', VueJsonPretty);
 app.component('alert', Alert);
 app.component('scheme-toggler', SchemeToggler);
+app.component('poll', Poll);
 
 app.mixin(Base);
 
