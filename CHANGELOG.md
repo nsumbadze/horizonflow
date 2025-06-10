@@ -1,6 +1,11 @@
 # Release Notes
 
-## [Unreleased](https://github.com/laravel/horizon/compare/v5.32.1...5.x)
+## [Unreleased](https://github.com/laravel/horizon/compare/v5.33.0...5.x)
+
+## [v5.33.0](https://github.com/laravel/horizon/compare/v5.32.1...v5.33.0) - 2025-06-09
+
+* Allowed Horizon Status & Supervisors commands to run outside console by [@abisheknaagendra](https://github.com/abisheknaagendra) in https://github.com/laravel/horizon/pull/1564
+* feat: add Poll component to standardize polling behavior by [@mathiasgrimm](https://github.com/mathiasgrimm) in https://github.com/laravel/horizon/pull/1556
 
 ## [v5.32.1](https://github.com/laravel/horizon/compare/v5.32.0...v5.32.1) - 2025-05-19
 
