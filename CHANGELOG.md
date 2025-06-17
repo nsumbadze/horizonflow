@@ -1,6 +1,10 @@
 # Release Notes
 
-## [Unreleased](https://github.com/laravel/horizon/compare/v5.33.0...5.x)
+## [Unreleased](https://github.com/laravel/horizon/compare/v5.33.1...5.x)
+
+## [v5.33.1](https://github.com/laravel/horizon/compare/v5.33.0...v5.33.1) - 2025-06-16
+
+* Cooldown Worker Only on Failed Processes by [@dbpolito](https://github.com/dbpolito) in https://github.com/laravel/horizon/pull/1566
 
 ## [v5.33.0](https://github.com/laravel/horizon/compare/v5.32.1...v5.33.0) - 2025-06-09
 
