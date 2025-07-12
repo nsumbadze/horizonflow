@@ -119,7 +119,7 @@ class WaitTimeCalculator
      */
     public function calculateTimeToClear($connection, $queue, $totalProcesses)
     {
-        $timeToClear = ! Str::contains($queue, ',')
+        $timeToClear = ! Str::contains($queue ?? '', ',')
             ? $this->timeToClearFor($connection, $queue)
             : collect(explode(',', $queue))->sum(function ($queueName) use ($connection) {
                 return $this->timeToClearFor($connection, $queueName);
