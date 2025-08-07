@@ -1,6 +1,13 @@
 # Release Notes
 
-## [Unreleased](https://github.com/laravel/horizon/compare/v5.33.1...5.x)
+## [Unreleased](https://github.com/laravel/horizon/compare/v5.33.2...5.x)
+
+## [v5.33.2](https://github.com/laravel/horizon/compare/v5.33.1...v5.33.2) - 2025-08-05
+
+* Fix null to Str::contains deprecation by [@ziming](https://github.com/ziming) in https://github.com/laravel/horizon/pull/1571
+* Bump form-data from 4.0.0 to 4.0.4 by [@dependabot](https://github.com/dependabot)[bot] in https://github.com/laravel/horizon/pull/1572
+* Fix MonitorWaitTimes to respect one-minute monitoring interval by [@SanderMuller](https://github.com/SanderMuller) in https://github.com/laravel/horizon/pull/1574
+* Add PHPUnit 12 compatibility while maintaining backwards compatibility by [@DGarbs51](https://github.com/DGarbs51) in https://github.com/laravel/horizon/pull/1576
 
 ## [v5.33.1](https://github.com/laravel/horizon/compare/v5.33.0...v5.33.1) - 2025-06-16
 
