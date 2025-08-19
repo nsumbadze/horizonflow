@@ -1,6 +1,10 @@
 # Release Notes
 
-## [Unreleased](https://github.com/laravel/horizon/compare/v5.33.2...5.x)
+## [Unreleased](https://github.com/laravel/horizon/compare/v5.33.3...5.x)
+
+## [v5.33.3](https://github.com/laravel/horizon/compare/v5.33.2...v5.33.3) - 2025-08-11
+
+* Fix type casting for Carbon 3 compatibility in RedisJobRepository by [@guestpectacular](https://github.com/guestpectacular) in https://github.com/laravel/horizon/pull/1580
 
 ## [v5.33.2](https://github.com/laravel/horizon/compare/v5.33.1...v5.33.2) - 2025-08-05
 
