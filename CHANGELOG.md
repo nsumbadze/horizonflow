@@ -1,6 +1,10 @@
 # Release Notes
 
-## [Unreleased](https://github.com/laravel/horizon/compare/v5.33.3...5.x)
+## [Unreleased](https://github.com/laravel/horizon/compare/v5.33.4...5.x)
+
+## [v5.33.4](https://github.com/laravel/horizon/compare/v5.33.3...v5.33.4) - 2025-08-25
+
+* [5.x] Fix failed jobs infinite loading by [@amirhshokri](https://github.com/amirhshokri) in https://github.com/laravel/horizon/pull/1584
 
 ## [v5.33.3](https://github.com/laravel/horizon/compare/v5.33.2...v5.33.3) - 2025-08-11
 
