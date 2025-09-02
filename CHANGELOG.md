@@ -1,6 +1,17 @@
 # Release Notes
 
-## [Unreleased](https://github.com/laravel/horizon/compare/v5.33.4...5.x)
+## [Unreleased](https://github.com/laravel/horizon/compare/v5.33.5...5.x)
+
+## [v5.33.5](https://github.com/laravel/horizon/compare/v5.33.4...v5.33.5) - 2025-08-31
+
+* [5.x] Fix batches infinite loading by [@amirhshokri](https://github.com/amirhshokri) in https://github.com/laravel/horizon/pull/1589
+* [5.x] Make "no jobs" messages consistent across job types in Horizon panel by [@amirhshokri](https://github.com/amirhshokri) in https://github.com/laravel/horizon/pull/1590
+* [5.x] standardize multiline constructor parameters by [@browner12](https://github.com/browner12) in https://github.com/laravel/horizon/pull/1593
+* [5.x] fix ternary newline indentation by [@browner12](https://github.com/browner12) in https://github.com/laravel/horizon/pull/1592
+* [5.x] use normal formatting for method signature by [@browner12](https://github.com/browner12) in https://github.com/laravel/horizon/pull/1596
+* [5.x] consistent multiline chaining by [@browner12](https://github.com/browner12) in https://github.com/laravel/horizon/pull/1594
+* [5.x] use single indentation by [@browner12](https://github.com/browner12) in https://github.com/laravel/horizon/pull/1595
+* [5.x] use promoted properties for `Jobs` directory by [@browner12](https://github.com/browner12) in https://github.com/laravel/horizon/pull/1597
 
 ## [v5.33.4](https://github.com/laravel/horizon/compare/v5.33.3...v5.33.4) - 2025-08-25
 
