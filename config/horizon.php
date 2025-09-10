@@ -122,6 +122,10 @@ return [
         // App\Jobs\ExampleJob::class,
     ],
 
+    'silenced_tags' => [
+        // 'notifications',
+    ],
+
     /*
     |--------------------------------------------------------------------------
     | Metrics
