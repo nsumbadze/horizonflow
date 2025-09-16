@@ -1,6 +1,13 @@
 # Release Notes
 
-## [Unreleased](https://github.com/laravel/horizon/compare/v5.33.5...5.x)
+## [Unreleased](https://github.com/laravel/horizon/compare/v5.34.0...5.x)
+
+## [v5.34.0](https://github.com/laravel/horizon/compare/v5.33.5...v5.34.0) - 2025-09-12
+
+* [5.x] Improve docblocks for nullable parameters by [@amirhshokri](https://github.com/amirhshokri) in https://github.com/laravel/horizon/pull/1601
+* [5.x] Add support for `silenced_tags` configuration in Horizon jobs by [@amirhshokri](https://github.com/amirhshokri) in https://github.com/laravel/horizon/pull/1602
+* Bump vite from 5.4.14 to 5.4.20 by [@dependabot](https://github.com/dependabot)[bot] in https://github.com/laravel/horizon/pull/1604
+* [5.x] Improve `MarkJobAsCompleteTest` to properly test `silenced_tags` configuration by [@amirhshokri](https://github.com/amirhshokri) in https://github.com/laravel/horizon/pull/1603
 
 ## [v5.33.5](https://github.com/laravel/horizon/compare/v5.33.4...v5.33.5) - 2025-08-31
 
