@@ -1,6 +1,12 @@
 # Release Notes
 
-## [Unreleased](https://github.com/laravel/horizon/compare/v5.34.0...5.x)
+## [Unreleased](https://github.com/laravel/horizon/compare/v5.35.0...5.x)
+
+## [v5.35.0](https://github.com/laravel/horizon/compare/v5.34.0...v5.35.0) - 2025-10-04
+
+* Add --json option to horizon:work to match queue:work functionality by [@noatudor](https://github.com/noatudor) in https://github.com/laravel/horizon/pull/1612
+* [5.x] Update docblock to reflect int|void return type by [@amirhshokri](https://github.com/amirhshokri) in https://github.com/laravel/horizon/pull/1613
+* [5.x] Prevent using the reserved `horizon` Redis connection name by [@amirhshokri](https://github.com/amirhshokri) in https://github.com/laravel/horizon/pull/1615
 
 ## [v5.34.0](https://github.com/laravel/horizon/compare/v5.33.5...v5.34.0) - 2025-09-12
 
