@@ -1,6 +1,10 @@
 # Release Notes
 
-## [Unreleased](https://github.com/laravel/horizon/compare/v5.35.1...5.x)
+## [Unreleased](https://github.com/laravel/horizon/compare/v5.35.2...5.x)
+
+## [v5.35.2](https://github.com/laravel/horizon/compare/v5.35.1...v5.35.2) - 2025-10-08
+
+* [5.x] Revert `#1615` by [@amirhshokri](https://github.com/amirhshokri) in https://github.com/laravel/horizon/pull/1620
 
 ## [v5.35.1](https://github.com/laravel/horizon/compare/v5.35.0...v5.35.1) - 2025-10-07
 
