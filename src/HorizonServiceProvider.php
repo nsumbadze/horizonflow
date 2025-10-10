@@ -20,11 +20,24 @@ class HorizonServiceProvider extends ServiceProvider
      */
     public function boot()
     {
+        $this->normalizeConfig();
         $this->registerEvents();
         $this->registerRoutes();
         $this->registerResources();
         $this->offerPublishing();
         $this->registerCommands();
+    }
+
+    /**
+     * Normalize the Horizon configuration.
+     *
+     * @return void
+     */
+    protected function normalizeConfig()
+    {
+        if (! $this->app['config']->get('horizon.name')) {
+            $this->app['config']->set('horizon.name', $this->app['config']->get('app.name'));
+        }
     }
 
     /**
