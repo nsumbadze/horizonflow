@@ -1,6 +1,10 @@
 # Release Notes
 
-## [Unreleased](https://github.com/laravel/horizon/compare/v5.35.2...5.x)
+## [Unreleased](https://github.com/laravel/horizon/compare/v5.36.0...5.x)
+
+## [v5.36.0](https://github.com/laravel/horizon/compare/v5.35.2...v5.36.0) - 2025-10-10
+
+* Allow naming of horizon instances by [@timacdonald](https://github.com/timacdonald) in https://github.com/laravel/horizon/pull/1621
 
 ## [v5.35.2](https://github.com/laravel/horizon/compare/v5.35.1...v5.35.2) - 2025-10-08
 
