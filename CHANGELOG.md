@@ -1,6 +1,13 @@
 # Release Notes
 
-## [Unreleased](https://github.com/laravel/horizon/compare/v5.36.0...5.x)
+## [Unreleased](https://github.com/laravel/horizon/compare/v5.37.0...5.x)
+
+## [v5.37.0](https://github.com/laravel/horizon/compare/v5.36.0...v5.37.0) - 2025-10-21
+
+* [5.x] Remove unnecessary `SupervisorLooped` event param by [@amirhshokri](https://github.com/amirhshokri) in https://github.com/laravel/horizon/pull/1632
+* [5.x] Update docblock to reflect int|void return type by [@amirhshokri](https://github.com/amirhshokri) in https://github.com/laravel/horizon/pull/1631
+* Fix the pagination of failed jobs list by [@LucaRed](https://github.com/LucaRed) in https://github.com/laravel/horizon/pull/1630
+* Bump vite from 5.4.20 to 5.4.21 by [@dependabot](https://github.com/dependabot)[bot] in https://github.com/laravel/horizon/pull/1637
 
 ## [v5.36.0](https://github.com/laravel/horizon/compare/v5.35.2...v5.36.0) - 2025-10-10
 
