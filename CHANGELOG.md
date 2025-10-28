@@ -1,6 +1,11 @@
 # Release Notes
 
-## [Unreleased](https://github.com/laravel/horizon/compare/v5.37.0...5.x)
+## [Unreleased](https://github.com/laravel/horizon/compare/v5.38.0...5.x)
+
+## [v5.38.0](https://github.com/laravel/horizon/compare/v5.37.0...v5.38.0) - 2025-10-26
+
+* [5.x] Improve the button title by [@amirhshokri](https://github.com/amirhshokri) in https://github.com/laravel/horizon/pull/1638
+* [5.x] Add `Connection` parameter to job details page by [@amirhshokri](https://github.com/amirhshokri) in https://github.com/laravel/horizon/pull/1640
 
 ## [v5.37.0](https://github.com/laravel/horizon/compare/v5.36.0...v5.37.0) - 2025-10-21
 
