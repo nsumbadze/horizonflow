@@ -1,6 +1,14 @@
 # Release Notes
 
-## [Unreleased](https://github.com/laravel/horizon/compare/v5.38.0...5.x)
+## [Unreleased](https://github.com/laravel/horizon/compare/v5.39.0...5.x)
+
+## [v5.39.0](https://github.com/laravel/horizon/compare/v5.38.0...v5.39.0) - 2025-11-04
+
+* [5.x] Hide `Load New Entries` button when auto loading is enabled by [@amirhshokri](https://github.com/amirhshokri) in https://github.com/laravel/horizon/pull/1644
+* [5.x] Add `Connection` column to Supervisors table in Horizon panel dashboard by [@amirhshokri](https://github.com/amirhshokri) in https://github.com/laravel/horizon/pull/1646
+* [5.x] Add Margin Left to Delayed Label by [@amirhshokri](https://github.com/amirhshokri) in https://github.com/laravel/horizon/pull/1648
+* [5.x] Improve more tags display in Horizon jobs list by [@amirhshokri](https://github.com/amirhshokri) in https://github.com/laravel/horizon/pull/1650
+* [5.x] Rename table column for clarity by [@amirhshokri](https://github.com/amirhshokri) in https://github.com/laravel/horizon/pull/1655
 
 ## [v5.38.0](https://github.com/laravel/horizon/compare/v5.37.0...v5.38.0) - 2025-10-26
 
