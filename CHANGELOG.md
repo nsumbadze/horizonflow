@@ -1,6 +1,12 @@
 # Release Notes
 
-## [Unreleased](https://github.com/laravel/horizon/compare/v5.39.0...5.x)
+## [Unreleased](https://github.com/laravel/horizon/compare/v5.40.0...5.x)
+
+## [v5.40.0](https://github.com/laravel/horizon/compare/v5.39.0...v5.40.0) - 2025-11-11
+
+* [5.x] Refactor string capitalization to use global `upperFirst()` helper by [@amirhshokri](https://github.com/amirhshokri) in https://github.com/laravel/horizon/pull/1656
+* [5.x] Make Job IDs Clickable in the `Recent Retries` Table by [@amirhshokri](https://github.com/amirhshokri) in https://github.com/laravel/horizon/pull/1657
+* [5.x] Add job title to failed jobs table in job batch details page by [@amirhshokri](https://github.com/amirhshokri) in https://github.com/laravel/horizon/pull/1661
 
 ## [v5.39.0](https://github.com/laravel/horizon/compare/v5.38.0...v5.39.0) - 2025-11-04
 
