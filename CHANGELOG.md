@@ -1,6 +1,10 @@
 # Release Notes
 
-## [Unreleased](https://github.com/laravel/horizon/compare/v5.40.0...5.x)
+## [Unreleased](https://github.com/laravel/horizon/compare/v5.40.1...5.x)
+
+## [v5.40.1](https://github.com/laravel/horizon/compare/v5.40.0...v5.40.1) - 2025-11-25
+
+* [5.x] PHP 8.5 Compatibility by [@crynobone](https://github.com/crynobone) in https://github.com/laravel/horizon/pull/1667
 
 ## [v5.40.0](https://github.com/laravel/horizon/compare/v5.39.0...v5.40.0) - 2025-11-11
 
