@@ -1,6 +1,11 @@
 # Release Notes
 
-## [Unreleased](https://github.com/laravel/horizon/compare/v5.40.1...5.x)
+## [Unreleased](https://github.com/laravel/horizon/compare/v5.40.2...5.x)
+
+## [v5.40.2](https://github.com/laravel/horizon/compare/v5.40.1...v5.40.2) - 2025-11-28
+
+* [5.x] Revert `#1657` by [@amirhshokri](https://github.com/amirhshokri) in https://github.com/laravel/horizon/pull/1669
+* Add reload command by [@barryvdh](https://github.com/barryvdh) in https://github.com/laravel/horizon/pull/1671
 
 ## [v5.40.1](https://github.com/laravel/horizon/compare/v5.40.0...v5.40.1) - 2025-11-25
 
