@@ -1,6 +1,12 @@
 # Release Notes
 
-## [Unreleased](https://github.com/laravel/horizon/compare/v5.40.2...5.x)
+## [Unreleased](https://github.com/laravel/horizon/compare/v5.41.0...5.x)
+
+## [v5.41.0](https://github.com/laravel/horizon/compare/v5.40.2...v5.41.0) - 2025-12-14
+
+* [5.x] Update gitignore by [@jackbayliss](https://github.com/jackbayliss) in https://github.com/laravel/horizon/pull/1672
+* fix: guard setAccessible() call for PHP 8.5+ by [@deligoez](https://github.com/deligoez) in https://github.com/laravel/horizon/pull/1676
+* Fix: Unable to clear a queue with a lot of data by [@Vishwaraj123](https://github.com/Vishwaraj123) in https://github.com/laravel/horizon/pull/1679
 
 ## [v5.40.2](https://github.com/laravel/horizon/compare/v5.40.1...v5.40.2) - 2025-11-28
 
