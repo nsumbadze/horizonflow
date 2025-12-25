@@ -78,6 +78,10 @@ class RedisMasterSupervisorRepository implements MasterSupervisorRepository
 
         return collect($records)
             ->map(function ($record) {
+                if (! is_array($record)) {
+                    return null;
+                }
+
                 $record = array_values($record);
 
                 return ! $record[0] ? null : (object) [
