@@ -1,6 +1,13 @@
 # Release Notes
 
-## [Unreleased](https://github.com/laravel/horizon/compare/v5.41.0...5.x)
+## [Unreleased](https://github.com/laravel/horizon/compare/v5.42.0...5.x)
+
+## [v5.42.0](https://github.com/laravel/horizon/compare/v5.41.0...v5.42.0) - 2026-01-06
+
+* Fix race condition that causes jobs to stay in 'pending' state by [@Jeroenwv](https://github.com/Jeroenwv) in https://github.com/laravel/horizon/pull/1682
+* Handle non-array Redis HMGET responses during startup by [@thecaliskan](https://github.com/thecaliskan) in https://github.com/laravel/horizon/pull/1684
+* [5.x] Fix `calculateTimeToClear` return type by [@amirhshokri](https://github.com/amirhshokri) in https://github.com/laravel/horizon/pull/1685
+* Update .gitattributes to ignore more files by [@devfrey](https://github.com/devfrey) in https://github.com/laravel/horizon/pull/1688
 
 ## [v5.41.0](https://github.com/laravel/horizon/compare/v5.40.2...v5.41.0) - 2025-12-14
 
