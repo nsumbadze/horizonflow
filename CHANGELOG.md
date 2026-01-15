@@ -1,6 +1,10 @@
 # Release Notes
 
-## [Unreleased](https://github.com/laravel/horizon/compare/v5.42.0...5.x)
+## [Unreleased](https://github.com/laravel/horizon/compare/v5.43.0...5.x)
+
+## [v5.43.0](https://github.com/laravel/horizon/compare/v5.42.0...v5.43.0) - 2026-01-15
+
+* Add `horizon:listen` command by [@mathiasgrimm](https://github.com/mathiasgrimm) in https://github.com/laravel/horizon/pull/1689
 
 ## [v5.42.0](https://github.com/laravel/horizon/compare/v5.41.0...v5.42.0) - 2026-01-06
 
