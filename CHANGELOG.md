@@ -1,6 +1,15 @@
 # Release Notes
 
-## [Unreleased](https://github.com/laravel/horizon/compare/v5.44.0...5.x)
+## [Unreleased](https://github.com/laravel/horizon/compare/v5.45.0...5.x)
+
+## [v5.45.0](https://github.com/laravel/horizon/compare/v5.44.0...v5.45.0) - 2026-02-21
+
+* [5.x] Fail fast when Redis is not installed by [@amirhshokri](https://github.com/amirhshokri) in https://github.com/laravel/horizon/pull/1705
+* [5.x] Supports restricting private tunnel requests for `local` environment by [@crynobone](https://github.com/crynobone) in https://github.com/laravel/horizon/pull/1691
+* [5.x] Improve digits readability by [@amirhshokri](https://github.com/amirhshokri) in https://github.com/laravel/horizon/pull/1706
+* [5.x] Mark `horizon:publish` command as deprecated by [@amirhshokri](https://github.com/amirhshokri) in https://github.com/laravel/horizon/pull/1708
+* Fix wildcard pattern matching in file watcher by [@markieo1](https://github.com/markieo1) in https://github.com/laravel/horizon/pull/1712
+* [5.x] Add support for batch searching by [@JoeyMckenzie](https://github.com/JoeyMckenzie) in https://github.com/laravel/horizon/pull/1714
 
 ## [v5.44.0](https://github.com/laravel/horizon/compare/v5.43.0...v5.44.0) - 2026-02-10
 
