@@ -1,6 +1,16 @@
 # Release Notes
 
-## [Unreleased](https://github.com/laravel/horizon/compare/v5.45.0...5.x)
+## [Unreleased](https://github.com/laravel/horizon/compare/v5.45.1...5.x)
+
+## [v5.45.1](https://github.com/laravel/horizon/compare/v5.45.0...v5.45.1) - 2026-03-06
+
+* [5.x] Fix runaway memory usage with `horizon:listen` by [@cosmastech](https://github.com/cosmastech) in https://github.com/laravel/horizon/pull/1716
+* Bump rollup from 4.22.4 to 4.59.0 by [@dependabot](https://github.com/dependabot)[bot] in https://github.com/laravel/horizon/pull/1717
+* Reduce risks of `localStorage` collision by [@meduzen](https://github.com/meduzen) in https://github.com/laravel/horizon/pull/1719
+* return exit code from terminate command by [@webard](https://github.com/webard) in https://github.com/laravel/horizon/pull/1718
+* Bump immutable from 4.3.5 to 4.3.8 by [@dependabot](https://github.com/dependabot)[bot] in https://github.com/laravel/horizon/pull/1722
+* Show delayed badge for jobs pending retry backoff by [@SanderMuller](https://github.com/SanderMuller) in https://github.com/laravel/horizon/pull/1721
+* Add configure-horizon Boost skill by [@pushpak1300](https://github.com/pushpak1300) in https://github.com/laravel/horizon/pull/1723
 
 ## [v5.45.0](https://github.com/laravel/horizon/compare/v5.44.0...v5.45.0) - 2026-02-21
 
