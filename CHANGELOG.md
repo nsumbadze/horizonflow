@@ -1,6 +1,10 @@
 # Release Notes
 
-## [Unreleased](https://github.com/laravel/horizon/compare/v5.45.1...5.x)
+## [Unreleased](https://github.com/laravel/horizon/compare/v5.45.2...5.x)
+
+## [v5.45.2](https://github.com/laravel/horizon/compare/v5.45.1...v5.45.2) - 2026-03-10
+
+**Full Changelog**: https://github.com/laravel/horizon/compare/v5.45.1...v5.45.2
 
 ## [v5.45.1](https://github.com/laravel/horizon/compare/v5.45.0...v5.45.1) - 2026-03-06
 
