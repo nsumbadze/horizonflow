@@ -36,7 +36,7 @@ class TerminateCommand extends Command
      *
      * @param  \Illuminate\Contracts\Cache\Factory  $cache
      * @param  \Laravel\Horizon\Contracts\MasterSupervisorRepository  $masters
-     * @return int|null
+     * @return void
      */
     public function handle(CacheFactory $cache, MasterSupervisorRepository $masters)
     {
@@ -50,16 +50,10 @@ class TerminateCommand extends Command
             ->filter(fn ($master) => Str::startsWith($master->name, MasterSupervisor::basename()))
             ->all();
 
-        $exitCode = null;
-
-        $result = collect(Arr::pluck($masters, 'pid'))
+        collect(Arr::pluck($masters, 'pid'))
             ->whenNotEmpty(fn () => $this->components->info('Sending TERM signal to processes.'))
-            ->whenEmpty(function () use (&$exitCode) {
-                $this->components->info('No processes to terminate.');
-
-                $exitCode = Command::FAILURE;
-            })
-            ->each(function ($processId) use (&$exitCode) {
+            ->whenEmpty(fn () => $this->components->info('No processes to terminate.'))
+            ->each(function ($processId) {
                 $result = true;
 
                 $this->components->task("Process: $processId", function () use ($processId, &$result) {
@@ -68,15 +62,9 @@ class TerminateCommand extends Command
 
                 if (! $result) {
                     $this->components->error("Failed to kill process: {$processId} (".posix_strerror(posix_get_last_error()).')');
-
-                    $exitCode = Command::FAILURE;
-                } elseif ($exitCode === null) {
-                    $exitCode = Command::SUCCESS;
                 }
             })->whenNotEmpty(fn () => $this->output->writeln(''));
 
         $this->laravel['cache']->forever('illuminate:queue:restart', $this->currentTime());
-
-        return $exitCode ?? Command::SUCCESS;
     }
 }
