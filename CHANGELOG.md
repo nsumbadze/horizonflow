@@ -1,6 +1,11 @@
 # Release Notes
 
-## [Unreleased](https://github.com/laravel/horizon/compare/v5.45.2...5.x)
+## [Unreleased](https://github.com/laravel/horizon/compare/v5.45.3...5.x)
+
+## [v5.45.3](https://github.com/laravel/horizon/compare/v5.45.2...v5.45.3) - 2026-03-11
+
+* Refine Horizon skill description by [@pushpak1300](https://github.com/pushpak1300) in https://github.com/laravel/horizon/pull/1727
+* Update configure-horizon skill examples and command references by [@pushpak1300](https://github.com/pushpak1300) in https://github.com/laravel/horizon/pull/1725
 
 ## [v5.45.2](https://github.com/laravel/horizon/compare/v5.45.1...v5.45.2) - 2026-03-10
 
