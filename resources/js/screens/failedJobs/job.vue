@@ -26,7 +26,7 @@
         mounted() {
             this.loadFailedJob(this.$route.params.jobId);
 
-            document.title = "Horizon - Failed Jobs";
+            document.title = "HorizonXBrain - Failed Jobs";
         },
 
 

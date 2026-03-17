@@ -139,7 +139,7 @@
         mounted() {
             this.loadJob(this.$route.params.jobId);
 
-            document.title = "Horizon - Job Detail";
+            document.title = "HorizonXBrain - Job Detail";
         },
 
         methods: {

@@ -23,7 +23,7 @@
          * Prepare the component.
          */
         mounted() {
-            document.title = "Horizon - Metrics";
+            document.title = "HorizonXBrain - Metrics";
 
             this.loadMetric();
         },

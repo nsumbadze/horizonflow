@@ -1,4 +1,5 @@
 import dashboard from './screens/dashboard.vue';
+import liveFlow from './screens/live-flow.vue';
 import monitoring from './screens/monitoring/index.vue';
 import monitoringTag from './screens/monitoring/tag.vue';
 import monitoringTagJobs from './screens/monitoring/tag-jobs.vue';
@@ -20,6 +21,12 @@ export default [
         path: '/dashboard',
         name: 'dashboard',
         component: dashboard,
+    },
+
+    {
+        path: '/live-flow',
+        name: 'live-flow',
+        component: liveFlow,
     },
 
     {

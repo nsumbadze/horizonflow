@@ -17,7 +17,7 @@
          * Prepare the component.
          */
         mounted() {
-            document.title = "Horizon - Batches";
+            document.title = "HorizonXBrain - Batches";
         },
 
 

@@ -7,7 +7,7 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <link rel="shortcut icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAipJREFUeNrEV8txwjAQtQ2HHCmB3JKbSQOYCoA0gD0pgFBBwpEToQAGKmDglpwgFdg5kZtNB1BBsuusZ4RY2ZZjYGd2jGWh97Q/rUwjpziPT3V4dECboDZoXZoSka5Al5vFNMqzrpkD2IFHn8B1ZAM6BCKbQgQAuAaPWQFgjoinsoipAEcTr0FrRjmyJxLLTAI5wXFXAehBGMPYcDKIIIm5kkAGOJpwAjqHRfYpbkOXvTBBypIwpT+HCvA3Cqi9Rta8EhHOHS1YCy1oWMKHmQIcGQ90wGMfLaZIoEGAoiDGOHmxhFTr5PGZJgncZYszEGC6ogX6nNn/Ay6RGDCfYveYVOFCJuAaumbPiIk1kyUNS2H6SZngyZrMWM+i/JVlXjK4QUVI3pRTpYPlaG6yeyGvm0Jef1ItiArwQBKu8G5bTMEIhKLkU3q65D+HgieE7+MCBHbygMVMOlCK+CnVDOUZ5s00ghCt2T45C+DDD2MBW/O066YFLYGvuXU5C9i6GYaLUzqr+olQtS5aIMwwtW6QfQnv7awNVanolEWgo9nABBb1cNeSmMDyigRWZkqdPrdEkDm3SRYMr7D7odwRXdIK8e7lOuAxh8W5pHtSiOhw8S4A7iX9IErlyC5b/7t+/7Ar4TKiEuyyRuJA5cQ5Wz8gEhgPNyXvfCQPVtgI+SPxAT/vSqiSEbXh70Uvp27GRSMNeJjV2Jp5V6MGpUeuUR0wAemKuwdy8ivAAJcc0R2NFxWtAAAAAElFTkSuQmCC">
 
-    <title>Horizon{{ config('horizon.name') ? ' - ' . config('horizon.name') : '' }}</title>
+    <title>HorizonXBrain{{ config('horizon.name') ? ' - ' . config('horizon.name') : '' }}</title>
 
     <!-- Style sheets-->
     <link rel="preconnect" href="https://fonts.bunny.net">
@@ -32,7 +32,7 @@
                 </svg>
 
                 <h1 class="h4 mb-0 ms-2">
-                    <strong>Laravel</strong> Horizon{{ config('horizon.name') ? ' - ' . config('horizon.name') : '' }}
+                    <strong>Horizon</strong>XBrain{{ config('horizon.name') ? ' - ' . config('horizon.name') : '' }}
                 </h1>
             </router-link>
 
@@ -56,6 +56,14 @@
                                 <path fill-rule="evenodd" d="M4.25 2A2.25 2.25 0 002 4.25v2.5A2.25 2.25 0 004.25 9h2.5A2.25 2.25 0 009 6.75v-2.5A2.25 2.25 0 006.75 2h-2.5zm0 9A2.25 2.25 0 002 13.25v2.5A2.25 2.25 0 004.25 18h2.5A2.25 2.25 0 009 15.75v-2.5A2.25 2.25 0 006.75 11h-2.5zm9-9A2.25 2.25 0 0011 4.25v2.5A2.25 2.25 0 0013.25 9h2.5A2.25 2.25 0 0018 6.75v-2.5A2.25 2.25 0 0015.75 2h-2.5zm0 9A2.25 2.25 0 0011 13.25v2.5A2.25 2.25 0 0013.25 18h2.5A2.25 2.25 0 0018 15.75v-2.5A2.25 2.25 0 0015.75 11h-2.5z" clip-rule="evenodd" />
                             </svg>
                             <span>Dashboard</span>
+                        </router-link>
+                    </li>
+                    <li class="nav-item">
+                        <router-link active-class="active" to="/live-flow" class="nav-link d-flex align-items-center">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M2 5.25A3.25 3.25 0 015.25 2h1.5A3.25 3.25 0 0110 5.25v.25h4.25a3.75 3.75 0 010 7.5H10v.25a3.25 3.25 0 01-3.25 3.25h-1.5a3.25 3.25 0 010-6.5h1.5A3.25 3.25 0 0110 13.25V11.5h4.25a2.25 2.25 0 000-4.5H10v.25a3.25 3.25 0 01-3.25 3.25h-1.5A3.25 3.25 0 012 7.25v-2zm3.25-1.75a1.75 1.75 0 000 3.5h1.5a1.75 1.75 0 000-3.5h-1.5zm0 8a1.75 1.75 0 000 3.5h1.5a1.75 1.75 0 000-3.5h-1.5z" clip-rule="evenodd" />
+                            </svg>
+                            <span>Live Flow</span>
                         </router-link>
                     </li>
                     <li class="nav-item">
