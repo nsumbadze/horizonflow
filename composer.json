@@ -1,6 +1,6 @@
 {
-    "name": "laravel/horizon",
-    "description": "Dashboard and code-driven configuration for Laravel queues.",
+    "name": "horizonxbrain/horizonxbrain",
+    "description": "Queue monitoring with Horizon telemetry and Brain-style flow visualization.",
     "keywords": ["laravel", "queue"],
     "license": "MIT",
     "authors": [
@@ -26,6 +26,8 @@
         "symfony/process": "^6.0|^7.0|^8.0"
     },
     "require-dev": {
+        "laravel/boost": "^2.4",
+        "laravel/mcp": "^0.7.0",
         "mockery/mockery": "^1.0",
         "orchestra/testbench": "^7.56|^8.37|^9.16|^10.9|^11.0",
         "phpstan/phpstan": "^1.10|^2.0",

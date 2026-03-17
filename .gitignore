@@ -1,12 +1,33 @@
 .DS_Store
-.phpunit.result.cache
-/.fleet
-/.idea
-/.phpunit.cache
-/phpunit.xml
-/.vscode
+Thumbs.db
+
+# Local dependency installs
 /node_modules
 /vendor
 composer.phar
+
+# Package lock files
 composer.lock
-Thumbs.db
+
+# Local test and tooling output
+.phpunit.result.cache
+/.phpunit.cache
+/coverage
+/storage
+/.env
+/.env.*
+!/\.env.example
+
+# Local IDE state
+/.fleet
+/.idea
+/.vscode
+
+# Local package workbench overrides
+/phpunit.xml
+/workbench/.env
+/workbench/storage
+/workbench/bootstrap/cache/*.php
+
+# Codex workspace placeholder prevents a normal .git directory here.
+/.gitdata
