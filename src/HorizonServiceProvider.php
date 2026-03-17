@@ -108,6 +108,10 @@ class HorizonServiceProvider extends ServiceProvider
             $this->publishes([
                 __DIR__.'/../config/horizon.php' => config_path('horizon.php'),
             ], 'horizon-config');
+
+            $this->publishes([
+                __DIR__.'/../config/horizonxbrain.php' => config_path('horizonxbrain.php'),
+            ], 'horizonxbrain-config');
         }
     }
 
@@ -181,6 +185,10 @@ class HorizonServiceProvider extends ServiceProvider
     {
         $this->mergeConfigFrom(
             __DIR__.'/../config/horizon.php', 'horizon'
+        );
+
+        $this->mergeConfigFrom(
+            __DIR__.'/../config/horizonxbrain.php', 'horizonxbrain'
         );
 
         Horizon::use(config('horizon.use', 'default'));

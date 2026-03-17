@@ -24,6 +24,7 @@ trait ServiceBindings
         Contracts\MasterSupervisorRepository::class => Repositories\RedisMasterSupervisorRepository::class,
         Contracts\MetricsRepository::class => Repositories\RedisMetricsRepository::class,
         Contracts\ProcessRepository::class => Repositories\RedisProcessRepository::class,
+        Contracts\QueueFlowRepository::class => Repositories\ConfiguredQueueFlowRepository::class,
         Contracts\SupervisorRepository::class => Repositories\RedisSupervisorRepository::class,
         Contracts\TagRepository::class => Repositories\RedisTagRepository::class,
         Contracts\WorkloadRepository::class => Repositories\RedisWorkloadRepository::class,

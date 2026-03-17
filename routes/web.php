@@ -9,6 +9,9 @@ Route::prefix('api')->group(function () {
     // Workload Routes...
     Route::get('/workload', 'WorkloadController@index')->name('horizon.workload.index');
 
+    // Queue Flow Routes...
+    Route::get('/flow', 'QueueFlowController@index')->name('horizonxbrain.flow.index');
+
     // Master Supervisor Routes...
     Route::get('/masters', 'MasterSupervisorController@index')->name('horizon.masters.index');
 
