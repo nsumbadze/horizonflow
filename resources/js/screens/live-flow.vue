@@ -10,11 +10,7 @@
                 timeRange: 'Last 15m',
                 selectedId: null,
                 isDark: this.sniffDark(),
-                // viewport
-                panX: 0,
-                panY: 0,
-                zoom: 1,
-                isPanning: false,
+                panX: 0, panY: 0, zoom: 1, isPanning: false,
             };
         },
 
@@ -31,21 +27,13 @@
         },
 
         computed: {
-            summary() {
-                return this.flow?.summary ?? {};
-            },
-
-            meta() {
-                return this.flow?.meta ?? {};
-            },
-
-            appLabel() {
-                return this.meta.app_name ?? this.meta.horizon_name ?? 'Laravel application';
-            },
+            summary()  { return this.flow?.summary ?? {}; },
+            meta()     { return this.flow?.meta ?? {}; },
+            appLabel() { return this.meta.app_name ?? this.meta.horizon_name ?? 'Laravel application'; },
 
             generatedAt() {
-                if (!this.flow?.generated_at) return 'Generated: —';
-                return 'Generated: ' + new Date(this.flow.generated_at).toLocaleTimeString();
+                if (!this.flow?.generated_at) return null;
+                return new Date(this.flow.generated_at).toLocaleTimeString();
             },
 
             sourceClass() {
@@ -56,17 +44,11 @@
                 if (this.flow?.source === 'auto') {
                     return `unified · ${(this.flow?.sources ?? []).join(' + ') || 'live'}`;
                 }
-
                 return { mock: 'mock · demo', redis: 'redis · live', database: 'db · live' }[this.flow?.source] ?? (this.flow ? this.flow.source : 'loading');
             },
 
-            isMock() {
-                return this.flow?.source === 'mock';
-            },
-
-            queues() {
-                return this.flow?.queues ?? [];
-            },
+            isMock()  { return this.flow?.source === 'mock'; },
+            queues()  { return this.flow?.queues ?? []; },
 
             filteredQueues() {
                 const f = this.filterText.trim().toLowerCase();
@@ -76,16 +58,9 @@
                 );
             },
 
-            nodeLookup() {
-                return (this.flow?.nodes ?? []).reduce((acc, n) => { acc[n.id] = n; return acc; }, {});
-            },
-
             svgHeight() {
-                const nodeH = 52;
-                const gap = 22;
-                const topPad = 44;
-                const botPad = 32;
-                const queueCount = Math.max(1, this.filteredQueues.length);
+                const nodeH = 52, gap = 22, topPad = 44, botPad = 32;
+                const queueCount  = Math.max(1, this.filteredQueues.length);
                 const workerCount = Math.max(1, (this.flow?.nodes ?? []).filter(n => n.type === 'worker').slice(0, 4).length);
                 const resultCount = Math.max(1, (this.flow?.nodes ?? []).filter(n => n.type === 'result').slice(0, 4).length);
                 const maxCol = Math.max(queueCount, workerCount, resultCount);
@@ -94,31 +69,25 @@
 
             graphNodes() {
                 const H = this.svgHeight;
-                const topPad = 44;
-                const botPad = 32;
+                const topPad = 44, botPad = 32;
                 const qH = 50, wH = 46, rH = 50, pH = 52;
-
-                const qYMin = topPad, qYMax = H - qH - botPad;
+                const qYMin = topPad,     qYMax = H - qH - botPad;
                 const wYMin = topPad + 4, wYMax = H - wH - botPad - 4;
-                const rYMin = topPad, rYMax = H - rH - botPad;
-
+                const rYMin = topPad,     rYMax = H - rH - botPad;
                 const midY = H / 2;
 
                 const queues = this.filteredQueues.map((queue, i) => {
                     const node = this.findQueueNode(queue);
                     return {
                         id: node?.id ?? this.queueNodeId(queue),
-                        type: 'queue',
-                        label: queue.name,
+                        type: 'queue', label: queue.name,
                         sub: this.queueSubLabel(queue),
                         status: node?.status ?? this.queueStatus(queue),
                         x: 250, y: this.distributedY(i, this.filteredQueues.length, qYMin, qYMax),
                         width: 128, height: qH,
                         metrics: {
-                            pending: queue.pending,
-                            delayed: queue.delayed,
-                            wait: queue.wait_seconds,
-                            processes: queue.processes,
+                            pending: queue.pending, delayed: queue.delayed,
+                            wait: queue.wait_seconds, processes: queue.processes,
                             throughput: queue.throughput_per_minute,
                             current_throughput: queue.current_throughput_per_minute,
                             failed: queue.failed,
@@ -134,7 +103,6 @@
                     x: 500, y: this.distributedY(i, all.length || 1, wYMin, wYMax),
                     width: 128, height: wH, metrics: n.metrics ?? {},
                 }));
-
                 const workerNodes = workers.length ? workers : [{
                     id: 'workers', type: 'worker', label: 'workers',
                     sub: `${this.formatNumber(this.summary.processing)} active`,
@@ -152,8 +120,19 @@
 
                 const prodSpread = Math.min(120, H * 0.16);
                 return [
-                    { id: 'producer-app',       type: 'producer', label: this.appLabel,   sub: `${this.meta.environment ?? 'app'} · ${this.formatNumber(this.summary.current_throughput_per_minute ?? this.summary.throughput_per_minute)} current/m`, status: 'healthy', x: 28, y: Math.round(midY - prodSpread - pH / 2), width: 136, height: pH, metrics: { throughput: this.summary.throughput_per_minute, current_throughput: this.summary.current_throughput_per_minute } },
-                    { id: 'producer-scheduler', type: 'producer', label: 'scheduler',      sub: `${this.formatNumber(this.summary.delayed)} delayed`, status: this.summary.delayed > 0 ? 'warning' : 'healthy', x: 28, y: Math.round(midY + prodSpread - pH / 2), width: 136, height: pH, metrics: { delayed: this.summary.delayed } },
+                    {
+                        id: 'producer-app', type: 'producer', label: this.appLabel,
+                        sub: `${this.meta.environment ?? 'app'} · ${this.formatNumber(this.summary.current_throughput_per_minute ?? this.summary.throughput_per_minute)} current/m`,
+                        status: 'healthy', x: 28, y: Math.round(midY - prodSpread - pH / 2), width: 136, height: pH,
+                        metrics: { throughput: this.summary.throughput_per_minute, current_throughput: this.summary.current_throughput_per_minute },
+                    },
+                    {
+                        id: 'producer-scheduler', type: 'producer', label: 'scheduler',
+                        sub: `${this.formatNumber(this.summary.delayed)} delayed`,
+                        status: this.summary.delayed > 0 ? 'warning' : 'healthy',
+                        x: 28, y: Math.round(midY + prodSpread - pH / 2), width: 136, height: pH,
+                        metrics: { delayed: this.summary.delayed },
+                    },
                     ...queues, ...workerNodes, ...results,
                 ];
             },
@@ -163,14 +142,13 @@
             },
 
             graphEdges() {
-                const existing = (this.flow?.edges ?? [])
-                    .filter(e => this.graphNodeLookup[e.source] && this.graphNodeLookup[e.target]);
+                const existing = (this.flow?.edges ?? []).filter(e => this.graphNodeLookup[e.source] && this.graphNodeLookup[e.target]);
                 if (existing.length) return existing;
 
-                const workers = this.graphNodes.filter(n => n.type === 'worker');
-                const results = this.graphNodes.filter(n => n.type === 'result');
+                const workers   = this.graphNodes.filter(n => n.type === 'worker');
+                const results   = this.graphNodes.filter(n => n.type === 'result');
                 const completed = results.find(n => n.label === 'completed') ?? results[0];
-                const failed = results.find(n => n.label === 'failed');
+                const failed    = results.find(n => n.label === 'failed');
                 const generated = [];
 
                 this.graphNodes.filter(n => n.type === 'queue').forEach((q, i) => {
@@ -186,29 +164,18 @@
 
             particles() {
                 if (!this.live) return [];
-
                 return this.graphEdges.filter(edge => {
-                    // Always require a non-zero historic rate
                     if (Number(edge.rate_per_minute ?? 0) <= 0) return false;
-
                     const src = this.graphNodeLookup[edge.source];
                     const tgt = this.graphNodeLookup[edge.target];
-
-                    // For edges touching a queue node, gate on the queue actually having
-                    // work right now — not just a stale smoothed rate from minutes ago.
-                    const queueNode = src?.type === 'queue' ? src
-                        : tgt?.type === 'queue' ? tgt
-                        : null;
+                    const queueNode = src?.type === 'queue' ? src : tgt?.type === 'queue' ? tgt : null;
                     if (queueNode) {
                         const m = queueNode.metrics ?? {};
                         return Number(m.pending ?? 0) > 0 || Number(m.processes ?? 0) > 0;
                     }
-
-                    // Failed-result sink: only animate when there are actual recent failures.
                     if (tgt?.type === 'result' && tgt.label === 'failed') {
                         return Number(this.summary.failed ?? 0) > 0;
                     }
-
                     return true;
                 }).flatMap((edge, ei) => {
                     const count = edge.status === 'critical' || edge.status === 'warning' ? 2 : Math.min(3, Math.max(1, Math.ceil((edge.rate_per_minute ?? 20) / 120)));
@@ -222,13 +189,8 @@
                 }).slice(0, 28);
             },
 
-            viewportTransform() {
-                return `translate(${this.panX} ${this.panY}) scale(${this.zoom})`;
-            },
-
-            zoomLabel() {
-                return Math.round(this.zoom * 100) + '%';
-            },
+            viewportTransform() { return `translate(${this.panX} ${this.panY}) scale(${this.zoom})`; },
+            zoomLabel()         { return Math.round(this.zoom * 100) + '%'; },
 
             selectedNode() {
                 return this.graphNodeLookup[this.selectedId] ?? this.graphNodes.find(n => n.type === 'queue') ?? this.graphNodes[0];
@@ -249,7 +211,6 @@
         },
 
         methods: {
-            // ── theme ──────────────────────────────────────────────────────────
             sniffDark() {
                 try {
                     const el = document.querySelector('style[data-scheme="dark"]');
@@ -269,13 +230,11 @@
                 this._mq.addEventListener('change', this._mqUpdate);
             },
 
-            // ── viewport ───────────────────────────────────────────────────────
             getSVGCoords(e) {
                 const svg = this.$refs.flowSvg;
                 if (!svg) return { x: e.clientX, y: e.clientY };
                 const pt = svg.createSVGPoint();
-                pt.x = e.clientX;
-                pt.y = e.clientY;
+                pt.x = e.clientX; pt.y = e.clientY;
                 return pt.matrixTransform(svg.getScreenCTM().inverse());
             },
 
@@ -314,7 +273,6 @@
             zoomOut()   { this.zoom = Math.max(0.35, +(this.zoom / 1.2).toFixed(4)); },
             resetView() { this.panX = 0; this.panY = 0; this.zoom = 1; },
 
-            // ── data ───────────────────────────────────────────────────────────
             refreshFlowPeriodically() {
                 if (!this.live && this.ready) return Promise.resolve();
                 this.refreshing = true;
@@ -330,13 +288,10 @@
             },
 
             selectNode(id) { this.selectedId = id; },
-            toggleLive() { this.live = !this.live; },
+            toggleLive()   { this.live = !this.live; },
 
-            svgId(value) {
-                return String(value).replace(/[^a-z0-9_-]+/gi, '-');
-            },
+            svgId(value) { return String(value).replace(/[^a-z0-9_-]+/gi, '-'); },
 
-            // ── formatting ─────────────────────────────────────────────────────
             metricValue(value, suffix = '') {
                 if (value === null || value === undefined) return 'n/a';
                 return this.formatNumber(value) + suffix;
@@ -348,17 +303,15 @@
                 return Number(value).toLocaleString();
             },
 
-            formatRate(value) {
-                return (value === null || value === undefined) ? 'n/a' : `${this.formatNumber(value)}/m`;
-            },
+            formatRate(value)    { return (value === null || value === undefined) ? 'n/a' : `${this.formatNumber(value)}/m`; },
 
             formatDuration(value) {
                 if (value === null || value === undefined) return 'n/a';
-                const seconds = Number(value);
-                if (seconds < 60) return `${seconds}s`;
-                if (seconds < 3600) return `${Math.round(seconds / 60)}m`;
-                if (seconds < 86400) return `${(seconds / 3600).toFixed(1)}h`;
-                return `${(seconds / 86400).toFixed(1)}d`;
+                const s = Number(value);
+                if (s < 60) return `${s}s`;
+                if (s < 3600) return `${Math.round(s / 60)}m`;
+                if (s < 86400) return `${(s / 3600).toFixed(1)}h`;
+                return `${(s / 86400).toFixed(1)}d`;
             },
 
             formatPercent(value) {
@@ -370,7 +323,6 @@
                 return { healthy: 'healthy', warning: 'backpressure', critical: 'critical' }[status] ?? status;
             },
 
-            // ── graph helpers ──────────────────────────────────────────────────
             edge(source, target, status, label, rate) {
                 return { id: `${source}-${target}`, source, target, status, label, rate_per_minute: rate };
             },
@@ -423,34 +375,31 @@
                 return `${this.formatNumber(this.summary.completed)} completed`;
             },
 
-            // ── color methods (CSS variable references) ────────────────────────
             nodeFill(node) {
-                if (node.status === 'critical') return 'var(--hxb-node-critical-bg)';
-                if (node.status === 'warning')  return 'var(--hxb-node-warning-bg)';
-                return { producer: 'var(--hxb-node-producer-bg)', queue: 'var(--hxb-node-queue-bg)', worker: 'var(--hxb-node-worker-bg)', result: 'var(--hxb-node-result-bg)' }[node.type] ?? 'var(--hxb-node-queue-bg)';
+                if (node.status === 'critical') return 'var(--lf-node-critical-bg)';
+                if (node.status === 'warning')  return 'var(--lf-node-warning-bg)';
+                return { producer: 'var(--lf-node-producer-bg)', queue: 'var(--lf-node-queue-bg)', worker: 'var(--lf-node-worker-bg)', result: 'var(--lf-node-result-bg)' }[node.type] ?? 'var(--lf-node-queue-bg)';
             },
 
             nodeStroke(node) {
-                if (node.id === this.selectedId) return 'var(--hxb-violet)';
-                if (node.status === 'critical')  return 'var(--hxb-node-critical-stroke)';
-                if (node.status === 'warning')   return 'var(--hxb-node-warning-stroke)';
-                return { producer: 'var(--hxb-node-producer-stroke)', queue: 'var(--hxb-node-queue-stroke)', worker: 'var(--hxb-node-worker-stroke)', result: 'var(--hxb-node-result-stroke)' }[node.type] ?? 'var(--hxb-node-queue-stroke)';
+                if (node.id === this.selectedId) return 'var(--lf-violet)';
+                if (node.status === 'critical')  return 'var(--lf-node-critical-stroke)';
+                if (node.status === 'warning')   return 'var(--lf-node-warning-stroke)';
+                return { producer: 'var(--lf-node-producer-stroke)', queue: 'var(--lf-node-queue-stroke)', worker: 'var(--lf-node-worker-stroke)', result: 'var(--lf-node-result-stroke)' }[node.type] ?? 'var(--lf-node-queue-stroke)';
             },
 
-            nodeStrokeWidth(node) {
-                return node.id === this.selectedId ? 2.2 : 1.5;
-            },
+            nodeStrokeWidth(node) { return node.id === this.selectedId ? 2.2 : 1.5; },
 
             nodeAccent(node) {
-                if (node.status === 'critical') return 'var(--hxb-red)';
-                if (node.status === 'warning')  return 'var(--hxb-amber)';
-                return { producer: 'var(--hxb-blue)', queue: 'var(--hxb-cyan)', worker: 'var(--hxb-green)', result: 'var(--hxb-green)' }[node.type] ?? 'var(--hxb-cyan)';
+                if (node.status === 'critical') return 'var(--lf-red)';
+                if (node.status === 'warning')  return 'var(--lf-amber)';
+                return { producer: 'var(--lf-blue)', queue: 'var(--lf-violet)', worker: 'var(--lf-green)', result: 'var(--lf-green)' }[node.type] ?? 'var(--lf-violet)';
             },
 
             nodeTextColor(node) {
-                if (node.status === 'critical') return 'var(--hxb-red)';
-                if (node.status === 'warning')  return 'var(--hxb-amber)';
-                return 'var(--hxb-muted)';
+                if (node.status === 'critical') return 'var(--lf-red)';
+                if (node.status === 'warning')  return 'var(--lf-amber)';
+                return 'var(--lf-muted)';
             },
 
             nodeKind(node) {
@@ -458,12 +407,12 @@
             },
 
             edgeColor(status) {
-                return { healthy: 'var(--hxb-cyan)', warning: 'var(--hxb-amber)', critical: 'var(--hxb-red)' }[status] ?? 'var(--hxb-cyan)';
+                return { healthy: 'var(--lf-cyan)', warning: 'var(--lf-amber)', critical: 'var(--lf-red)' }[status] ?? 'var(--lf-cyan)';
             },
 
             particleFilter(status) {
                 if (!this.isDark) return 'none';
-                return { healthy: 'url(#hxb-f-cyan)', warning: 'url(#hxb-f-amber)', critical: 'url(#hxb-f-red)' }[status] ?? 'url(#hxb-f-cyan)';
+                return { healthy: 'url(#lf-f-cyan)', warning: 'url(#lf-f-amber)', critical: 'url(#lf-f-red)' }[status] ?? 'url(#lf-f-cyan)';
             },
 
             particleDuration(status) {
@@ -472,15 +421,10 @@
 
             edgeDisplayLabel(edge) {
                 const rate = Number(edge.rate_per_minute ?? 0);
-
-                if (rate <= 0) {
-                    return ['dispatch', 'reserve', 'finish'].includes(edge.label) ? 'idle' : edge.label;
-                }
-
+                if (rate <= 0) return ['dispatch', 'reserve', 'finish'].includes(edge.label) ? 'idle' : edge.label;
                 return this.formatRate(rate);
             },
 
-            // ── inspector ──────────────────────────────────────────────────────
             inspectorMetrics(node, queue) {
                 if (queue) return [
                     ['Source', queue.source ?? queue.driver], ['Connection', queue.connection],
@@ -492,15 +436,16 @@
                     ['Last measured', this.formatRate(queue.throughput_per_minute)],
                     ['Drain ETA', this.formatDuration(queue.estimated_drain_seconds)],
                     ['Attempts', this.formatNumber(queue.attempts ?? 0)],
-                    ['Failed', this.formatNumber(queue.failed ?? 0)], ['Failure rate', this.formatPercent(queue.failure_rate)],
+                    ['Failed', this.formatNumber(queue.failed ?? 0)],
+                    ['Failure rate', this.formatPercent(queue.failure_rate)],
                     ['Latest error', queue.latest_error ?? 'none'],
                 ];
                 return Object.entries(node.metrics ?? {}).map(([k, v]) => [k.replace(/_/g, ' '), this.formatNumber(v)]);
             },
 
             suggestedAction(node, queue) {
-                if (node.status === 'critical') return { type: 'critical', title: 'Immediate Action', text: queue ? (queue.latest_error ? `${queue.name} has failed jobs. Latest error: ${queue.latest_error}` : `Backlog is critical on ${queue.name}. Scale workers or reduce dispatch rate. Example: php artisan horizon:supervisor ${queue.name}`) : 'Failures above normal. Inspect failed job payloads and retry only after root cause is fixed.' };
-                if (node.status === 'warning')  return { type: 'warn',     title: 'Suggested Action', text: queue ? `${queue.name} is showing backpressure. Watch wait time and consider increasing process capacity.` : 'This node is under pressure. Monitor incoming rates and downstream failures.' };
+                if (node.status === 'critical') return { type: 'critical', title: 'Immediate Action', text: queue ? (queue.latest_error ? `${queue.name} has failed jobs. Latest error: ${queue.latest_error}` : `Backlog is critical on ${queue.name}. Scale workers or reduce dispatch rate.`) : 'Failures above normal. Inspect failed job payloads.' };
+                if (node.status === 'warning')  return { type: 'warn', title: 'Suggested Action', text: queue ? `${queue.name} is showing backpressure. Watch wait time and consider increasing process capacity.` : 'This node is under pressure. Monitor incoming rates.' };
                 return { type: 'ok', title: 'Status', text: 'Node is operating normally. No action required.' };
             },
         },
@@ -508,115 +453,159 @@
 </script>
 
 <template>
-    <div :class="['hxb-live-flow', { 'hxb-dark': isDark }]">
+    <div>
         <poll @poll="refreshFlowPeriodically" :interval="5" />
 
-        <!-- PAGE CONTROLS -->
-        <div class="hxb-page-controls">
-            <span class="hxb-source-badge" :class="'hxb-source-' + sourceClass">
-                <span class="hxb-pulse"></span>
-                {{ sourceLabel }}
-            </span>
-            <span class="hxb-ts">{{ generatedAt }}</span>
-            <div class="hxb-spacer"></div>
-            <input v-model="filterText" class="hxb-ctl" type="text" placeholder="Filter queues…" />
-            <select v-model="timeRange" class="hxb-ctl">
-                <option>Last 5m</option><option>Last 15m</option>
-                <option>Last 1h</option><option>Last 6h</option><option>Last 24h</option>
-            </select>
-            <button class="hxb-btn" type="button" @click="refreshFlowPeriodically">
-                <svg :class="{ 'hxb-spinning': refreshing }" width="12" height="12" viewBox="0 0 12 12" fill="none">
-                    <path d="M10.5 2A5 5 0 1 0 11 6.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-                    <path d="M10.5 2V5H7.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <!-- Overview card -->
+        <div class="card overflow-hidden">
+            <div class="card-header d-flex align-items-center gap-3 flex-wrap">
+                <h2 class="h6 m-0">Overview</h2>
+
+                <span v-if="flow" class="badge lf-source-badge" :class="'lf-source-' + sourceClass">
+                    <span class="lf-pulse me-1"></span>{{ sourceLabel }}
+                </span>
+                <small v-if="generatedAt" class="text-muted">{{ generatedAt }}</small>
+
+                <div class="d-flex align-items-center gap-2 ms-auto flex-wrap">
+                    <input
+                        v-model="filterText"
+                        type="text"
+                        class="form-control form-control-sm"
+                        placeholder="Filter queues…"
+                        style="width:160px"
+                    >
+                    <select v-model="timeRange" class="form-select form-select-sm" style="width:auto">
+                        <option>Last 5m</option>
+                        <option>Last 15m</option>
+                        <option>Last 1h</option>
+                        <option>Last 6h</option>
+                        <option>Last 24h</option>
+                    </select>
+                    <button class="btn btn-sm btn-muted" type="button" @click="refreshFlowPeriodically">
+                        <svg
+                            :class="{ 'lf-spin': refreshing }"
+                            width="12" height="12" viewBox="0 0 12 12" fill="none"
+                            style="vertical-align:-1px;margin-right:3px"
+                        >
+                            <path d="M10.5 2A5 5 0 1 0 11 6.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                            <path d="M10.5 2V5H7.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                        Refresh
+                    </button>
+                    <button
+                        class="btn btn-sm d-flex align-items-center gap-1"
+                        :class="live ? 'btn-success' : 'btn-muted'"
+                        type="button"
+                        @click="toggleLive"
+                    >
+                        <span v-if="live" class="lf-pulse lf-pulse-live"></span>
+                        Live
+                    </button>
+                </div>
+            </div>
+
+            <!-- Demo notice -->
+            <div
+                v-if="ready && isMock"
+                class="alert alert-warning d-flex align-items-center gap-2 mb-0 rounded-0 border-start-0 border-end-0 border-top-0"
+                style="font-size:.85rem"
+            >
+                <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor" style="flex-shrink:0">
+                    <path fill-rule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd"/>
                 </svg>
-                Refresh
-            </button>
-            <button class="hxb-btn" :class="{ active: live }" type="button" @click="toggleLive">
-                <span class="hxb-pulse hxb-pulse-green"></span>
-                Live
-            </button>
+                Demo data — not connected to a real queue. Configure a Redis or database connection to see live telemetry.
+            </div>
+
+            <!-- KPI grid -->
+            <div class="card-bg-secondary">
+                <div class="d-flex">
+                    <div class="w-25">
+                        <div class="p-4">
+                            <small class="text-muted fw-bold">Pending</small>
+                            <p class="h4 mt-2 mb-0 text-primary">{{ metricValue(summary.pending) }}</p>
+                            <small class="text-muted">across {{ formatNumber(queues.length) }} queues</small>
+                        </div>
+                    </div>
+                    <div class="w-25">
+                        <div class="p-4">
+                            <small class="text-muted fw-bold">Processing</small>
+                            <p class="h4 mt-2 mb-0">{{ metricValue(summary.processing) }}</p>
+                            <small class="text-muted">active workers</small>
+                        </div>
+                    </div>
+                    <div class="w-25">
+                        <div class="p-4">
+                            <small class="text-muted fw-bold">Delayed</small>
+                            <p class="h4 mt-2 mb-0" :class="(summary.delayed ?? 0) > 0 ? 'text-warning' : ''">{{ metricValue(summary.delayed) }}</p>
+                            <small class="text-muted">scheduled</small>
+                        </div>
+                    </div>
+                    <div class="w-25">
+                        <div class="p-4">
+                            <small class="text-muted fw-bold">Failed</small>
+                            <p class="h4 mt-2 mb-0" :class="(summary.failed ?? 0) > 0 ? 'text-danger' : ''">{{ metricValue(summary.failed) }}</p>
+                            <small class="text-muted">{{ timeRange.toLowerCase() }}</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="d-flex">
+                    <div class="w-25">
+                        <div class="p-4">
+                            <small class="text-muted fw-bold">Current Flow</small>
+                            <p class="h4 mt-2 mb-0 text-success">{{ metricValue(summary.current_throughput_per_minute ?? summary.throughput_per_minute) }}</p>
+                            <small class="text-muted">jobs / min</small>
+                        </div>
+                    </div>
+                    <div class="w-25">
+                        <div class="p-4">
+                            <small class="text-muted fw-bold">Avg Wait</small>
+                            <p class="h4 mt-2 mb-0">{{ metricValue(summary.average_wait_seconds, 's') }}</p>
+                            <small class="text-muted">queue latency</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
 
-        <!-- DEMO NOTICE -->
-        <div class="hxb-demo-notice" v-if="ready && isMock">
-            <svg width="13" height="13" viewBox="0 0 20 20" fill="currentColor" style="flex-shrink:0">
-                <path fill-rule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd"/>
-            </svg>
-            Demo data — not connected to a real queue. Configure a Redis or database connection to see live telemetry.
-        </div>
-
-        <!-- KPI STRIP -->
-        <div class="hxb-kpi-strip">
-            <div class="hxb-kpi pending">
-                <div class="hxb-kpi-label">Pending</div>
-                <div class="hxb-kpi-value">{{ metricValue(summary.pending) }}</div>
-                <div class="hxb-kpi-sub">across {{ formatNumber(queues.length) }} queues</div>
-            </div>
-            <div class="hxb-kpi processing">
-                <div class="hxb-kpi-label">Processing</div>
-                <div class="hxb-kpi-value">{{ metricValue(summary.processing) }}</div>
-                <div class="hxb-kpi-sub">active workers</div>
-            </div>
-            <div class="hxb-kpi delayed">
-                <div class="hxb-kpi-label">Delayed</div>
-                <div class="hxb-kpi-value">{{ metricValue(summary.delayed) }}</div>
-                <div class="hxb-kpi-sub">scheduled</div>
-            </div>
-            <div class="hxb-kpi failed">
-                <div class="hxb-kpi-label">Failed</div>
-                <div class="hxb-kpi-value">{{ metricValue(summary.failed) }}</div>
-                <div class="hxb-kpi-sub">{{ timeRange.toLowerCase() }}</div>
-            </div>
-            <div class="hxb-kpi throughput">
-                <div class="hxb-kpi-label">Current Flow</div>
-                <div class="hxb-kpi-value">{{ metricValue(summary.current_throughput_per_minute ?? summary.throughput_per_minute) }}</div>
-                <div class="hxb-kpi-sub">moving jobs / min</div>
-            </div>
-            <div class="hxb-kpi wait">
-                <div class="hxb-kpi-label">Avg Wait</div>
-                <div class="hxb-kpi-value">{{ metricValue(summary.average_wait_seconds, 's') }}</div>
-                <div class="hxb-kpi-sub">queue latency</div>
-            </div>
-        </div>
-
-        <!-- LOADING -->
-        <div class="hxb-loading" v-if="!ready">
-            <svg class="hxb-loading-spin" width="18" height="18" viewBox="0 0 20 20" fill="none">
-                <circle cx="10" cy="10" r="8" stroke="var(--hxb-border-bright)" stroke-width="2"/>
-                <path d="M10 2a8 8 0 0 1 8 8" stroke="var(--hxb-cyan)" stroke-width="2" stroke-linecap="round"/>
+        <!-- Loading state -->
+        <div class="d-flex align-items-center justify-content-center py-5 text-muted" v-if="!ready">
+            <svg class="lf-spin me-2" width="18" height="18" viewBox="0 0 20 20" fill="none">
+                <circle cx="10" cy="10" r="8" stroke="currentColor" stroke-width="1.5" stroke-opacity="0.3"/>
+                <path d="M10 2a8 8 0 0 1 8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
             </svg>
             Loading live flow…
         </div>
 
-        <!-- MAIN LAYOUT -->
-        <div class="hxb-main" v-if="ready">
-            <div class="hxb-left">
+        <!-- Main layout -->
+        <div v-if="ready" class="row mt-4">
+            <div class="col-12 col-lg-8 col-xl-9">
 
-                <!-- FLOW GRAPH -->
-                <section class="hxb-panel">
-                    <div class="hxb-panel-head">
-                        <span class="hxb-panel-title">Flow Graph</span>
-                        <span class="hxb-panel-sub">{{ graphNodes.length }} nodes · {{ graphEdges.length }} edges</span>
-                        <!-- Viewport controls -->
-                        <div class="hxb-vp-ctrls">
-                            <button class="hxb-vp-btn" @click="zoomOut" title="Zoom out">
-                                <svg width="11" height="11" viewBox="0 0 11 11" fill="none"><line x1="2" y1="5.5" x2="9" y2="5.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+                <!-- Flow Graph -->
+                <div class="card overflow-hidden">
+                    <div class="card-header d-flex align-items-center gap-2">
+                        <h2 class="h6 m-0">Flow Graph</h2>
+                        <small class="text-muted">{{ graphNodes.length }} nodes · {{ graphEdges.length }} edges</small>
+
+                        <div class="d-flex align-items-center gap-1 ms-auto">
+                            <button class="btn btn-sm btn-muted lf-vp-btn" @click="zoomOut" title="Zoom out">
+                                <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><line x1="2" y1="5" x2="8" y2="5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
                             </button>
-                            <span class="hxb-vp-zoom">{{ zoomLabel }}</span>
-                            <button class="hxb-vp-btn" @click="zoomIn" title="Zoom in">
-                                <svg width="11" height="11" viewBox="0 0 11 11" fill="none"><line x1="5.5" y1="2" x2="5.5" y2="9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="2" y1="5.5" x2="9" y2="5.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+                            <small class="text-muted lf-zoom-label">{{ zoomLabel }}</small>
+                            <button class="btn btn-sm btn-muted lf-vp-btn" @click="zoomIn" title="Zoom in">
+                                <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><line x1="5" y1="2" x2="5" y2="8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="2" y1="5" x2="8" y2="5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
                             </button>
-                            <button class="hxb-vp-btn" @click="resetView" title="Reset / fit view">
-                                <svg width="11" height="11" viewBox="0 0 11 11" fill="none"><rect x="1.5" y="1.5" width="3" height="3" rx="0.5" stroke="currentColor" stroke-width="1.3"/><rect x="6.5" y="1.5" width="3" height="3" rx="0.5" stroke="currentColor" stroke-width="1.3"/><rect x="1.5" y="6.5" width="3" height="3" rx="0.5" stroke="currentColor" stroke-width="1.3"/><rect x="6.5" y="6.5" width="3" height="3" rx="0.5" stroke="currentColor" stroke-width="1.3"/></svg>
+                            <button class="btn btn-sm btn-muted lf-vp-btn" @click="resetView" title="Reset view">
+                                <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><rect x="1" y="1" width="3" height="3" rx="0.5" stroke="currentColor" stroke-width="1.2"/><rect x="6" y="1" width="3" height="3" rx="0.5" stroke="currentColor" stroke-width="1.2"/><rect x="1" y="6" width="3" height="3" rx="0.5" stroke="currentColor" stroke-width="1.2"/><rect x="6" y="6" width="3" height="3" rx="0.5" stroke="currentColor" stroke-width="1.2"/></svg>
                             </button>
                         </div>
-                        <span class="hxb-panel-badge">live</span>
+
+                        <span class="badge bg-success ms-1">live</span>
                     </div>
 
-                    <div class="hxb-canvas-wrap">
+                    <div class="lf-canvas-wrap" :class="{ 'lf-dark': isDark }">
                         <svg
                             ref="flowSvg"
-                            class="hxb-flow-svg"
+                            class="lf-flow-svg"
                             :viewBox="'0 0 980 ' + svgHeight"
                             xmlns="http://www.w3.org/2000/svg"
                             :style="{ cursor: isPanning ? 'grabbing' : 'grab' }"
@@ -627,30 +616,30 @@
                             @wheel.prevent="onCanvasWheel"
                         >
                             <defs>
-                                <filter id="hxb-f-cyan" x="-80%" y="-80%" width="260%" height="260%">
+                                <filter id="lf-f-cyan" x="-80%" y="-80%" width="260%" height="260%">
                                     <feGaussianBlur stdDeviation="3.5" result="b"/>
                                     <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
                                 </filter>
-                                <filter id="hxb-f-amber" x="-80%" y="-80%" width="260%" height="260%">
+                                <filter id="lf-f-amber" x="-80%" y="-80%" width="260%" height="260%">
                                     <feGaussianBlur stdDeviation="3" result="b"/>
                                     <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
                                 </filter>
-                                <filter id="hxb-f-red" x="-80%" y="-80%" width="260%" height="260%">
+                                <filter id="lf-f-red" x="-80%" y="-80%" width="260%" height="260%">
                                     <feGaussianBlur stdDeviation="4" result="b"/>
                                     <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
                                 </filter>
-                                <radialGradient id="hxb-congestion" cx="50%" cy="50%" r="50%">
-                                    <stop offset="0%" stop-color="var(--hxb-red)" stop-opacity="0.18"/>
-                                    <stop offset="100%" stop-color="var(--hxb-red)" stop-opacity="0"/>
+                                <radialGradient id="lf-congestion" cx="50%" cy="50%" r="50%">
+                                    <stop offset="0%" stop-color="var(--lf-red)" stop-opacity="0.18"/>
+                                    <stop offset="100%" stop-color="var(--lf-red)" stop-opacity="0"/>
                                 </radialGradient>
-                                <radialGradient id="hxb-warning-grad" cx="50%" cy="50%" r="50%">
-                                    <stop offset="0%" stop-color="var(--hxb-amber)" stop-opacity="0.14"/>
-                                    <stop offset="100%" stop-color="var(--hxb-amber)" stop-opacity="0"/>
+                                <radialGradient id="lf-warning-grad" cx="50%" cy="50%" r="50%">
+                                    <stop offset="0%" stop-color="var(--lf-amber)" stop-opacity="0.14"/>
+                                    <stop offset="100%" stop-color="var(--lf-amber)" stop-opacity="0"/>
                                 </radialGradient>
                             </defs>
 
-                            <!-- Static background (not transformed) -->
-                            <g class="hxb-svg-grid">
+                            <!-- Grid (static, not transformed) -->
+                            <g class="lf-svg-grid">
                                 <line x1="230" y1="0" x2="230" :y2="svgHeight"/>
                                 <line x1="490" y1="0" x2="490" :y2="svgHeight"/>
                                 <line x1="740" y1="0" x2="740" :y2="svgHeight"/>
@@ -658,22 +647,22 @@
                                 <line x1="0" :y1="svgHeight * 0.50" x2="980" :y2="svgHeight * 0.50"/>
                                 <line x1="0" :y1="svgHeight * 0.75" x2="980" :y2="svgHeight * 0.75"/>
                             </g>
-                            <text x="96"  y="17" text-anchor="middle" class="hxb-svg-text hxb-stage-lbl">PRODUCERS</text>
-                            <text x="314" y="17" text-anchor="middle" class="hxb-svg-text hxb-stage-lbl">QUEUES</text>
-                            <text x="564" y="17" text-anchor="middle" class="hxb-svg-text hxb-stage-lbl">WORKERS</text>
-                            <text x="816" y="17" text-anchor="middle" class="hxb-svg-text hxb-stage-lbl">RESULTS</text>
+                            <text x="96"  y="17" text-anchor="middle" class="lf-svg-text lf-stage-lbl">PRODUCERS</text>
+                            <text x="314" y="17" text-anchor="middle" class="lf-svg-text lf-stage-lbl">QUEUES</text>
+                            <text x="564" y="17" text-anchor="middle" class="lf-svg-text lf-stage-lbl">WORKERS</text>
+                            <text x="816" y="17" text-anchor="middle" class="lf-svg-text lf-stage-lbl">RESULTS</text>
 
-                            <!-- Transformable viewport -->
+                            <!-- Viewport group -->
                             <g :transform="viewportTransform">
 
-                                <!-- halos for non-healthy nodes -->
+                                <!-- status halos -->
                                 <circle
                                     v-for="node in graphNodes.filter(n => n.status !== 'healthy')"
                                     :key="'halo-' + node.id"
                                     :cx="node.x + node.width / 2"
                                     :cy="node.y + node.height / 2"
                                     :r="node.status === 'critical' ? 54 : 46"
-                                    :fill="node.status === 'critical' ? 'url(#hxb-congestion)' : 'url(#hxb-warning-grad)'"
+                                    :fill="node.status === 'critical' ? 'url(#lf-congestion)' : 'url(#lf-warning-grad)'"
                                 >
                                     <animate attributeName="r" :values="node.status === 'critical' ? '48;64;48' : '40;54;40'" :dur="node.status === 'critical' ? '3s' : '4s'" repeatCount="indefinite"/>
                                     <animate attributeName="opacity" values="0.9;0.35;0.9" :dur="node.status === 'critical' ? '3s' : '4s'" repeatCount="indefinite"/>
@@ -682,7 +671,7 @@
                                 <!-- edges -->
                                 <path
                                     v-for="edge in graphEdges"
-                                    :id="'hxb-path-' + svgId(edge.id)"
+                                    :id="'lf-path-' + svgId(edge.id)"
                                     :key="'edge-' + edge.id"
                                     :d="edgePath(edge)"
                                     :stroke="edgeColor(edge.status)"
@@ -697,7 +686,7 @@
                                     :key="'elbl-' + edge.id"
                                     :x="edgeLabelPos(edge).x"
                                     :y="edgeLabelPos(edge).y"
-                                    class="hxb-svg-text"
+                                    class="lf-svg-text"
                                     font-size="8"
                                     :fill="edgeColor(edge.status)"
                                     :opacity="edge.status === 'critical' ? 0.85 : 0.65"
@@ -707,7 +696,7 @@
                                 <g
                                     v-for="node in graphNodes"
                                     :key="node.id"
-                                    class="hxb-svg-node"
+                                    class="lf-svg-node"
                                     @click="selectNode(node.id)"
                                     @pointerdown.stop
                                 >
@@ -721,13 +710,11 @@
                                     >
                                         <animate v-if="node.status === 'critical'" attributeName="stroke-opacity" values="1;0.4;1" dur="2s" repeatCount="indefinite"/>
                                     </rect>
-                                    <!-- selected fill overlay -->
-                                    <rect v-if="node.id === selectedId" :x="node.x" :y="node.y" :width="node.width" :height="node.height" rx="4" fill="var(--hxb-violet)" opacity="0.07"/>
-                                    <!-- accent bar -->
+                                    <rect v-if="node.id === selectedId" :x="node.x" :y="node.y" :width="node.width" :height="node.height" rx="4" fill="var(--lf-violet)" opacity="0.07"/>
                                     <rect :x="node.x" :y="node.y" width="4" :height="node.height" rx="2" :fill="nodeAccent(node)" opacity="0.65"/>
-                                    <text :x="node.x + node.width / 2" :y="node.y + 19" text-anchor="middle" class="hxb-svg-text" font-size="8.5" :fill="nodeAccent(node)" letter-spacing="0.5">{{ nodeKind(node) }}</text>
-                                    <text :x="node.x + node.width / 2" :y="node.y + 32" text-anchor="middle" class="hxb-svg-text" font-size="9.5" fill="var(--hxb-text)">{{ node.label }}</text>
-                                    <text :x="node.x + node.width / 2" :y="node.y + 44" text-anchor="middle" class="hxb-svg-text" font-size="8" :fill="nodeTextColor(node)">{{ node.sub }}</text>
+                                    <text :x="node.x + node.width / 2" :y="node.y + 19" text-anchor="middle" class="lf-svg-text" font-size="8.5" :fill="nodeAccent(node)" letter-spacing="0.5">{{ nodeKind(node) }}</text>
+                                    <text :x="node.x + node.width / 2" :y="node.y + 32" text-anchor="middle" class="lf-svg-text" font-size="9.5" fill="var(--lf-text)">{{ node.label }}</text>
+                                    <text :x="node.x + node.width / 2" :y="node.y + 44" text-anchor="middle" class="lf-svg-text" font-size="8" :fill="nodeTextColor(node)">{{ node.sub }}</text>
                                 </g>
 
                                 <!-- particles -->
@@ -739,417 +726,319 @@
                                     :filter="particleFilter(p.status)"
                                 >
                                     <animateMotion :dur="p.duration" :begin="p.delay" repeatCount="indefinite" calcMode="linear">
-                                        <mpath :href="'#hxb-path-' + p.edgeId"></mpath>
+                                        <mpath :href="'#lf-path-' + p.edgeId"></mpath>
                                     </animateMotion>
                                 </circle>
 
-                            </g><!-- /viewport -->
+                            </g>
                         </svg>
                     </div>
 
-                    <div class="hxb-legend">
-                        <div class="hxb-legend-item"><span class="hxb-ldot producer"></span>Producer</div>
-                        <div class="hxb-legend-item"><span class="hxb-ldot queue"></span>Queue</div>
-                        <div class="hxb-legend-item"><span class="hxb-ldot worker"></span>Worker</div>
-                        <div class="hxb-legend-item"><span class="hxb-ldot completed"></span>Completed</div>
-                        <div class="hxb-legend-item"><span class="hxb-ldot failed"></span>Failed</div>
-                        <span class="hxb-lsep"></span>
-                        <div class="hxb-legend-item"><span class="hxb-lline healthy"></span>Healthy</div>
-                        <div class="hxb-legend-item"><span class="hxb-lline warning"></span>Backpressure</div>
-                        <div class="hxb-legend-item"><span class="hxb-lline critical"></span>Critical</div>
+                    <!-- Legend -->
+                    <div class="card-footer d-flex align-items-center gap-3 flex-wrap py-2">
+                        <div class="d-flex align-items-center gap-1 small text-muted"><span class="lf-ldot lf-ldot-producer"></span> Producer</div>
+                        <div class="d-flex align-items-center gap-1 small text-muted"><span class="lf-ldot lf-ldot-queue"></span> Queue</div>
+                        <div class="d-flex align-items-center gap-1 small text-muted"><span class="lf-ldot lf-ldot-worker"></span> Worker</div>
+                        <div class="d-flex align-items-center gap-1 small text-muted"><span class="lf-ldot lf-ldot-completed"></span> Completed</div>
+                        <div class="d-flex align-items-center gap-1 small text-muted"><span class="lf-ldot lf-ldot-failed"></span> Failed</div>
+                        <div class="vr"></div>
+                        <div class="d-flex align-items-center gap-1 small text-muted"><span class="lf-lline lf-lline-healthy"></span> Healthy</div>
+                        <div class="d-flex align-items-center gap-1 small text-muted"><span class="lf-lline lf-lline-warning"></span> Backpressure</div>
+                        <div class="d-flex align-items-center gap-1 small text-muted"><span class="lf-lline lf-lline-critical"></span> Critical</div>
                     </div>
-                </section>
+                </div>
 
-                <!-- QUEUE TABLE -->
-                <section class="hxb-panel">
-                    <div class="hxb-panel-head">
-                        <span class="hxb-panel-title">Queues</span>
-                        <span class="hxb-panel-sub">{{ filteredQueues.length }} queue{{ filteredQueues.length === 1 ? '' : 's' }}</span>
+                <!-- Queue table -->
+                <div class="card overflow-hidden mt-4">
+                    <div class="card-header d-flex align-items-center justify-content-between">
+                        <h2 class="h6 m-0">Queues</h2>
+                        <small class="text-muted">{{ filteredQueues.length }} queue{{ filteredQueues.length === 1 ? '' : 's' }}</small>
                     </div>
-                    <div class="hxb-table-wrap">
-                        <table class="hxb-table">
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0">
                             <thead>
                                 <tr>
-                                    <th>Queue</th><th>Source</th><th>Connection</th><th>Driver</th>
-                                    <th class="r">Pending</th><th class="r">Delayed</th><th class="r">Oldest</th><th class="r">Wait</th>
-                                    <th class="r">Procs</th><th class="r">Current</th><th class="r">Last</th><th class="r">ETA</th>
-                                    <th class="r">Attempts</th><th class="r">Failed</th><th class="r">Fail %</th><th class="r">Status</th>
+                                    <th>Queue</th>
+                                    <th>Source</th>
+                                    <th>Connection</th>
+                                    <th>Driver</th>
+                                    <th class="text-end">Pending</th>
+                                    <th class="text-end">Delayed</th>
+                                    <th class="text-end">Oldest</th>
+                                    <th class="text-end">Wait</th>
+                                    <th class="text-end">Procs</th>
+                                    <th class="text-end">Current</th>
+                                    <th class="text-end">Last</th>
+                                    <th class="text-end">ETA</th>
+                                    <th class="text-end">Attempts</th>
+                                    <th class="text-end">Failed</th>
+                                    <th class="text-end">Fail %</th>
+                                    <th class="text-end">Status</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 <tr
                                     v-for="queue in filteredQueues"
                                     :key="queue.driver + ':' + queue.connection + ':' + queue.name"
-                                    :class="{ selected: selectedId === (findQueueNode(queue)?.id ?? queueNodeId(queue)) }"
+                                    :class="{ 'lf-row-selected': selectedId === (findQueueNode(queue)?.id ?? queueNodeId(queue)) }"
+                                    style="cursor:pointer"
                                     @click="selectNode(findQueueNode(queue)?.id ?? queueNodeId(queue))"
                                 >
-                                    <td><span class="hxb-qname"><span class="hxb-sdot" :class="'s-' + queueStatus(queue)"></span>{{ queue.name }}</span></td>
-                                    <td class="dim">{{ queue.source ?? queue.driver }}</td>
-                                    <td class="dim">{{ queue.connection }}</td>
-                                    <td><span class="hxb-driver" :class="'driver-' + queue.driver">{{ queue.driver }}</span></td>
-                                    <td class="r" :class="{ warn: queue.pending > 100, danger: queue.pending > 500 }">{{ formatNumber(queue.pending) }}</td>
-                                    <td class="r dim">{{ formatNumber(queue.delayed) }}</td>
-                                    <td class="r" :class="{ warn: (queue.oldest_pending_seconds ?? 0) >= 10, danger: (queue.oldest_pending_seconds ?? 0) >= 30 }">{{ formatDuration(queue.oldest_pending_seconds ?? queue.wait_seconds) }}</td>
-                                    <td class="r" :class="{ warn: queue.wait_seconds >= 10, danger: queue.wait_seconds >= 30 }">{{ metricValue(queue.wait_seconds, 's') }}</td>
-                                    <td class="r">{{ formatNumber(queue.processes) }}</td>
-                                    <td class="r ok">{{ formatRate(queue.current_throughput_per_minute) }}</td>
-                                    <td class="r dim">{{ formatRate(queue.throughput_per_minute) }}</td>
-                                    <td class="r">{{ formatDuration(queue.estimated_drain_seconds) }}</td>
-                                    <td class="r">{{ formatNumber(queue.attempts ?? 0) }}</td>
-                                    <td class="r" :class="{ danger: (queue.failed ?? 0) > 0 }">{{ formatNumber(queue.failed ?? 0) }}</td>
-                                    <td class="r" :class="{ danger: (queue.failure_rate ?? 0) > 0 }">{{ formatPercent(queue.failure_rate) }}</td>
-                                    <td class="r"><span class="hxb-badge" :class="'b-' + queueStatus(queue)">{{ statusLabel(queueStatus(queue)) }}</span></td>
+                                    <td>
+                                        <span class="d-flex align-items-center gap-2">
+                                            <span class="lf-sdot" :class="'lf-s-' + queueStatus(queue)"></span>
+                                            {{ queue.name }}
+                                        </span>
+                                    </td>
+                                    <td class="text-muted">{{ queue.source ?? queue.driver }}</td>
+                                    <td class="text-muted">{{ queue.connection }}</td>
+                                    <td><span class="badge lf-driver-badge" :class="'lf-driver-' + queue.driver">{{ queue.driver }}</span></td>
+                                    <td class="text-end" :class="{ 'text-warning': queue.pending > 100, 'text-danger': queue.pending > 500 }">{{ formatNumber(queue.pending) }}</td>
+                                    <td class="text-end text-muted">{{ formatNumber(queue.delayed) }}</td>
+                                    <td class="text-end" :class="{ 'text-warning': (queue.oldest_pending_seconds ?? 0) >= 10, 'text-danger': (queue.oldest_pending_seconds ?? 0) >= 30 }">{{ formatDuration(queue.oldest_pending_seconds ?? queue.wait_seconds) }}</td>
+                                    <td class="text-end" :class="{ 'text-warning': queue.wait_seconds >= 10, 'text-danger': queue.wait_seconds >= 30 }">{{ metricValue(queue.wait_seconds, 's') }}</td>
+                                    <td class="text-end text-muted">{{ formatNumber(queue.processes) }}</td>
+                                    <td class="text-end text-success">{{ formatRate(queue.current_throughput_per_minute) }}</td>
+                                    <td class="text-end text-muted">{{ formatRate(queue.throughput_per_minute) }}</td>
+                                    <td class="text-end text-muted">{{ formatDuration(queue.estimated_drain_seconds) }}</td>
+                                    <td class="text-end text-muted">{{ formatNumber(queue.attempts ?? 0) }}</td>
+                                    <td class="text-end" :class="{ 'text-danger fw-semibold': (queue.failed ?? 0) > 0 }">{{ formatNumber(queue.failed ?? 0) }}</td>
+                                    <td class="text-end" :class="{ 'text-danger': (queue.failure_rate ?? 0) > 0 }">{{ formatPercent(queue.failure_rate) }}</td>
+                                    <td class="text-end">
+                                        <span class="badge" :class="{
+                                            'bg-success': queueStatus(queue) === 'healthy',
+                                            'bg-warning text-dark': queueStatus(queue) === 'warning',
+                                            'bg-danger': queueStatus(queue) === 'critical',
+                                        }">{{ statusLabel(queueStatus(queue)) }}</span>
+                                    </td>
                                 </tr>
                                 <tr v-if="filteredQueues.length === 0">
-                                    <td colspan="16" class="hxb-empty-row">{{ filterText ? 'No queues match the filter.' : 'No queues found.' }}</td>
+                                    <td colspan="16" class="text-center text-muted py-4">
+                                        {{ filterText ? 'No queues match the filter.' : 'No queues found.' }}
+                                    </td>
                                 </tr>
                             </tbody>
                         </table>
                     </div>
-                </section>
+                </div>
 
-                <!-- ACTIVITY -->
-                <section class="hxb-panel">
-                    <div class="hxb-panel-head">
-                        <span class="hxb-panel-title">Activity</span>
-                        <span class="hxb-panel-badge">recent events</span>
+                <!-- Activity -->
+                <div class="card overflow-hidden mt-4">
+                    <div class="card-header d-flex align-items-center justify-content-between">
+                        <h2 class="h6 m-0">Activity</h2>
+                        <span class="badge bg-secondary">recent events</span>
                     </div>
-                    <div class="hxb-activity-scroll">
-                        <div class="hxb-activity-item" v-for="(event, index) in flow?.events ?? []" :key="index">
-                            <span class="hxb-sdot" :class="'s-' + event.status" style="margin-top:4px;flex-shrink:0"></span>
+                    <div class="lf-activity-scroll">
+                        <div
+                            v-for="(event, index) in flow?.events ?? []"
+                            :key="index"
+                            class="d-flex align-items-start gap-3 px-3 py-2 border-bottom"
+                        >
+                            <span class="lf-sdot mt-1 flex-shrink-0" :class="'lf-s-' + event.status"></span>
                             <div>
-                                <div class="hxb-activity-label">{{ event.label }}</div>
-                                <div class="hxb-activity-meta">{{ index === 0 ? 'now' : index * 9 + 's ago' }}</div>
+                                <div class="small">{{ event.label }}</div>
+                                <div class="small text-muted">{{ index === 0 ? 'now' : index * 9 + 's ago' }}</div>
                             </div>
                         </div>
-                        <div class="hxb-activity-item dim" v-if="(flow?.events ?? []).length === 0">No recent flow events.</div>
+                        <div class="px-3 py-2 small text-muted" v-if="(flow?.events ?? []).length === 0">
+                            No recent flow events.
+                        </div>
                     </div>
-                </section>
+                </div>
 
-            </div><!-- /left -->
+            </div>
 
-            <!-- INSPECTOR -->
-            <aside class="hxb-inspector">
-                <section class="hxb-panel">
-                    <div class="hxb-panel-head">
-                        <span class="hxb-panel-title">Inspector</span>
-                        <span class="hxb-badge" :class="'b-' + selectedInspector.node.status" style="margin-left:auto">{{ statusLabel(selectedInspector.node.status) }}</span>
+            <!-- Inspector -->
+            <div class="col-12 col-lg-4 col-xl-3 mt-4 mt-lg-0">
+                <div class="card overflow-hidden lf-inspector">
+                    <div class="card-header d-flex align-items-center">
+                        <h2 class="h6 m-0">Inspector</h2>
+                        <span class="badge ms-auto" :class="{
+                            'bg-success': selectedInspector.node.status === 'healthy',
+                            'bg-warning text-dark': selectedInspector.node.status === 'warning',
+                            'bg-danger': selectedInspector.node.status === 'critical',
+                        }">{{ statusLabel(selectedInspector.node.status) }}</span>
                     </div>
 
-                    <div class="hxb-insp-top">
-                        <div class="hxb-insp-name">{{ selectedInspector.node.label }}</div>
-                        <div class="hxb-insp-type">
-                            <span>{{ nodeKind(selectedInspector.node) }}</span>
-                            <span class="hxb-con-tag">{{ selectedInspector.queue ? selectedInspector.queue.connection + ' · ' + selectedInspector.queue.name : selectedInspector.node.id }}</span>
+                    <div class="p-3 border-bottom">
+                        <div class="fw-semibold mb-1">{{ selectedInspector.node.label }}</div>
+                        <div class="d-flex align-items-center gap-2 flex-wrap">
+                            <small class="text-muted text-uppercase fw-bold lf-kind-label">{{ nodeKind(selectedInspector.node) }}</small>
+                            <span class="badge bg-secondary fw-normal lf-con-tag">{{ selectedInspector.queue ? selectedInspector.queue.connection + ' · ' + selectedInspector.queue.name : selectedInspector.node.id }}</span>
                         </div>
                     </div>
 
-                    <div class="hxb-insp-sec">
-                        <div class="hxb-insp-sec-title">Metrics</div>
-                        <div class="hxb-metric-row" v-for="m in selectedInspector.metrics" :key="m[0]">
-                            <span>{{ m[0] }}</span><strong>{{ m[1] }}</strong>
+                    <div class="p-3 border-bottom">
+                        <p class="lf-sec-title">Metrics</p>
+                        <div
+                            class="d-flex justify-content-between align-items-baseline gap-2 py-1 small"
+                            v-for="m in selectedInspector.metrics"
+                            :key="m[0]"
+                        >
+                            <span class="text-muted text-capitalize">{{ m[0] }}</span>
+                            <strong class="fw-medium font-monospace text-end">{{ m[1] }}</strong>
                         </div>
                     </div>
 
-                    <div class="hxb-insp-sec">
-                        <div class="hxb-insp-sec-title">Incoming</div>
-                        <div class="hxb-edge-row" v-for="edge in selectedInspector.incoming" :key="edge.id">
-                            <span class="hxb-sdot" :class="'s-' + edge.status"></span>
-                            <span class="hxb-edge-lbl">{{ graphNodeLookup[edge.source]?.label ?? edge.source }}</span>
-                            <small>{{ edgeDisplayLabel(edge) }}</small>
+                    <div class="p-3 border-bottom">
+                        <p class="lf-sec-title">Incoming</p>
+                        <div class="d-flex align-items-center gap-2 py-1 small" v-for="edge in selectedInspector.incoming" :key="edge.id">
+                            <span class="lf-sdot flex-shrink-0" :class="'lf-s-' + edge.status"></span>
+                            <span class="flex-grow-1">{{ graphNodeLookup[edge.source]?.label ?? edge.source }}</span>
+                            <small class="text-muted">{{ edgeDisplayLabel(edge) }}</small>
                         </div>
-                        <div class="hxb-empty" v-if="selectedInspector.incoming.length === 0">—</div>
+                        <div class="small text-muted" v-if="selectedInspector.incoming.length === 0">—</div>
                     </div>
 
-                    <div class="hxb-insp-sec">
-                        <div class="hxb-insp-sec-title">Outgoing</div>
-                        <div class="hxb-edge-row" v-for="edge in selectedInspector.outgoing" :key="edge.id">
-                            <span class="hxb-sdot" :class="'s-' + edge.status"></span>
-                            <span class="hxb-edge-lbl">{{ graphNodeLookup[edge.target]?.label ?? edge.target }}</span>
-                            <small>{{ edgeDisplayLabel(edge) }}</small>
+                    <div class="p-3 border-bottom">
+                        <p class="lf-sec-title">Outgoing</p>
+                        <div class="d-flex align-items-center gap-2 py-1 small" v-for="edge in selectedInspector.outgoing" :key="edge.id">
+                            <span class="lf-sdot flex-shrink-0" :class="'lf-s-' + edge.status"></span>
+                            <span class="flex-grow-1">{{ graphNodeLookup[edge.target]?.label ?? edge.target }}</span>
+                            <small class="text-muted">{{ edgeDisplayLabel(edge) }}</small>
                         </div>
-                        <div class="hxb-empty" v-if="selectedInspector.outgoing.length === 0">—</div>
+                        <div class="small text-muted" v-if="selectedInspector.outgoing.length === 0">—</div>
                     </div>
 
-                    <div class="hxb-action-block" :class="'action-' + selectedInspector.action.type">
-                        <div class="hxb-action-title">{{ selectedInspector.action.title }}</div>
-                        <div class="hxb-action-text">{{ selectedInspector.action.text }}</div>
+                    <div
+                        class="alert mb-0 rounded-0 border-0 border-top p-3"
+                        :class="{
+                            'alert-success': selectedInspector.action.type === 'ok',
+                            'alert-warning': selectedInspector.action.type === 'warn',
+                            'alert-danger':  selectedInspector.action.type === 'critical',
+                        }"
+                    >
+                        <p class="lf-sec-title mb-1">{{ selectedInspector.action.title }}</p>
+                        <p class="small mb-0">{{ selectedInspector.action.text }}</p>
                     </div>
-                </section>
-            </aside>
-        </div><!-- /main -->
-
+                </div>
+            </div>
+        </div>
     </div>
 </template>
 
 <style scoped>
-    /* ═══ LIGHT PALETTE (default) ═══════════════════════════════════════════ */
-    .hxb-live-flow {
-        --hxb-bg:             #f3f4f6;
-        --hxb-panel:          #ffffff;
-        --hxb-card:           #f9fafb;
-        --hxb-border:         #e5e7eb;
-        --hxb-border-bright:  #d1d5db;
-        --hxb-text:           #111827;
-        --hxb-muted:          #4b5563;
-        --hxb-dim:            #9ca3af;
-        --hxb-canvas:         #f0f4fb;
-        --hxb-hover:          #f3f4f6;
-        --hxb-selected:       #f5f3ff;
-        --hxb-selected-bar:   #7746ec;
-
-        --hxb-cyan:           #0891b2;
-        --hxb-cyan-dim:       rgba(8,145,178,.09);
-        --hxb-cyan-border:    rgba(8,145,178,.22);
-        --hxb-green:          #059669;
-        --hxb-green-dim:      rgba(5,150,105,.09);
-        --hxb-green-border:   rgba(5,150,105,.22);
-        --hxb-amber:          #d97706;
-        --hxb-amber-dim:      rgba(217,119,6,.09);
-        --hxb-amber-border:   rgba(217,119,6,.22);
-        --hxb-red:            #dc2626;
-        --hxb-red-dim:        rgba(220,38,38,.09);
-        --hxb-red-border:     rgba(220,38,38,.22);
-        --hxb-violet:         #7746ec;
-        --hxb-violet-dim:     rgba(119,70,236,.09);
-        --hxb-blue:           #2563eb;
-        --hxb-blue-dim:       rgba(37,99,235,.09);
-        --hxb-blue-border:    rgba(37,99,235,.22);
-
-        --hxb-node-producer-bg:     #eff6ff;
-        --hxb-node-producer-stroke: #93c5fd;
-        --hxb-node-queue-bg:        #f5f3ff;
-        --hxb-node-queue-stroke:    #c4b5fd;
-        --hxb-node-worker-bg:       #f0fdf4;
-        --hxb-node-worker-stroke:   #86efac;
-        --hxb-node-result-bg:       #ecfdf5;
-        --hxb-node-result-stroke:   #6ee7b7;
-        --hxb-node-warning-bg:      #fffbeb;
-        --hxb-node-warning-stroke:  #fcd34d;
-        --hxb-node-critical-bg:     #fef2f2;
-        --hxb-node-critical-stroke: #fca5a5;
-
-        --hxb-grid-line:      rgba(99,102,241,.07);
-        --hxb-stage-fill:     rgba(75,85,99,.45);
-
-        position: relative; z-index: 0;
-        padding: 0 0 2rem;
-        color: var(--hxb-text);
-        font-family: ui-monospace, "Cascadia Code", "Fira Code", "SF Mono", Consolas, monospace;
-        font-size: 12px;
-        line-height: 1.5;
+    /* ── SVG CANVAS — light palette ──────────────────────────────── */
+    .lf-canvas-wrap {
+        overflow: hidden;
+        user-select: none;
+        background: var(--bs-secondary-bg, #f3f4f6);
+        --lf-node-producer-bg:     rgba(13,  110, 253, 0.07);
+        --lf-node-producer-stroke: rgba(13,  110, 253, 0.28);
+        --lf-node-queue-bg:        rgba(119,  70, 236, 0.07);
+        --lf-node-queue-stroke:    rgba(119,  70, 236, 0.28);
+        --lf-node-worker-bg:       rgba( 25, 135,  84, 0.07);
+        --lf-node-worker-stroke:   rgba( 25, 135,  84, 0.28);
+        --lf-node-result-bg:       rgba( 25, 135,  84, 0.07);
+        --lf-node-result-stroke:   rgba( 25, 135,  84, 0.28);
+        --lf-node-warning-bg:      rgba(255, 193,   7, 0.10);
+        --lf-node-warning-stroke:  #d97706;
+        --lf-node-critical-bg:     rgba(220,  53,  69, 0.07);
+        --lf-node-critical-stroke: #dc3545;
+        --lf-grid-line:  rgba(119, 70, 236, 0.055);
+        --lf-stage-fill: rgba(75, 85, 99, 0.50);
+        --lf-text:   #111827;
+        --lf-muted:  #6b7280;
+        --lf-cyan:   #0891b2;
+        --lf-amber:  #d97706;
+        --lf-green:  #059669;
+        --lf-red:    #dc2626;
+        --lf-violet: #7746ec;
+        --lf-blue:   #2563eb;
     }
 
-    /* ═══ DARK PALETTE ═══════════════════════════════════════════════════════ */
-    .hxb-live-flow.hxb-dark {
-        --hxb-bg:             #0b0e14;
-        --hxb-panel:          #111520;
-        --hxb-card:           #161c2a;
-        --hxb-border:         #1e2a3a;
-        --hxb-border-bright:  #243044;
-        --hxb-text:           #c8d6e8;
-        --hxb-muted:          #6b7e96;
-        --hxb-dim:            #3d4f66;
-        --hxb-canvas:         #090c12;
-        --hxb-hover:          #1a2235;
-        --hxb-selected:       rgba(0,200,212,.06);
-        --hxb-selected-bar:   #a78bfa;
-
-        --hxb-cyan:           #00c8d4;
-        --hxb-cyan-dim:       rgba(0,200,212,.12);
-        --hxb-cyan-border:    rgba(0,200,212,.25);
-        --hxb-green:          #22c878;
-        --hxb-green-dim:      rgba(34,200,120,.12);
-        --hxb-green-border:   rgba(34,200,120,.25);
-        --hxb-amber:          #f0a030;
-        --hxb-amber-dim:      rgba(240,160,48,.12);
-        --hxb-amber-border:   rgba(240,160,48,.25);
-        --hxb-red:            #e0404a;
-        --hxb-red-dim:        rgba(224,64,74,.12);
-        --hxb-red-border:     rgba(224,64,74,.25);
-        --hxb-violet:         #a78bfa;
-        --hxb-violet-dim:     rgba(167,139,250,.12);
-        --hxb-blue:           #4a90d9;
-        --hxb-blue-dim:       rgba(74,144,217,.12);
-        --hxb-blue-border:    rgba(74,144,217,.25);
-
-        --hxb-node-producer-bg:     #0c1d30;
-        --hxb-node-producer-stroke: #1e6090;
-        --hxb-node-queue-bg:        #0a1c2e;
-        --hxb-node-queue-stroke:    #1a4a6e;
-        --hxb-node-worker-bg:       #091e17;
-        --hxb-node-worker-stroke:   #164a38;
-        --hxb-node-result-bg:       #091e12;
-        --hxb-node-result-stroke:   #1e5028;
-        --hxb-node-warning-bg:      #1a1305;
-        --hxb-node-warning-stroke:  #f0a030;
-        --hxb-node-critical-bg:     #1e0a0c;
-        --hxb-node-critical-stroke: #e0404a;
-
-        --hxb-grid-line:      rgba(0,200,212,.04);
-        --hxb-stage-fill:     rgba(107,126,150,.45);
+    /* ── SVG CANVAS — dark palette ───────────────────────────────── */
+    .lf-canvas-wrap.lf-dark {
+        background: #090c12;
+        --lf-node-producer-bg:     rgba(  0, 160, 210, 0.10);
+        --lf-node-producer-stroke: rgba(  0, 160, 210, 0.30);
+        --lf-node-queue-bg:        rgba(119,  70, 236, 0.10);
+        --lf-node-queue-stroke:    rgba(119,  70, 236, 0.32);
+        --lf-node-worker-bg:       rgba( 34, 200, 120, 0.10);
+        --lf-node-worker-stroke:   rgba( 34, 200, 120, 0.30);
+        --lf-node-result-bg:       rgba( 34, 200, 120, 0.10);
+        --lf-node-result-stroke:   rgba( 34, 200, 120, 0.30);
+        --lf-node-warning-bg:      rgba(240, 160,  48, 0.10);
+        --lf-node-warning-stroke:  #f0a030;
+        --lf-node-critical-bg:     rgba(224,  64,  74, 0.10);
+        --lf-node-critical-stroke: #e0404a;
+        --lf-grid-line:  rgba(0, 200, 212, 0.04);
+        --lf-stage-fill: rgba(107, 126, 150, 0.45);
+        --lf-text:   #c8d6e8;
+        --lf-muted:  #6b7e96;
+        --lf-cyan:   #00c8d4;
+        --lf-amber:  #f0a030;
+        --lf-green:  #22c878;
+        --lf-red:    #e0404a;
+        --lf-violet: #a78bfa;
+        --lf-blue:   #4a90d9;
     }
 
+    /* ── SVG ─────────────────────────────────────────────────────── */
+    .lf-flow-svg     { width: 100%; height: auto; min-height: 280px; max-height: 660px; display: block; }
+    .lf-svg-text     { font-family: ui-monospace, "SF Mono", "Cascadia Code", Consolas, monospace; }
+    .lf-svg-node     { cursor: pointer; }
+    .lf-svg-node:hover > rect:first-child { filter: brightness(1.06); }
+    .lf-svg-grid line { stroke: var(--lf-grid-line); stroke-width: 1; }
+    .lf-stage-lbl    { fill: var(--lf-stage-fill); font-size: 8.5px; letter-spacing: 1.5px; }
 
-    /* ── PAGE CONTROLS ──────────────────────────────────────────────────── */
-    .hxb-page-controls { display:flex; align-items:center; gap:8px; padding:0 0 10px; flex-wrap:wrap; }
-    .hxb-btn, .hxb-source-badge, .hxb-qname, .hxb-legend-item, .hxb-edge-row, .hxb-insp-type { display:flex; align-items:center; }
-    .hxb-spacer { flex:1; }
-    .hxb-source-badge { gap:5px; padding:2px 8px; border-radius:3px; font-size:10px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; }
-    .hxb-source-mock   { background:var(--hxb-blue-dim);  border:1px solid var(--hxb-blue-border);  color:var(--hxb-blue); }
-    .hxb-source-auto   { background:var(--hxb-violet-dim); border:1px solid var(--hxb-violet); color:var(--hxb-violet); }
-    .hxb-source-redis  { background:var(--hxb-red-dim);   border:1px solid var(--hxb-red-border);   color:var(--hxb-red); }
-    .hxb-source-db     { background:var(--hxb-green-dim); border:1px solid var(--hxb-green-border); color:var(--hxb-green); }
-    .hxb-pulse { width:6px; height:6px; border-radius:50%; background:currentColor; animation:hxb-blink 2s ease-in-out infinite; }
-    .hxb-pulse-green { background:var(--hxb-green); }
-    .hxb-ts { color:var(--hxb-muted); font-size:11px; white-space:nowrap; }
-    .hxb-controls { gap:6px; flex-wrap:wrap; }
-    .hxb-ctl, .hxb-btn { height:27px; border-radius:4px; border:1px solid var(--hxb-border); background:var(--hxb-panel); color:var(--hxb-text); font-family:inherit; font-size:11px; outline:none; }
-    .hxb-ctl { padding:4px 9px; }
-    .hxb-ctl[type="text"] { width:170px; }
-    .hxb-ctl::placeholder { color:var(--hxb-dim); }
-    .hxb-btn { gap:5px; padding:4px 9px; color:var(--hxb-muted); cursor:pointer; transition:all .15s; }
-    .hxb-btn:hover, .hxb-btn.active { border-color:var(--hxb-cyan); color:var(--hxb-cyan); background:var(--hxb-cyan-dim); }
+    /* ── INSPECTOR ───────────────────────────────────────────────── */
+    .lf-inspector { position: sticky; top: 1rem; max-height: calc(100vh - 2rem); overflow-y: auto; }
 
-    /* ── DEMO NOTICE ──────────────────────────────────────────────────────── */
-    .hxb-demo-notice { display:flex; align-items:center; gap:7px; padding:7px 12px; margin:8px 0 0; background:var(--hxb-amber-dim); border:1px solid var(--hxb-amber-border); border-radius:4px; font-size:11px; color:var(--hxb-amber); }
+    /* ── STATUS DOTS ─────────────────────────────────────────────── */
+    .lf-sdot       { display: inline-block; width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+    .lf-s-healthy  { background: #198754; }
+    .lf-s-warning  { background: #d97706; }
+    .lf-s-critical { background: #dc3545; animation: lf-blink 1s ease-in-out infinite; }
 
-    /* ── KPI ──────────────────────────────────────────────────────────────── */
-    .hxb-kpi-strip { display:grid; grid-template-columns:repeat(6,1fr); gap:7px; padding:10px 0; border-bottom:1px solid var(--hxb-border); }
-    .hxb-kpi { background:var(--hxb-panel); border:1px solid var(--hxb-border); border-radius:4px; padding:9px 12px 8px; }
-    .hxb-kpi-label { font-size:9.5px; font-weight:600; letter-spacing:.09em; text-transform:uppercase; color:var(--hxb-muted); margin-bottom:5px; }
-    .hxb-kpi-value { font-size:21px; font-weight:700; line-height:1; font-variant-numeric:tabular-nums; }
-    .hxb-kpi-sub { font-size:9.5px; color:var(--hxb-dim); margin-top:3px; }
-    .hxb-kpi.pending    .hxb-kpi-value { color:var(--hxb-cyan); }
-    .hxb-kpi.processing .hxb-kpi-value { color:var(--hxb-blue); }
-    .hxb-kpi.delayed    .hxb-kpi-value { color:var(--hxb-amber); }
-    .hxb-kpi.failed     .hxb-kpi-value { color:var(--hxb-red); }
-    .hxb-kpi.throughput .hxb-kpi-value { color:var(--hxb-green); }
+    /* ── SOURCE BADGE ────────────────────────────────────────────── */
+    .lf-source-badge  { font-size: 10px; letter-spacing: .07em; font-weight: 700; }
+    .lf-source-mock   { background: rgba( 13,110,253,.10); color: #0d6efd; border: 1px solid rgba( 13,110,253,.22); }
+    .lf-source-auto   { background: rgba(119, 70,236,.10); color: #7746ec; border: 1px solid rgba(119, 70,236,.22); }
+    .lf-source-redis  { background: rgba(220, 53, 69,.10); color: #dc3545; border: 1px solid rgba(220, 53, 69,.22); }
+    .lf-source-db     { background: rgba( 25,135, 84,.10); color: #198754; border: 1px solid rgba( 25,135, 84,.22); }
 
-    /* ── LOADING ──────────────────────────────────────────────────────────── */
-    .hxb-loading { display:flex; align-items:center; justify-content:center; gap:10px; padding:60px 20px; color:var(--hxb-muted); font-size:13px; }
-    .hxb-loading-spin { animation:hxb-spin .9s linear infinite; }
+    /* ── DRIVER BADGE ────────────────────────────────────────────── */
+    .lf-driver-badge    { font-size: 9px; font-weight: 700; text-transform: uppercase; }
+    .lf-driver-redis    { background: rgba(220,53,69,.10);  color: #dc3545; }
+    .lf-driver-mysql,
+    .lf-driver-database { background: rgba(13,110,253,.10); color: #0d6efd; }
+    .lf-driver-pgsql    { background: rgba(25,135,84,.10);  color: #198754; }
 
-    /* ── LAYOUT ───────────────────────────────────────────────────────────── */
-    .hxb-main { display:grid; grid-template-columns:minmax(0,1fr) 340px; gap:10px; margin-top:10px; }
-    .hxb-left { display:flex; flex-direction:column; gap:10px; min-width:0; }
-    .hxb-panel { background:var(--hxb-panel); border:1px solid var(--hxb-border); border-radius:6px; overflow:hidden; }
-    .hxb-panel-head { display:flex; align-items:center; gap:8px; padding:9px 13px; border-bottom:1px solid var(--hxb-border); background:var(--hxb-card); }
-    .hxb-panel-title { font-size:10.5px; font-weight:700; letter-spacing:.09em; text-transform:uppercase; color:var(--hxb-muted); }
-    .hxb-panel-sub { font-size:10px; color:var(--hxb-dim); }
-    .hxb-panel-badge { margin-left:auto; padding:2px 6px; border-radius:3px; font-size:9.5px; background:var(--hxb-cyan-dim); color:var(--hxb-cyan); border:1px solid var(--hxb-cyan-border); font-weight:600; }
+    /* ── LEGEND ──────────────────────────────────────────────────── */
+    .lf-ldot           { display: inline-block; width: 8px; height: 8px; border-radius: 50%; }
+    .lf-ldot-producer  { background: rgba(13,110,253,.55); }
+    .lf-ldot-queue     { background: rgba(119,70,236,.55); }
+    .lf-ldot-worker    { background: rgba(25,135,84,.55); }
+    .lf-ldot-completed { background: #198754; }
+    .lf-ldot-failed    { background: #dc3545; }
+    .lf-lline          { display: inline-block; width: 18px; height: 2px; border-radius: 1px; }
+    .lf-lline-healthy  { background: #0891b2; }
+    .lf-lline-warning  { background: #d97706; }
+    .lf-lline-critical { background: #dc3545; }
 
-    /* ── VIEWPORT CONTROLS ────────────────────────────────────────────────── */
-    .hxb-vp-ctrls { display:flex; align-items:center; gap:2px; margin-left:auto; margin-right:6px; }
-    .hxb-vp-btn { display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; border-radius:3px; border:1px solid var(--hxb-border); background:var(--hxb-panel); color:var(--hxb-muted); cursor:pointer; transition:all .12s; padding:0; }
-    .hxb-vp-btn:hover { border-color:var(--hxb-cyan); color:var(--hxb-cyan); background:var(--hxb-cyan-dim); }
-    .hxb-vp-zoom { font-size:10px; color:var(--hxb-dim); min-width:32px; text-align:center; font-variant-numeric:tabular-nums; }
+    /* ── PULSE ───────────────────────────────────────────────────── */
+    .lf-pulse      { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: currentColor; animation: lf-blink 2s ease-in-out infinite; }
+    .lf-pulse-live { background: #fff; }
 
-    /* ── FLOW CANVAS ──────────────────────────────────────────────────────── */
-    .hxb-canvas-wrap { background:var(--hxb-canvas); overflow:hidden; user-select:none; }
-    .hxb-flow-svg { width:100%; height:auto; min-height:280px; max-height:660px; display:block; }
-    .hxb-svg-text { font-family:ui-monospace,"Cascadia Code","SF Mono",monospace; }
-    .hxb-svg-node { cursor:pointer; }
-    .hxb-svg-node:hover > rect:first-child { filter:brightness(1.06); }
-    .hxb-svg-grid line { stroke:var(--hxb-grid-line); stroke-width:1; }
-    .hxb-stage-lbl { fill:var(--hxb-stage-fill); font-size:8.5px; letter-spacing:1.5px; }
+    /* ── TABLE ───────────────────────────────────────────────────── */
+    .lf-row-selected { background: rgba(119,70,236,.06) !important; border-left: 2px solid #7746ec; }
 
-    /* ── LEGEND ───────────────────────────────────────────────────────────── */
-    .hxb-legend { display:flex; align-items:center; gap:14px; padding:7px 13px; border-top:1px solid var(--hxb-border); background:var(--hxb-card); flex-wrap:wrap; }
-    .hxb-legend-item { gap:5px; font-size:10px; color:var(--hxb-muted); }
-    .hxb-ldot { width:8px; height:8px; border-radius:50%; }
-    .hxb-ldot.producer  { background:var(--hxb-node-producer-stroke); }
-    .hxb-ldot.queue     { background:var(--hxb-node-queue-stroke); }
-    .hxb-ldot.worker    { background:var(--hxb-node-worker-stroke); }
-    .hxb-ldot.completed { background:var(--hxb-green); }
-    .hxb-ldot.failed    { background:var(--hxb-red); }
-    .hxb-lline { width:18px; height:2px; border-radius:1px; }
-    .hxb-lline.healthy  { background:var(--hxb-cyan); }
-    .hxb-lline.warning  { background:var(--hxb-amber); }
-    .hxb-lline.critical { background:var(--hxb-red); }
-    .hxb-lsep { width:1px; height:12px; background:var(--hxb-border); }
+    /* ── VIEWPORT CONTROLS ───────────────────────────────────────── */
+    .lf-vp-btn   { width: 26px; height: 26px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
+    .lf-zoom-label { min-width: 36px; text-align: center; font-variant-numeric: tabular-nums; font-size: .75rem; }
 
-    /* ── TABLE ────────────────────────────────────────────────────────────── */
-    .hxb-table-wrap { overflow-x:auto; }
-    .hxb-table { width:100%; border-collapse:collapse; }
-    .hxb-table th, .hxb-table td { white-space:nowrap; font-variant-numeric:tabular-nums; }
-    .hxb-table th { padding:7px 11px; text-align:left; font-size:9.5px; font-weight:700; letter-spacing:.09em; text-transform:uppercase; color:var(--hxb-dim); border-bottom:1px solid var(--hxb-border); background:var(--hxb-card); }
-    .hxb-table td { padding:6px 11px; font-size:11px; color:var(--hxb-text); border-bottom:1px solid var(--hxb-border); }
-    .hxb-table .r { text-align:right; }
-    .hxb-table tbody tr { cursor:pointer; transition:background .1s; }
-    .hxb-table tbody tr:last-child td { border-bottom:none; }
-    .hxb-table tbody tr:hover { background:var(--hxb-hover); }
-    .hxb-table tbody tr.selected { background:var(--hxb-selected); border-left:2px solid var(--hxb-selected-bar); }
-    .hxb-qname { gap:6px; }
-    .hxb-empty-row { text-align:center !important; color:var(--hxb-dim) !important; padding:20px !important; }
-    .hxb-driver { padding:1px 5px; border-radius:3px; font-size:9px; font-weight:700; text-transform:uppercase; }
-    .driver-redis    { background:var(--hxb-red-dim);   color:var(--hxb-red); }
-    .driver-mysql,
-    .driver-database { background:var(--hxb-blue-dim);  color:var(--hxb-blue); }
-    .driver-pgsql    { background:var(--hxb-green-dim); color:var(--hxb-green); }
+    /* ── ACTIVITY ────────────────────────────────────────────────── */
+    .lf-activity-scroll { max-height: 220px; overflow-y: auto; }
+    .lf-activity-scroll > div:last-child { border-bottom: none !important; }
 
-    /* ── STATUS ───────────────────────────────────────────────────────────── */
-    .hxb-sdot { width:6px; height:6px; border-radius:50%; flex-shrink:0; }
-    .s-healthy  { background:var(--hxb-green); }
-    .s-warning  { background:var(--hxb-amber); }
-    .s-critical { background:var(--hxb-red); animation:hxb-blink 1s ease-in-out infinite; }
-    .dim    { color:var(--hxb-muted) !important; }
-    .warn   { color:var(--hxb-amber) !important; }
-    .danger { color:var(--hxb-red)   !important; }
-    .ok     { color:var(--hxb-green) !important; }
-    .hxb-badge { padding:2px 7px; border-radius:3px; font-size:9.5px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; }
-    .b-healthy  { background:var(--hxb-green-dim);  color:var(--hxb-green); }
-    .b-warning  { background:var(--hxb-amber-dim);  color:var(--hxb-amber); }
-    .b-critical { background:var(--hxb-red-dim);    color:var(--hxb-red); }
+    /* ── INSPECTOR TYPOGRAPHY ────────────────────────────────────── */
+    .lf-sec-title  { font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--bs-secondary-color, #6c757d); margin-bottom: 0; }
+    .lf-kind-label { font-size: .7rem; letter-spacing: .06em; }
+    .lf-con-tag    { font-size: .7rem; font-weight: 400; }
 
-    /* ── ACTIVITY ─────────────────────────────────────────────────────────── */
-    .hxb-activity-scroll { max-height:210px; overflow-y:auto; }
-    .hxb-activity-item { display:flex; align-items:flex-start; gap:9px; padding:6px 13px; border-bottom:1px solid var(--hxb-border); transition:background .1s; }
-    .hxb-activity-item:last-child { border-bottom:none; }
-    .hxb-activity-item:hover { background:var(--hxb-hover); }
-    .hxb-activity-label { font-size:11px; color:var(--hxb-text); line-height:1.4; }
-    .hxb-activity-meta  { font-size:10px; color:var(--hxb-dim); margin-top:1px; }
-
-    /* ── INSPECTOR ────────────────────────────────────────────────────────── */
-    .hxb-inspector { position:sticky; top:10px; max-height:calc(100vh - 20px); overflow-y:auto; align-self:start; }
-    .hxb-inspector .hxb-panel-head .hxb-badge { margin-left:auto; }
-    .hxb-insp-top { padding:11px 13px; }
-    .hxb-insp-name { font-size:13px; font-weight:700; color:var(--hxb-text); margin-bottom:4px; }
-    .hxb-insp-type { gap:6px; font-size:10px; text-transform:uppercase; letter-spacing:.08em; color:var(--hxb-muted); }
-    .hxb-con-tag { padding:2px 6px; border-radius:3px; font-size:10px; background:var(--hxb-card); border:1px solid var(--hxb-border); color:var(--hxb-muted); text-transform:none; letter-spacing:0; }
-    .hxb-insp-sec { padding:9px 13px; border-top:1px solid var(--hxb-border); }
-    .hxb-insp-sec-title { font-size:9.5px; font-weight:700; text-transform:uppercase; letter-spacing:.1em; color:var(--hxb-dim); margin-bottom:7px; }
-    .hxb-metric-row { display:flex; justify-content:space-between; align-items:baseline; gap:10px; padding:2.5px 0; }
-    .hxb-metric-row span { color:var(--hxb-muted); font-size:11px; text-transform:capitalize; }
-    .hxb-metric-row strong { color:var(--hxb-text); font-size:11px; font-weight:500; font-variant-numeric:tabular-nums; }
-    .hxb-edge-row { gap:6px; padding:3.5px 0; font-size:11px; }
-    .hxb-edge-lbl { flex:1; color:var(--hxb-text); }
-    .hxb-edge-row small, .hxb-empty { color:var(--hxb-dim); font-size:10px; }
-    .hxb-action-block { margin:0 13px 13px; padding:9px 11px; border-radius:4px; background:var(--hxb-cyan-dim); border:1px solid var(--hxb-cyan-border); border-left:3px solid var(--hxb-cyan); }
-    .hxb-action-block.action-warn     { background:var(--hxb-amber-dim); border-color:var(--hxb-amber-border); border-left-color:var(--hxb-amber); }
-    .hxb-action-block.action-critical { background:var(--hxb-red-dim);   border-color:var(--hxb-red-border);   border-left-color:var(--hxb-red); }
-    .hxb-action-title { font-size:9.5px; font-weight:700; text-transform:uppercase; letter-spacing:.08em; margin-bottom:5px; color:var(--hxb-cyan); }
-    .action-warn     .hxb-action-title { color:var(--hxb-amber); }
-    .action-critical .hxb-action-title { color:var(--hxb-red); }
-    .hxb-action-text { font-size:11px; color:var(--hxb-muted); line-height:1.6; }
-
-    /* ── ANIMATIONS ───────────────────────────────────────────────────────── */
-    @keyframes hxb-blink { 0%,100%{opacity:1} 50%{opacity:.25} }
-    @keyframes hxb-spin   { to{transform:rotate(360deg)} }
-    .hxb-spinning { animation:hxb-spin .9s linear infinite; }
-
-    /* ── RESPONSIVE ───────────────────────────────────────────────────────── */
-    @media (max-width: 1120px) {
-        .hxb-main { grid-template-columns:1fr; }
-        .hxb-inspector { position:static; max-height:none; }
-    }
-    @media (max-width: 860px) { .hxb-kpi-strip { grid-template-columns:repeat(3,1fr); } }
-    @media (max-width: 520px) {
-        .hxb-kpi-strip { grid-template-columns:repeat(2,1fr); }
-        .hxb-ctl[type="text"] { width:100%; }
-    }
-
-    ::-webkit-scrollbar { width:4px; height:4px; }
-    ::-webkit-scrollbar-track { background:transparent; }
-    ::-webkit-scrollbar-thumb { background:var(--hxb-border-bright); border-radius:2px; }
+    /* ── ANIMATIONS ──────────────────────────────────────────────── */
+    @keyframes lf-blink { 0%,100%{opacity:1} 50%{opacity:.25} }
+    @keyframes lf-spin  { to{transform:rotate(360deg)} }
+    .lf-spin { animation: lf-spin .9s linear infinite; display: inline-block; }
 </style>
