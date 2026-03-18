@@ -434,49 +434,31 @@
     <div :class="['hxb-live-flow', { 'hxb-dark': isDark }]">
         <poll @poll="refreshFlowPeriodically" :interval="5" />
 
-        <!-- HEADER -->
-        <header class="hxb-header">
-            <div class="hxb-brand">
-                <svg class="hxb-logo" viewBox="0 0 26 26" fill="none">
-                    <circle cx="13" cy="13" r="11" stroke="var(--hxb-cyan)" stroke-width="1.4" opacity="0.55"/>
-                    <circle cx="13" cy="13" r="5.5" stroke="var(--hxb-cyan)" stroke-width="1.4"/>
-                    <circle cx="13" cy="13" r="2" fill="var(--hxb-cyan)"/>
-                    <line x1="2"    y1="13" x2="7.5"  y2="13" stroke="var(--hxb-cyan)" stroke-width="1.4" opacity="0.55"/>
-                    <line x1="18.5" y1="13" x2="24"   y2="13" stroke="var(--hxb-cyan)" stroke-width="1.4" opacity="0.55"/>
-                    <line x1="13"   y1="2"  x2="13"   y2="7.5" stroke="var(--hxb-cyan)" stroke-width="1.4" opacity="0.55"/>
-                    <line x1="13"   y1="18.5" x2="13" y2="24"  stroke="var(--hxb-cyan)" stroke-width="1.4" opacity="0.55"/>
-                </svg>
-                <span class="hxb-brand-name">HorizonX<em>Brain</em><span class="hxb-sep"> · </span><strong>{{ appLabel }}</strong></span>
-            </div>
-
+        <!-- PAGE CONTROLS -->
+        <div class="hxb-page-controls">
             <span class="hxb-source-badge" :class="'hxb-source-' + sourceClass">
                 <span class="hxb-pulse"></span>
                 {{ sourceLabel }}
             </span>
-
             <span class="hxb-ts">{{ generatedAt }}</span>
-
             <div class="hxb-spacer"></div>
-
-            <div class="hxb-controls">
-                <input v-model="filterText" class="hxb-ctl" type="text" placeholder="Filter queues…" />
-                <select v-model="timeRange" class="hxb-ctl">
-                    <option>Last 5m</option><option>Last 15m</option>
-                    <option>Last 1h</option><option>Last 6h</option><option>Last 24h</option>
-                </select>
-                <button class="hxb-btn" type="button" @click="refreshFlowPeriodically">
-                    <svg :class="{ 'hxb-spinning': refreshing }" width="12" height="12" viewBox="0 0 12 12" fill="none">
-                        <path d="M10.5 2A5 5 0 1 0 11 6.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-                        <path d="M10.5 2V5H7.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-                    </svg>
-                    Refresh
-                </button>
-                <button class="hxb-btn" :class="{ active: live }" type="button" @click="toggleLive">
-                    <span class="hxb-pulse hxb-pulse-green"></span>
-                    Live
-                </button>
-            </div>
-        </header>
+            <input v-model="filterText" class="hxb-ctl" type="text" placeholder="Filter queues…" />
+            <select v-model="timeRange" class="hxb-ctl">
+                <option>Last 5m</option><option>Last 15m</option>
+                <option>Last 1h</option><option>Last 6h</option><option>Last 24h</option>
+            </select>
+            <button class="hxb-btn" type="button" @click="refreshFlowPeriodically">
+                <svg :class="{ 'hxb-spinning': refreshing }" width="12" height="12" viewBox="0 0 12 12" fill="none">
+                    <path d="M10.5 2A5 5 0 1 0 11 6.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                    <path d="M10.5 2V5H7.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                Refresh
+            </button>
+            <button class="hxb-btn" :class="{ active: live }" type="button" @click="toggleLive">
+                <span class="hxb-pulse hxb-pulse-green"></span>
+                Live
+            </button>
+        </div>
 
         <!-- DEMO NOTICE -->
         <div class="hxb-demo-notice" v-if="ready && isMock">
@@ -867,10 +849,7 @@
         --hxb-stage-fill:     rgba(75,85,99,.45);
 
         position: relative; z-index: 0;
-        margin: -1.5rem -1rem 0;
-        padding: 0 1rem 2rem;
-        min-height: calc(100vh - 8rem);
-        background: var(--hxb-bg);
+        padding: 0 0 2rem;
         color: var(--hxb-text);
         font-family: ui-monospace, "Cascadia Code", "Fira Code", "SF Mono", Consolas, monospace;
         font-size: 12px;
@@ -927,22 +906,10 @@
         --hxb-stage-fill:     rgba(107,126,150,.45);
     }
 
-    /* subtle grid texture */
-    .hxb-live-flow::before {
-        content: ""; position: absolute; inset: 0;
-        background-image: linear-gradient(var(--hxb-grid-line) 1px, transparent 1px), linear-gradient(90deg, var(--hxb-grid-line) 1px, transparent 1px);
-        background-size: 48px 48px;
-        pointer-events: none; z-index: -1;
-    }
 
-    /* ── HEADER ─────────────────────────────────────────────────────────── */
-    .hxb-header { display:flex; align-items:center; gap:10px; padding:10px 0; border-bottom:1px solid var(--hxb-border); flex-wrap:wrap; }
-    .hxb-brand, .hxb-controls, .hxb-btn, .hxb-source-badge, .hxb-qname, .hxb-legend-item, .hxb-edge-row, .hxb-insp-type { display:flex; align-items:center; }
-    .hxb-brand { gap:9px; }
-    .hxb-logo { width:26px; height:26px; flex-shrink:0; }
-    .hxb-brand-name { font-size:14px; font-weight:700; letter-spacing:.04em; white-space:nowrap; color:var(--hxb-text); }
-    .hxb-brand-name em { color:var(--hxb-cyan); font-style:normal; }
-    .hxb-sep, .hxb-brand-name strong { color:var(--hxb-muted); font-weight:400; }
+    /* ── PAGE CONTROLS ──────────────────────────────────────────────────── */
+    .hxb-page-controls { display:flex; align-items:center; gap:8px; padding:0 0 10px; flex-wrap:wrap; }
+    .hxb-btn, .hxb-source-badge, .hxb-qname, .hxb-legend-item, .hxb-edge-row, .hxb-insp-type { display:flex; align-items:center; }
     .hxb-spacer { flex:1; }
     .hxb-source-badge { gap:5px; padding:2px 8px; border-radius:3px; font-size:10px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; }
     .hxb-source-mock   { background:var(--hxb-blue-dim);  border:1px solid var(--hxb-blue-border);  color:var(--hxb-blue); }
