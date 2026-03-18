@@ -33,6 +33,14 @@
                 return this.flow?.summary ?? {};
             },
 
+            meta() {
+                return this.flow?.meta ?? {};
+            },
+
+            appLabel() {
+                return this.meta.app_name ?? this.meta.horizon_name ?? 'Laravel application';
+            },
+
             generatedAt() {
                 if (!this.flow?.generated_at) {
                     return 'Generated: -';
@@ -149,8 +157,8 @@
                     {
                         id: 'producer-app',
                         type: 'producer',
-                        label: 'producer-app',
-                        sub: `${this.formatNumber(this.summary.throughput_per_minute)} jobs/min`,
+                        label: this.appLabel,
+                        sub: `${this.meta.environment ?? 'app'} · ${this.formatNumber(this.summary.throughput_per_minute)} jobs/min`,
                         status: 'healthy',
                         x: 28,
                         y: 105,
@@ -534,7 +542,7 @@
                     <line x1="13" y1="2" x2="13" y2="7.5" stroke="#00c8d4" stroke-width="1.4" opacity="0.55"/>
                     <line x1="13" y1="18.5" x2="13" y2="24" stroke="#00c8d4" stroke-width="1.4" opacity="0.55"/>
                 </svg>
-                <span class="hxb-brand-name">HorizonX<em>Brain</em><span> · </span><strong>Live Flow</strong></span>
+                <span class="hxb-brand-name">HorizonX<em>Brain</em><span> · </span><strong>{{ appLabel }}</strong></span>
             </div>
 
             <span class="hxb-source-badge" :class="'hxb-source-' + sourceClass">

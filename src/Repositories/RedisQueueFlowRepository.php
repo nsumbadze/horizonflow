@@ -11,6 +11,8 @@ use Laravel\Horizon\Contracts\WorkloadRepository;
 
 class RedisQueueFlowRepository implements QueueFlowRepository
 {
+    use BuildsQueueFlowMetadata;
+
     /**
      * Create a new Redis queue flow repository.
      */
@@ -36,6 +38,7 @@ class RedisQueueFlowRepository implements QueueFlowRepository
 
         return [
             'source' => 'redis',
+            'meta' => $this->metadata(),
             'generated_at' => Carbon::now()->toJSON(),
             'summary' => [
                 'pending' => $queues->sum('length'),
@@ -61,7 +64,10 @@ class RedisQueueFlowRepository implements QueueFlowRepository
     protected function nodes(array $queues, int $failed): array
     {
         $nodes = [
-            $this->node('producer-app', 'producer', 'Application Events', 'healthy'),
+            $this->node('producer-app', 'producer', config('app.name', 'Application'), 'healthy', [
+                'environment' => app()->environment(),
+                'throughput' => $this->metrics->jobsProcessedPerMinute(),
+            ]),
             $this->node('workers', 'worker', 'Horizon Workers', 'healthy', ['processes' => collect($queues)->sum('processes')]),
             $this->node('completed', 'result', 'completed', 'healthy'),
             $this->node('failed', 'result', 'failed', $failed > 0 ? 'critical' : 'healthy', ['failed' => $failed]),
@@ -111,8 +117,34 @@ class RedisQueueFlowRepository implements QueueFlowRepository
      */
     protected function events(): array
     {
+        $jobs = collect();
+
+        foreach ([
+            'critical' => fn () => $this->jobs->getFailed(-1),
+            'warning' => fn () => $this->jobs->getPending(-1),
+            'healthy' => fn () => $this->jobs->getCompleted(-1),
+        ] as $status => $resolver) {
+            try {
+                $jobs = $jobs->merge($resolver()->take(4)->map(fn (object $job): array => [
+                    'status' => $status,
+                    'label' => sprintf('%s on %s:%s is %s',
+                        $job->name ?? 'Queued job',
+                        $job->connection ?? $this->connectionName($job->queue ?? 'default'),
+                        $job->queue ?? 'default',
+                        $job->status ?? $status
+                    ),
+                ]));
+            } catch (\Throwable) {
+                //
+            }
+        }
+
+        if ($jobs->isNotEmpty()) {
+            return $jobs->take(8)->values()->all();
+        }
+
         return collect($this->supervisors->all())->take(3)->map(fn (array $supervisor): array => [
-            'status' => $supervisor['status'] ?? 'healthy',
+            'status' => $supervisor['status'] === 'paused' ? 'warning' : 'healthy',
             'label' => sprintf('%s supervisor is %s', $supervisor['name'] ?? 'Horizon', $supervisor['status'] ?? 'running'),
         ])->values()->all();
     }

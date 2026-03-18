@@ -7,6 +7,8 @@ use Laravel\Horizon\Contracts\QueueFlowRepository;
 
 class MockQueueFlowRepository implements QueueFlowRepository
 {
+    use BuildsQueueFlowMetadata;
+
     /**
      * Get mock queue flow data for early UI development.
      *
@@ -20,6 +22,7 @@ class MockQueueFlowRepository implements QueueFlowRepository
 
         return [
             'source' => 'mock',
+            'meta' => $this->metadata(),
             'generated_at' => Carbon::now()->toJSON(),
             'summary' => [
                 'pending' => $pending,

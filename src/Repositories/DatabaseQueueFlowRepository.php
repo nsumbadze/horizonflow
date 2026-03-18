@@ -8,6 +8,8 @@ use Laravel\Horizon\Contracts\QueueFlowRepository;
 
 class DatabaseQueueFlowRepository implements QueueFlowRepository
 {
+    use BuildsQueueFlowMetadata;
+
     /**
      * Get queue flow data from Laravel database queue tables.
      *
@@ -24,6 +26,7 @@ class DatabaseQueueFlowRepository implements QueueFlowRepository
 
         return [
             'source' => 'database',
+            'meta' => $this->metadata(),
             'generated_at' => Carbon::now()->toJSON(),
             'summary' => [
                 'pending' => $queues->sum('pending'),
