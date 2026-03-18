@@ -3,11 +3,14 @@
 namespace Laravel\Horizon\Repositories;
 
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Str;
 use Laravel\Horizon\Contracts\JobRepository;
 use Laravel\Horizon\Contracts\MetricsRepository;
 use Laravel\Horizon\Contracts\QueueFlowRepository;
 use Laravel\Horizon\Contracts\SupervisorRepository;
 use Laravel\Horizon\Contracts\WorkloadRepository;
+use Throwable;
 
 class RedisQueueFlowRepository implements QueueFlowRepository
 {
@@ -32,7 +35,7 @@ class RedisQueueFlowRepository implements QueueFlowRepository
      */
     public function get(): array
     {
-        $queues = collect($this->workload->get())->sortBy('name')->values();
+        $queues = $this->queues();
         $processes = $queues->sum('processes');
         $failed = $this->jobs->countFailed();
 
@@ -58,6 +61,40 @@ class RedisQueueFlowRepository implements QueueFlowRepository
     }
 
     /**
+     * Get queues from workload stats and Horizon's job indexes.
+     *
+     * Workload can be empty when jobs are visible in Horizon but no supervisor has
+     * reported a queue length yet. The job indexes keep the graph useful in that
+     * state and expose queue names like "orders-sync" immediately.
+     *
+     * @return \Illuminate\Support\Collection<int, array{name: string, length: int, wait: int, processes: int, failed: int, latest_error: string|null}>
+     */
+    protected function queues(): Collection
+    {
+        $queues = collect($this->workload->get())
+            ->mapWithKeys(function (array $queue): array {
+                $queue = $this->normalizeQueue($queue);
+
+                return [$queue['name'] => $queue];
+            })
+            ->all();
+
+        foreach ($this->queueObservations() as $name => $observation) {
+            $queue = $queues[$name] ?? $this->emptyQueue($name);
+            $queue['length'] = max((int) $queue['length'], $observation['pending']);
+            $queue['wait'] = max((int) $queue['wait'], $observation['wait']);
+            $queue['failed'] = max((int) $queue['failed'], $observation['failed']);
+            $queue['latest_error'] ??= $observation['latest_error'];
+
+            $queues[$name] = $queue;
+        }
+
+        return collect($queues)
+            ->sortBy(fn (array $queue): string => $this->connectionName($queue['name']).':'.$this->queueName($queue['name']))
+            ->values();
+    }
+
+    /**
      * @param  array<int, array<string, mixed>>  $queues
      * @return array<int, array<string, mixed>>
      */
@@ -78,8 +115,13 @@ class RedisQueueFlowRepository implements QueueFlowRepository
                 $this->queueId($queue['name']),
                 'queue',
                 $this->queueName($queue['name']),
-                $this->status((int) $queue['wait'], (int) $queue['length']),
-                ['pending' => (int) $queue['length'], 'wait' => (int) $queue['wait']]
+                $this->status((int) $queue['wait'], (int) $queue['length'], (int) $queue['failed']),
+                [
+                    'pending' => (int) $queue['length'],
+                    'wait' => (int) $queue['wait'],
+                    'failed' => (int) $queue['failed'],
+                    'latest_error' => $queue['latest_error'],
+                ]
             );
         }
 
@@ -95,9 +137,9 @@ class RedisQueueFlowRepository implements QueueFlowRepository
         $edges = [];
 
         foreach ($queues as $queue) {
-            $status = $this->status((int) $queue['wait'], (int) $queue['length']);
+            $status = $this->status((int) $queue['wait'], (int) $queue['length'], (int) $queue['failed']);
             $queueId = $this->queueId($queue['name']);
-            $throughput = $this->metrics->throughputForQueue($queue['name']);
+            $throughput = $this->throughputForQueue($queue['name']);
 
             $edges[] = $this->edge('producer-app', $queueId, $status, 'dispatch', $throughput);
             $edges[] = $this->edge($queueId, 'workers', $status, 'reserve', $throughput);
@@ -106,7 +148,7 @@ class RedisQueueFlowRepository implements QueueFlowRepository
         $edges[] = $this->edge('workers', 'completed', 'healthy', 'finish', $this->metrics->jobsProcessedPerMinute());
 
         if ($failed > 0) {
-            $edges[] = $this->edge('workers', 'failed', 'critical', 'exception', min($failed, 60));
+            $edges[] = $this->edge('workers', 'failed', 'critical', "{$failed} failed", 0);
         }
 
         return $edges;
@@ -160,9 +202,138 @@ class RedisQueueFlowRepository implements QueueFlowRepository
             'pending' => (int) $queue['length'],
             'wait_seconds' => (int) $queue['wait'],
             'processes' => (int) $queue['processes'],
-            'throughput_per_minute' => $this->metrics->throughputForQueue($queue['name']),
+            'throughput_per_minute' => $this->throughputForQueue($queue['name']),
+            'failed' => (int) $queue['failed'],
+            'latest_error' => $queue['latest_error'],
             'driver' => 'redis',
         ];
+    }
+
+    /**
+     * @return array<string, array{pending: int, wait: int, failed: int, latest_error: string|null}>
+     */
+    protected function queueObservations(): array
+    {
+        $observations = [];
+
+        foreach ([
+            'pending' => fn (): Collection => $this->jobs->getPending(-1),
+            'completed' => fn (): Collection => $this->jobs->getCompleted(-1),
+            'failed' => fn (): Collection => $this->jobs->getFailed(-1),
+        ] as $status => $resolver) {
+            try {
+                foreach ($resolver() as $job) {
+                    $name = $this->jobQueueKey($job);
+
+                    if ($name === null) {
+                        continue;
+                    }
+
+                    $observations[$name] ??= ['pending' => 0, 'wait' => 0, 'failed' => 0, 'latest_error' => null];
+
+                    if ($status === 'pending') {
+                        $observations[$name]['pending']++;
+                        $observations[$name]['wait'] = max(
+                            $observations[$name]['wait'],
+                            $this->jobWaitSeconds($job)
+                        );
+                    }
+
+                    if ($status === 'failed') {
+                        $observations[$name]['failed']++;
+                        $observations[$name]['latest_error'] ??= $this->jobExceptionSummary($job);
+                    }
+                }
+            } catch (Throwable) {
+                //
+            }
+        }
+
+        return $observations;
+    }
+
+    /**
+     * @return array{name: string, length: int, wait: int, processes: int, failed: int, latest_error: string|null}
+     */
+    protected function normalizeQueue(array $queue): array
+    {
+        return [
+            'name' => (string) ($queue['name'] ?? 'default'),
+            'length' => (int) ($queue['length'] ?? 0),
+            'wait' => (int) ($queue['wait'] ?? 0),
+            'processes' => (int) ($queue['processes'] ?? 0),
+            'failed' => (int) ($queue['failed'] ?? 0),
+            'latest_error' => $queue['latest_error'] ?? null,
+        ];
+    }
+
+    /**
+     * @return array{name: string, length: int, wait: int, processes: int, failed: int, latest_error: string|null}
+     */
+    protected function emptyQueue(string $name): array
+    {
+        return [
+            'name' => $name,
+            'length' => 0,
+            'wait' => 0,
+            'processes' => 0,
+            'failed' => 0,
+            'latest_error' => null,
+        ];
+    }
+
+    protected function jobQueueKey(object $job): ?string
+    {
+        $queue = trim((string) ($job->queue ?? ''));
+
+        if ($queue === '') {
+            return null;
+        }
+
+        if (str_contains($queue, ':')) {
+            return $queue;
+        }
+
+        $connection = trim((string) ($job->connection ?? $this->connectionName($queue)));
+
+        return $connection === '' ? $queue : "{$connection}:{$queue}";
+    }
+
+    protected function jobWaitSeconds(object $job): int
+    {
+        $createdAt = (float) ($job->created_at ?? 0);
+
+        if ($createdAt <= 0 && is_string($job->payload ?? null)) {
+            $payload = json_decode($job->payload);
+            $createdAt = (float) ($payload->pushedAt ?? 0);
+        }
+
+        if ($createdAt <= 0) {
+            return 0;
+        }
+
+        return max(0, Carbon::now()->timestamp - (int) floor($createdAt));
+    }
+
+    protected function jobExceptionSummary(object $job): ?string
+    {
+        $exception = trim((string) ($job->exception ?? ''));
+
+        if ($exception === '') {
+            return null;
+        }
+
+        $line = strtok($exception, "\n") ?: $exception;
+
+        return Str::limit($line, 180);
+    }
+
+    protected function throughputForQueue(string $name): int
+    {
+        return max(
+            $this->metrics->throughputForQueue($name),
+            $this->metrics->throughputForQueue($this->queueName($name))
+        );
     }
 
     protected function connectionName(string $name): string
@@ -180,10 +351,10 @@ class RedisQueueFlowRepository implements QueueFlowRepository
         return 'queue-'.preg_replace('/[^a-z0-9]+/i', '-', strtolower($name));
     }
 
-    protected function status(int $wait, int $length): string
+    protected function status(int $wait, int $length, int $failed = 0): string
     {
         return match (true) {
-            $wait >= 30 || $length >= 500 => 'critical',
+            $failed > 0 || $wait >= 30 || $length >= 500 => 'critical',
             $wait >= 10 || $length >= 100 => 'warning',
             default => 'healthy',
         };

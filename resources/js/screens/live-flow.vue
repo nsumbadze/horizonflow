@@ -83,7 +83,7 @@
                         id: node?.id ?? this.queueNodeId(queue),
                         type: 'queue',
                         label: queue.name,
-                        sub: `${queue.connection} · ${this.formatNumber(queue.pending)} pending`,
+                        sub: this.queueSubLabel(queue),
                         status: node?.status ?? this.queueStatus(queue),
                         x: 250, y: this.distributedY(i, this.filteredQueues.length, 82, 310),
                         width: 128, height: 50,
@@ -151,7 +151,9 @@
             },
 
             particles() {
-                return this.graphEdges.flatMap((edge, ei) => {
+                if (!this.live) return [];
+
+                return this.graphEdges.filter(edge => Number(edge.rate_per_minute ?? 0) > 0).flatMap((edge, ei) => {
                     const count = edge.status === 'critical' || edge.status === 'warning' ? 2 : Math.min(3, Math.max(1, Math.ceil((edge.rate_per_minute ?? 20) / 120)));
                     return Array.from({ length: count }).map((_, i) => ({
                         id: `${edge.id}-${i}`,
@@ -333,9 +335,15 @@
             },
 
             queueStatus(queue) {
+                if ((queue.failed ?? 0) > 0) return 'critical';
                 if (queue.wait_seconds >= 30 || queue.pending >= 500) return 'critical';
                 if (queue.wait_seconds >= 10 || queue.pending >= 100 || queue.delayed > 0) return 'warning';
                 return 'healthy';
+            },
+
+            queueSubLabel(queue) {
+                if ((queue.failed ?? 0) > 0) return `${queue.connection} · ${this.formatNumber(queue.failed)} failed`;
+                return `${queue.connection} · ${this.formatNumber(queue.pending)} pending`;
             },
 
             resultSubLabel(node) {
@@ -391,6 +399,16 @@
                 return { healthy: 1.7, warning: 2.6, critical: 3.2 }[status] ?? 2;
             },
 
+            edgeDisplayLabel(edge) {
+                const rate = Number(edge.rate_per_minute ?? 0);
+
+                if (rate <= 0) {
+                    return ['dispatch', 'reserve', 'finish'].includes(edge.label) ? 'idle' : edge.label;
+                }
+
+                return this.formatRate(rate);
+            },
+
             // ── inspector ──────────────────────────────────────────────────────
             inspectorMetrics(node, queue) {
                 if (queue) return [
@@ -398,12 +416,13 @@
                     ['Pending', this.formatNumber(queue.pending)], ['Delayed', this.formatNumber(queue.delayed)],
                     ['Wait', this.metricValue(queue.wait_seconds, 's')], ['Processes', this.formatNumber(queue.processes)],
                     ['Throughput', this.formatRate(queue.throughput_per_minute)],
+                    ['Failed', this.formatNumber(queue.failed ?? 0)], ['Latest error', queue.latest_error ?? 'none'],
                 ];
                 return Object.entries(node.metrics ?? {}).map(([k, v]) => [k.replace(/_/g, ' '), this.formatNumber(v)]);
             },
 
             suggestedAction(node, queue) {
-                if (node.status === 'critical') return { type: 'critical', title: 'Immediate Action', text: queue ? `Backlog is critical on ${queue.name}. Scale workers or reduce dispatch rate. Example: php artisan horizon:supervisor ${queue.name}` : 'Failures above normal. Inspect failed job payloads and retry only after root cause is fixed.' };
+                if (node.status === 'critical') return { type: 'critical', title: 'Immediate Action', text: queue ? (queue.latest_error ? `${queue.name} has failed jobs. Latest error: ${queue.latest_error}` : `Backlog is critical on ${queue.name}. Scale workers or reduce dispatch rate. Example: php artisan horizon:supervisor ${queue.name}`) : 'Failures above normal. Inspect failed job payloads and retry only after root cause is fixed.' };
                 if (node.status === 'warning')  return { type: 'warn',     title: 'Suggested Action', text: queue ? `${queue.name} is showing backpressure. Watch wait time and consider increasing process capacity.` : 'This node is under pressure. Monitor incoming rates and downstream failures.' };
                 return { type: 'ok', title: 'Status', text: 'Node is operating normally. No action required.' };
             },
@@ -623,7 +642,7 @@
                                     font-size="8"
                                     :fill="edgeColor(edge.status)"
                                     :opacity="edge.status === 'critical' ? 0.85 : 0.65"
-                                >{{ edge.status === 'critical' ? 'fail!' : formatRate(edge.rate_per_minute) }}</text>
+                                >{{ edgeDisplayLabel(edge) }}</text>
 
                                 <!-- nodes -->
                                 <g
@@ -694,7 +713,7 @@
                                 <tr>
                                     <th>Queue</th><th>Connection</th><th>Driver</th>
                                     <th class="r">Pending</th><th class="r">Delayed</th><th class="r">Wait</th>
-                                    <th class="r">Procs</th><th class="r">Throughput</th><th class="r">Status</th>
+                                    <th class="r">Procs</th><th class="r">Throughput</th><th class="r">Failed</th><th class="r">Status</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -712,10 +731,11 @@
                                     <td class="r" :class="{ warn: queue.wait_seconds >= 10, danger: queue.wait_seconds >= 30 }">{{ metricValue(queue.wait_seconds, 's') }}</td>
                                     <td class="r">{{ formatNumber(queue.processes) }}</td>
                                     <td class="r ok">{{ formatRate(queue.throughput_per_minute) }}</td>
+                                    <td class="r" :class="{ danger: (queue.failed ?? 0) > 0 }">{{ formatNumber(queue.failed ?? 0) }}</td>
                                     <td class="r"><span class="hxb-badge" :class="'b-' + queueStatus(queue)">{{ statusLabel(queueStatus(queue)) }}</span></td>
                                 </tr>
                                 <tr v-if="filteredQueues.length === 0">
-                                    <td colspan="9" class="hxb-empty-row">{{ filterText ? 'No queues match the filter.' : 'No queues found.' }}</td>
+                                    <td colspan="10" class="hxb-empty-row">{{ filterText ? 'No queues match the filter.' : 'No queues found.' }}</td>
                                 </tr>
                             </tbody>
                         </table>
