@@ -1,6 +1,10 @@
 # Release Notes
 
-## [Unreleased](https://github.com/laravel/horizon/compare/v5.45.3...5.x)
+## [Unreleased](https://github.com/laravel/horizon/compare/v5.45.4...5.x)
+
+## [v5.45.4](https://github.com/laravel/horizon/compare/v5.45.3...v5.45.4) - 2026-03-18
+
+* Remove redundant "When to Apply" section from skill body by [@pushpak1300](https://github.com/pushpak1300) in https://github.com/laravel/horizon/pull/1729
 
 ## [v5.45.3](https://github.com/laravel/horizon/compare/v5.45.2...v5.45.3) - 2026-03-11
 
