@@ -7,18 +7,20 @@ return [
     | Queue Flow Source
     |--------------------------------------------------------------------------
     |
-    | The live flow screen reads Horizon's Redis telemetry by default, matching
-    | standard Horizon installs. Switch this to "mock" for demo data or
-    | "database" for Laravel database queue tables, including MySQL and
-    | PostgreSQL backed queues.
+    | The live flow screen reads every configured source by default. This keeps
+    | Redis Horizon telemetry and Laravel database queue tables in one graph.
+    | Switch this to "redis", "database", or "mock" to force a single source.
     |
     */
 
     'flow' => [
-        'source' => env('HORIZONXBRAIN_FLOW_SOURCE', 'redis'),
+        'source' => env('HORIZONXBRAIN_FLOW_SOURCE', 'auto'),
+
+        'sources' => ['redis', 'database'],
 
         'database' => [
             'connections' => [],
+            'discover_connections' => env('HORIZONXBRAIN_DISCOVER_DATABASE_QUEUES', true),
             'failed_table' => env('QUEUE_FAILED_TABLE', 'failed_jobs'),
         ],
     ],

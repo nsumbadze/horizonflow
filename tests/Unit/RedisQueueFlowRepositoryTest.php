@@ -33,7 +33,8 @@ class RedisQueueFlowRepositoryTest extends UnitTest
             $queues = $repository->exposedQueues();
 
             $this->assertCount(1, $queues);
-            $this->assertSame('redis:orders-sync', $queues[0]['name']);
+            $this->assertSame('redis:orders-sync', $queues[0]['key']);
+            $this->assertSame('orders-sync', $queues[0]['name']);
             $this->assertSame(1, $queues[0]['length']);
             $this->assertSame(15, $queues[0]['wait']);
             $this->assertSame(0, $queues[0]['processes']);
@@ -90,7 +91,8 @@ class RedisQueueFlowRepositoryTest extends UnitTest
 
         $queue = $repository->exposedQueues()[0];
 
-        $this->assertSame('redis:orders-sync', $queue['name']);
+        $this->assertSame('redis:orders-sync', $queue['key']);
+        $this->assertSame('orders-sync', $queue['name']);
         $this->assertSame(1, $queue['failed']);
         $this->assertSame('RuntimeException: Upstream API timed out', $queue['latest_error']);
     }
@@ -108,10 +110,13 @@ class RedisQueueFlowRepositoryTest extends UnitTest
         $jobs->shouldReceive('getCompleted')->once()->with(-1)->andReturn(collect());
         $jobs->shouldReceive('getFailed')->once()->with(-1)->andReturn($failedJobs ?? collect());
 
+        $metrics = Mockery::mock(MetricsRepository::class);
+        $metrics->shouldReceive('throughputForQueue')->byDefault()->andReturn(0);
+
         return new class(
             $workload,
             $jobs,
-            Mockery::mock(MetricsRepository::class),
+            $metrics,
             Mockery::mock(SupervisorRepository::class)
         ) extends RedisQueueFlowRepository {
             public function exposedQueues(): Collection

@@ -49,10 +49,14 @@
             },
 
             sourceClass() {
-                return { mock: 'mock', redis: 'redis', database: 'db' }[this.flow?.source] ?? 'mock';
+                return { mock: 'mock', redis: 'redis', database: 'db', auto: 'auto' }[this.flow?.source] ?? 'mock';
             },
 
             sourceLabel() {
+                if (this.flow?.source === 'auto') {
+                    return `unified · ${(this.flow?.sources ?? []).join(' + ') || 'live'}`;
+                }
+
                 return { mock: 'mock · demo', redis: 'redis · live', database: 'db · live' }[this.flow?.source] ?? (this.flow ? this.flow.source : 'loading');
             },
 
@@ -68,7 +72,7 @@
                 const f = this.filterText.trim().toLowerCase();
                 if (!f) return this.queues;
                 return this.queues.filter(q =>
-                    [q.name, q.connection, q.driver].filter(Boolean).some(v => String(v).toLowerCase().includes(f))
+                    [q.name, q.connection, q.storage_connection, q.driver, q.source].filter(Boolean).some(v => String(v).toLowerCase().includes(f))
                 );
             },
 
@@ -76,7 +80,30 @@
                 return (this.flow?.nodes ?? []).reduce((acc, n) => { acc[n.id] = n; return acc; }, {});
             },
 
+            svgHeight() {
+                const nodeH = 52;
+                const gap = 22;
+                const topPad = 44;
+                const botPad = 32;
+                const queueCount = Math.max(1, this.filteredQueues.length);
+                const workerCount = Math.max(1, (this.flow?.nodes ?? []).filter(n => n.type === 'worker').slice(0, 4).length);
+                const resultCount = Math.max(1, (this.flow?.nodes ?? []).filter(n => n.type === 'result').slice(0, 4).length);
+                const maxCol = Math.max(queueCount, workerCount, resultCount);
+                return Math.max(390, topPad + maxCol * (nodeH + gap) - gap + botPad);
+            },
+
             graphNodes() {
+                const H = this.svgHeight;
+                const topPad = 44;
+                const botPad = 32;
+                const qH = 50, wH = 46, rH = 50, pH = 52;
+
+                const qYMin = topPad, qYMax = H - qH - botPad;
+                const wYMin = topPad + 4, wYMax = H - wH - botPad - 4;
+                const rYMin = topPad, rYMax = H - rH - botPad;
+
+                const midY = H / 2;
+
                 const queues = this.filteredQueues.map((queue, i) => {
                     const node = this.findQueueNode(queue);
                     return {
@@ -85,41 +112,48 @@
                         label: queue.name,
                         sub: this.queueSubLabel(queue),
                         status: node?.status ?? this.queueStatus(queue),
-                        x: 250, y: this.distributedY(i, this.filteredQueues.length, 82, 310),
-                        width: 128, height: 50,
-                        metrics: { pending: queue.pending, delayed: queue.delayed, wait: queue.wait_seconds, processes: queue.processes, throughput: queue.throughput_per_minute },
+                        x: 250, y: this.distributedY(i, this.filteredQueues.length, qYMin, qYMax),
+                        width: 128, height: qH,
+                        metrics: {
+                            pending: queue.pending,
+                            delayed: queue.delayed,
+                            wait: queue.wait_seconds,
+                            processes: queue.processes,
+                            throughput: queue.throughput_per_minute,
+                            current_throughput: queue.current_throughput_per_minute,
+                            failed: queue.failed,
+                        },
                     };
                 });
 
-                const workers = (this.flow?.nodes ?? [])
-                    .filter(n => n.type === 'worker').slice(0, 4)
-                    .map((n, i, all) => ({
-                        id: n.id, type: 'worker', label: n.label,
-                        sub: `${this.formatNumber(n.metrics?.processes ?? this.summary.processing)} processes`,
-                        status: n.status,
-                        x: 500, y: this.distributedY(i, all.length || 1, 75, 285),
-                        width: 128, height: 46, metrics: n.metrics ?? {},
-                    }));
+                const workerList = (this.flow?.nodes ?? []).filter(n => n.type === 'worker').slice(0, 4);
+                const workers = workerList.map((n, i, all) => ({
+                    id: n.id, type: 'worker', label: n.label,
+                    sub: `${this.formatNumber(n.metrics?.processes ?? this.summary.processing)} processes`,
+                    status: n.status,
+                    x: 500, y: this.distributedY(i, all.length || 1, wYMin, wYMax),
+                    width: 128, height: wH, metrics: n.metrics ?? {},
+                }));
 
                 const workerNodes = workers.length ? workers : [{
                     id: 'workers', type: 'worker', label: 'workers',
                     sub: `${this.formatNumber(this.summary.processing)} active`,
-                    status: 'healthy', x: 500, y: 175, width: 128, height: 46,
+                    status: 'healthy', x: 500, y: midY - wH / 2, width: 128, height: wH,
                     metrics: { processes: this.summary.processing },
                 }];
 
-                const results = (this.flow?.nodes ?? [])
-                    .filter(n => n.type === 'result').slice(0, 4)
-                    .map((n, i, all) => ({
-                        id: n.id, type: 'result', label: n.label,
-                        sub: this.resultSubLabel(n), status: n.status,
-                        x: 750, y: this.distributedY(i, all.length || 1, 88, 310),
-                        width: 132, height: 50, metrics: n.metrics ?? {},
-                    }));
+                const resultList = (this.flow?.nodes ?? []).filter(n => n.type === 'result').slice(0, 4);
+                const results = resultList.map((n, i, all) => ({
+                    id: n.id, type: 'result', label: n.label,
+                    sub: this.resultSubLabel(n), status: n.status,
+                    x: 750, y: this.distributedY(i, all.length || 1, rYMin, rYMax),
+                    width: 132, height: rH, metrics: n.metrics ?? {},
+                }));
 
+                const prodSpread = Math.min(120, H * 0.16);
                 return [
-                    { id: 'producer-app', type: 'producer', label: this.appLabel, sub: `${this.meta.environment ?? 'app'} · ${this.formatNumber(this.summary.throughput_per_minute)} jobs/min`, status: 'healthy', x: 28, y: 105, width: 136, height: 52, metrics: { throughput: this.summary.throughput_per_minute } },
-                    { id: 'producer-scheduler', type: 'producer', label: 'scheduler', sub: `${this.formatNumber(this.summary.delayed)} delayed`, status: this.summary.delayed > 0 ? 'warning' : 'healthy', x: 28, y: 235, width: 136, height: 52, metrics: { delayed: this.summary.delayed } },
+                    { id: 'producer-app',       type: 'producer', label: this.appLabel,   sub: `${this.meta.environment ?? 'app'} · ${this.formatNumber(this.summary.current_throughput_per_minute ?? this.summary.throughput_per_minute)} current/m`, status: 'healthy', x: 28, y: Math.round(midY - prodSpread - pH / 2), width: 136, height: pH, metrics: { throughput: this.summary.throughput_per_minute, current_throughput: this.summary.current_throughput_per_minute } },
+                    { id: 'producer-scheduler', type: 'producer', label: 'scheduler',      sub: `${this.formatNumber(this.summary.delayed)} delayed`, status: this.summary.delayed > 0 ? 'warning' : 'healthy', x: 28, y: Math.round(midY + prodSpread - pH / 2), width: 136, height: pH, metrics: { delayed: this.summary.delayed } },
                     ...queues, ...workerNodes, ...results,
                 ];
             },
@@ -142,8 +176,8 @@
                 this.graphNodes.filter(n => n.type === 'queue').forEach((q, i) => {
                     const w = workers[i % workers.length];
                     const producer = (q.status === 'critical' || q.status === 'warning') ? 'producer-scheduler' : 'producer-app';
-                    generated.push(this.edge(producer, q.id, q.status, 'dispatch', q.metrics.throughput));
-                    generated.push(this.edge(q.id, w.id, q.status, 'reserve', q.metrics.throughput));
+                    generated.push(this.edge(producer, q.id, q.status, 'dispatch', q.metrics.current_throughput ?? q.metrics.throughput));
+                    generated.push(this.edge(q.id, w.id, q.status, 'reserve', q.metrics.current_throughput ?? q.metrics.throughput));
                 });
                 if (completed) workers.forEach(w => generated.push(this.edge(w.id, completed.id, 'healthy', 'finish', this.summary.throughput_per_minute)));
                 if (failed && Number(this.summary.failed ?? 0) > 0) generated.push(this.edge(workers[workers.length - 1].id, failed.id, 'critical', 'exception', this.summary.failed));
@@ -153,7 +187,30 @@
             particles() {
                 if (!this.live) return [];
 
-                return this.graphEdges.filter(edge => Number(edge.rate_per_minute ?? 0) > 0).flatMap((edge, ei) => {
+                return this.graphEdges.filter(edge => {
+                    // Always require a non-zero historic rate
+                    if (Number(edge.rate_per_minute ?? 0) <= 0) return false;
+
+                    const src = this.graphNodeLookup[edge.source];
+                    const tgt = this.graphNodeLookup[edge.target];
+
+                    // For edges touching a queue node, gate on the queue actually having
+                    // work right now — not just a stale smoothed rate from minutes ago.
+                    const queueNode = src?.type === 'queue' ? src
+                        : tgt?.type === 'queue' ? tgt
+                        : null;
+                    if (queueNode) {
+                        const m = queueNode.metrics ?? {};
+                        return Number(m.pending ?? 0) > 0 || Number(m.processes ?? 0) > 0;
+                    }
+
+                    // Failed-result sink: only animate when there are actual recent failures.
+                    if (tgt?.type === 'result' && tgt.label === 'failed') {
+                        return Number(this.summary.failed ?? 0) > 0;
+                    }
+
+                    return true;
+                }).flatMap((edge, ei) => {
                     const count = edge.status === 'critical' || edge.status === 'warning' ? 2 : Math.min(3, Math.max(1, Math.ceil((edge.rate_per_minute ?? 20) / 120)));
                     return Array.from({ length: count }).map((_, i) => ({
                         id: `${edge.id}-${i}`,
@@ -295,6 +352,20 @@
                 return (value === null || value === undefined) ? 'n/a' : `${this.formatNumber(value)}/m`;
             },
 
+            formatDuration(value) {
+                if (value === null || value === undefined) return 'n/a';
+                const seconds = Number(value);
+                if (seconds < 60) return `${seconds}s`;
+                if (seconds < 3600) return `${Math.round(seconds / 60)}m`;
+                if (seconds < 86400) return `${(seconds / 3600).toFixed(1)}h`;
+                return `${(seconds / 86400).toFixed(1)}d`;
+            },
+
+            formatPercent(value) {
+                if (value === null || value === undefined) return 'n/a';
+                return `${this.formatNumber(value)}%`;
+            },
+
             statusLabel(status) {
                 return { healthy: 'healthy', warning: 'backpressure', critical: 'critical' }[status] ?? status;
             },
@@ -326,12 +397,12 @@
 
             findQueueNode(queue) {
                 return (this.flow?.nodes ?? []).find(n =>
-                    n.type === 'queue' && (n.label === queue.name || n.id === this.queueNodeId(queue) || n.id.endsWith(`-${queue.name}`))
+                    n.type === 'queue' && (n.id === this.queueNodeId(queue) || n.label === queue.name || n.id.endsWith(`-${queue.name}`))
                 );
             },
 
             queueNodeId(queue) {
-                return `queue-${queue.connection}-${queue.name}`.replace(/[^a-z0-9-]+/gi, '-').toLowerCase();
+                return `queue-${queue.driver}-${queue.connection}-${queue.name}`.replace(/[^a-z0-9-]+/gi, '-').toLowerCase();
             },
 
             queueStatus(queue) {
@@ -343,7 +414,7 @@
 
             queueSubLabel(queue) {
                 if ((queue.failed ?? 0) > 0) return `${queue.connection} · ${this.formatNumber(queue.failed)} failed`;
-                return `${queue.connection} · ${this.formatNumber(queue.pending)} pending`;
+                return `${queue.driver} · ${queue.connection} · ${this.formatNumber(queue.pending)} pending`;
             },
 
             resultSubLabel(node) {
@@ -412,11 +483,17 @@
             // ── inspector ──────────────────────────────────────────────────────
             inspectorMetrics(node, queue) {
                 if (queue) return [
-                    ['Connection', queue.connection], ['Driver', queue.driver],
+                    ['Source', queue.source ?? queue.driver], ['Connection', queue.connection],
+                    ['Storage', queue.storage_connection ?? 'n/a'], ['Driver', queue.driver],
                     ['Pending', this.formatNumber(queue.pending)], ['Delayed', this.formatNumber(queue.delayed)],
+                    ['Oldest pending', this.formatDuration(queue.oldest_pending_seconds ?? queue.wait_seconds)],
                     ['Wait', this.metricValue(queue.wait_seconds, 's')], ['Processes', this.formatNumber(queue.processes)],
-                    ['Throughput', this.formatRate(queue.throughput_per_minute)],
-                    ['Failed', this.formatNumber(queue.failed ?? 0)], ['Latest error', queue.latest_error ?? 'none'],
+                    ['Current rate', this.formatRate(queue.current_throughput_per_minute)],
+                    ['Last measured', this.formatRate(queue.throughput_per_minute)],
+                    ['Drain ETA', this.formatDuration(queue.estimated_drain_seconds)],
+                    ['Attempts', this.formatNumber(queue.attempts ?? 0)],
+                    ['Failed', this.formatNumber(queue.failed ?? 0)], ['Failure rate', this.formatPercent(queue.failure_rate)],
+                    ['Latest error', queue.latest_error ?? 'none'],
                 ];
                 return Object.entries(node.metrics ?? {}).map(([k, v]) => [k.replace(/_/g, ' '), this.formatNumber(v)]);
             },
@@ -491,9 +568,9 @@
                 <div class="hxb-kpi-sub">{{ timeRange.toLowerCase() }}</div>
             </div>
             <div class="hxb-kpi throughput">
-                <div class="hxb-kpi-label">Throughput</div>
-                <div class="hxb-kpi-value">{{ metricValue(summary.throughput_per_minute) }}</div>
-                <div class="hxb-kpi-sub">jobs / min</div>
+                <div class="hxb-kpi-label">Current Flow</div>
+                <div class="hxb-kpi-value">{{ metricValue(summary.current_throughput_per_minute ?? summary.throughput_per_minute) }}</div>
+                <div class="hxb-kpi-sub">moving jobs / min</div>
             </div>
             <div class="hxb-kpi wait">
                 <div class="hxb-kpi-label">Avg Wait</div>
@@ -540,7 +617,7 @@
                         <svg
                             ref="flowSvg"
                             class="hxb-flow-svg"
-                            viewBox="0 0 980 390"
+                            :viewBox="'0 0 980 ' + svgHeight"
                             xmlns="http://www.w3.org/2000/svg"
                             :style="{ cursor: isPanning ? 'grabbing' : 'grab' }"
                             @pointerdown="onCanvasPointerDown"
@@ -574,12 +651,12 @@
 
                             <!-- Static background (not transformed) -->
                             <g class="hxb-svg-grid">
-                                <line x1="230" y1="0" x2="230" y2="390"/>
-                                <line x1="490" y1="0" x2="490" y2="390"/>
-                                <line x1="740" y1="0" x2="740" y2="390"/>
-                                <line x1="0" y1="97"  x2="980" y2="97"/>
-                                <line x1="0" y1="195" x2="980" y2="195"/>
-                                <line x1="0" y1="293" x2="980" y2="293"/>
+                                <line x1="230" y1="0" x2="230" :y2="svgHeight"/>
+                                <line x1="490" y1="0" x2="490" :y2="svgHeight"/>
+                                <line x1="740" y1="0" x2="740" :y2="svgHeight"/>
+                                <line x1="0" :y1="svgHeight * 0.25" x2="980" :y2="svgHeight * 0.25"/>
+                                <line x1="0" :y1="svgHeight * 0.50" x2="980" :y2="svgHeight * 0.50"/>
+                                <line x1="0" :y1="svgHeight * 0.75" x2="980" :y2="svgHeight * 0.75"/>
                             </g>
                             <text x="96"  y="17" text-anchor="middle" class="hxb-svg-text hxb-stage-lbl">PRODUCERS</text>
                             <text x="314" y="17" text-anchor="middle" class="hxb-svg-text hxb-stage-lbl">QUEUES</text>
@@ -693,31 +770,38 @@
                         <table class="hxb-table">
                             <thead>
                                 <tr>
-                                    <th>Queue</th><th>Connection</th><th>Driver</th>
-                                    <th class="r">Pending</th><th class="r">Delayed</th><th class="r">Wait</th>
-                                    <th class="r">Procs</th><th class="r">Throughput</th><th class="r">Failed</th><th class="r">Status</th>
+                                    <th>Queue</th><th>Source</th><th>Connection</th><th>Driver</th>
+                                    <th class="r">Pending</th><th class="r">Delayed</th><th class="r">Oldest</th><th class="r">Wait</th>
+                                    <th class="r">Procs</th><th class="r">Current</th><th class="r">Last</th><th class="r">ETA</th>
+                                    <th class="r">Attempts</th><th class="r">Failed</th><th class="r">Fail %</th><th class="r">Status</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 <tr
                                     v-for="queue in filteredQueues"
-                                    :key="queue.connection + ':' + queue.name"
+                                    :key="queue.driver + ':' + queue.connection + ':' + queue.name"
                                     :class="{ selected: selectedId === (findQueueNode(queue)?.id ?? queueNodeId(queue)) }"
                                     @click="selectNode(findQueueNode(queue)?.id ?? queueNodeId(queue))"
                                 >
                                     <td><span class="hxb-qname"><span class="hxb-sdot" :class="'s-' + queueStatus(queue)"></span>{{ queue.name }}</span></td>
+                                    <td class="dim">{{ queue.source ?? queue.driver }}</td>
                                     <td class="dim">{{ queue.connection }}</td>
                                     <td><span class="hxb-driver" :class="'driver-' + queue.driver">{{ queue.driver }}</span></td>
                                     <td class="r" :class="{ warn: queue.pending > 100, danger: queue.pending > 500 }">{{ formatNumber(queue.pending) }}</td>
                                     <td class="r dim">{{ formatNumber(queue.delayed) }}</td>
+                                    <td class="r" :class="{ warn: (queue.oldest_pending_seconds ?? 0) >= 10, danger: (queue.oldest_pending_seconds ?? 0) >= 30 }">{{ formatDuration(queue.oldest_pending_seconds ?? queue.wait_seconds) }}</td>
                                     <td class="r" :class="{ warn: queue.wait_seconds >= 10, danger: queue.wait_seconds >= 30 }">{{ metricValue(queue.wait_seconds, 's') }}</td>
                                     <td class="r">{{ formatNumber(queue.processes) }}</td>
-                                    <td class="r ok">{{ formatRate(queue.throughput_per_minute) }}</td>
+                                    <td class="r ok">{{ formatRate(queue.current_throughput_per_minute) }}</td>
+                                    <td class="r dim">{{ formatRate(queue.throughput_per_minute) }}</td>
+                                    <td class="r">{{ formatDuration(queue.estimated_drain_seconds) }}</td>
+                                    <td class="r">{{ formatNumber(queue.attempts ?? 0) }}</td>
                                     <td class="r" :class="{ danger: (queue.failed ?? 0) > 0 }">{{ formatNumber(queue.failed ?? 0) }}</td>
+                                    <td class="r" :class="{ danger: (queue.failure_rate ?? 0) > 0 }">{{ formatPercent(queue.failure_rate) }}</td>
                                     <td class="r"><span class="hxb-badge" :class="'b-' + queueStatus(queue)">{{ statusLabel(queueStatus(queue)) }}</span></td>
                                 </tr>
                                 <tr v-if="filteredQueues.length === 0">
-                                    <td colspan="10" class="hxb-empty-row">{{ filterText ? 'No queues match the filter.' : 'No queues found.' }}</td>
+                                    <td colspan="16" class="hxb-empty-row">{{ filterText ? 'No queues match the filter.' : 'No queues found.' }}</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -772,7 +856,7 @@
                         <div class="hxb-edge-row" v-for="edge in selectedInspector.incoming" :key="edge.id">
                             <span class="hxb-sdot" :class="'s-' + edge.status"></span>
                             <span class="hxb-edge-lbl">{{ graphNodeLookup[edge.source]?.label ?? edge.source }}</span>
-                            <small>{{ formatRate(edge.rate_per_minute) }}</small>
+                            <small>{{ edgeDisplayLabel(edge) }}</small>
                         </div>
                         <div class="hxb-empty" v-if="selectedInspector.incoming.length === 0">—</div>
                     </div>
@@ -782,7 +866,7 @@
                         <div class="hxb-edge-row" v-for="edge in selectedInspector.outgoing" :key="edge.id">
                             <span class="hxb-sdot" :class="'s-' + edge.status"></span>
                             <span class="hxb-edge-lbl">{{ graphNodeLookup[edge.target]?.label ?? edge.target }}</span>
-                            <small>{{ formatRate(edge.rate_per_minute) }}</small>
+                            <small>{{ edgeDisplayLabel(edge) }}</small>
                         </div>
                         <div class="hxb-empty" v-if="selectedInspector.outgoing.length === 0">—</div>
                     </div>
@@ -913,6 +997,7 @@
     .hxb-spacer { flex:1; }
     .hxb-source-badge { gap:5px; padding:2px 8px; border-radius:3px; font-size:10px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; }
     .hxb-source-mock   { background:var(--hxb-blue-dim);  border:1px solid var(--hxb-blue-border);  color:var(--hxb-blue); }
+    .hxb-source-auto   { background:var(--hxb-violet-dim); border:1px solid var(--hxb-violet); color:var(--hxb-violet); }
     .hxb-source-redis  { background:var(--hxb-red-dim);   border:1px solid var(--hxb-red-border);   color:var(--hxb-red); }
     .hxb-source-db     { background:var(--hxb-green-dim); border:1px solid var(--hxb-green-border); color:var(--hxb-green); }
     .hxb-pulse { width:6px; height:6px; border-radius:50%; background:currentColor; animation:hxb-blink 2s ease-in-out infinite; }
@@ -962,7 +1047,7 @@
 
     /* ── FLOW CANVAS ──────────────────────────────────────────────────────── */
     .hxb-canvas-wrap { background:var(--hxb-canvas); overflow:hidden; user-select:none; }
-    .hxb-flow-svg { width:100%; height:360px; display:block; }
+    .hxb-flow-svg { width:100%; height:auto; min-height:280px; max-height:660px; display:block; }
     .hxb-svg-text { font-family:ui-monospace,"Cascadia Code","SF Mono",monospace; }
     .hxb-svg-node { cursor:pointer; }
     .hxb-svg-node:hover > rect:first-child { filter:brightness(1.06); }

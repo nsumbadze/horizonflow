@@ -3,8 +3,11 @@
 namespace Laravel\Horizon\Repositories;
 
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Laravel\Horizon\Contracts\QueueFlowRepository;
+use Throwable;
 
 class DatabaseQueueFlowRepository implements QueueFlowRepository
 {
@@ -17,12 +20,26 @@ class DatabaseQueueFlowRepository implements QueueFlowRepository
      */
     public function get(): array
     {
-        $queues = collect($this->connections())
+        $connections = $this->connections();
+        $failed = $this->failedByQueue($connections);
+
+        $queues = collect($connections)
             ->flatMap(fn (array $connection): array => $this->queuesForConnection($connection))
-            ->sortBy(['connection', 'name'])
+            ->map(function (array $queue) use ($failed): array {
+                $failure = $failed[$this->queueKey($queue)] ?? ['failed' => 0, 'latest_error' => null, 'last_failed_at' => null];
+
+                return [
+                    ...$queue,
+                    'failed' => $failure['failed'],
+                    'latest_error' => $failure['latest_error'],
+                    'last_failed_at' => $failure['last_failed_at'],
+                    'failure_rate' => null,
+                ];
+            })
+            ->sortBy(fn (array $queue): string => $queue['connection'].':'.$queue['name'])
             ->values();
 
-        $failed = $this->failedCount();
+        $failedCount = $queues->sum('failed');
 
         return [
             'source' => 'database',
@@ -32,24 +49,25 @@ class DatabaseQueueFlowRepository implements QueueFlowRepository
                 'pending' => $queues->sum('pending'),
                 'processing' => null,
                 'completed' => null,
-                'failed' => $failed,
+                'failed' => $failedCount,
                 'delayed' => $queues->sum('delayed'),
                 'throughput_per_minute' => null,
+                'current_throughput_per_minute' => 0,
                 'average_wait_seconds' => (int) round($queues->avg('wait_seconds') ?? 0),
                 'connections' => $queues->pluck('connection')->unique()->values()->all(),
             ],
-            'nodes' => $this->nodes($queues->all(), $failed),
-            'edges' => $this->edges($queues->all(), $failed),
+            'nodes' => $this->nodes($queues->all(), $failedCount),
+            'edges' => $this->edges($queues->all(), $failedCount),
             'queues' => $queues->all(),
             'events' => [
-                ['status' => 'healthy', 'label' => 'Database queue tables scanned'],
-                ['status' => 'warning', 'label' => 'Processing counts require worker telemetry'],
+                ['status' => 'healthy', 'label' => 'Database queue tables scanned: '.$queues->pluck('connection')->unique()->implode(', ')],
+                ['status' => 'warning', 'label' => 'Database queue processing counts require worker telemetry'],
             ],
         ];
     }
 
     /**
-     * @return array<int, array{connection: string, database: string|null, table: string, queue: string|null}>
+     * @return array<int, array{connection: string, queue_connection: string, database: string|null, table: string, queue: string|null}>
      */
     protected function connections(): array
     {
@@ -58,24 +76,46 @@ class DatabaseQueueFlowRepository implements QueueFlowRepository
         if ($configured !== []) {
             return collect($configured)->map(fn (array $connection, string $name): array => [
                 'connection' => $name,
-                'database' => $connection['connection'] ?? null,
+                'queue_connection' => $connection['queue_connection'] ?? $name,
+                'database' => $connection['connection'] ?? $name,
                 'table' => $connection['table'] ?? 'jobs',
                 'queue' => $connection['queue'] ?? null,
             ])->values()->all();
         }
 
-        return collect(config('queue.connections', []))
+        $queueConnections = collect(config('queue.connections', []))
             ->filter(fn (array $connection): bool => ($connection['driver'] ?? null) === 'database')
             ->map(fn (array $connection, string $name): array => [
-                'connection' => $name,
-                'database' => $connection['connection'] ?? null,
+                'connection' => $connection['connection'] ?? config('database.default', $name),
+                'queue_connection' => $name,
+                'database' => $connection['connection'] ?? config('database.default'),
                 'table' => $connection['table'] ?? 'jobs',
                 'queue' => $connection['queue'] ?? null,
-            ])->values()->all();
+            ]);
+
+        if (! config('horizonxbrain.flow.database.discover_connections', true)) {
+            return $queueConnections->unique(fn (array $connection): string => $this->connectionKey($connection))->values()->all();
+        }
+
+        $databaseConnections = collect(config('database.connections', []))
+            ->filter(fn (array $connection): bool => in_array($connection['driver'] ?? null, ['mysql', 'pgsql', 'sqlite', 'sqlsrv'], true))
+            ->map(fn (array $connection, string $name): array => [
+                'connection' => $name,
+                'queue_connection' => $name,
+                'database' => $name,
+                'table' => 'jobs',
+                'queue' => null,
+            ]);
+
+        return $queueConnections
+            ->merge($databaseConnections)
+            ->unique(fn (array $connection): string => $this->connectionKey($connection))
+            ->values()
+            ->all();
     }
 
     /**
-     * @param  array{connection: string, database: string|null, table: string, queue: string|null}  $connection
+     * @param  array{connection: string, queue_connection: string, database: string|null, table: string, queue: string|null}  $connection
      * @return array<int, array<string, mixed>>
      */
     protected function queuesForConnection(array $connection): array
@@ -83,28 +123,83 @@ class DatabaseQueueFlowRepository implements QueueFlowRepository
         try {
             $rows = DB::connection($connection['database'])
                 ->table($connection['table'])
-                ->selectRaw('queue, count(*) as pending, sum(case when available_at > ? then 1 else 0 end) as delayed, min(available_at) as oldest_available_at', [Carbon::now()->timestamp])
+                ->selectRaw('queue, count(*) as pending, sum(case when available_at > ? then 1 else 0 end) as delayed, min(case when available_at <= ? then available_at else null end) as oldest_available_at, max(attempts) as attempts', [Carbon::now()->timestamp, Carbon::now()->timestamp])
                 ->when($connection['queue'], fn ($query, string $queue) => $query->where('queue', $queue))
                 ->groupBy('queue')
                 ->get();
-        } catch (\Throwable) {
+        } catch (Throwable) {
             return [];
         }
 
         return $rows->map(function (object $row) use ($connection): array {
             $oldestAvailableAt = $row->oldest_available_at ? (int) $row->oldest_available_at : Carbon::now()->timestamp;
+            $pending = (int) $row->pending;
 
             return [
                 'connection' => $connection['connection'],
+                'queue_connection' => $connection['queue_connection'],
+                'storage_connection' => $connection['database'],
                 'name' => $row->queue,
-                'pending' => (int) $row->pending,
+                'pending' => $pending,
                 'wait_seconds' => max(0, Carbon::now()->timestamp - $oldestAvailableAt),
+                'oldest_pending_seconds' => max(0, Carbon::now()->timestamp - $oldestAvailableAt),
                 'processes' => null,
                 'throughput_per_minute' => null,
+                'current_throughput_per_minute' => 0,
+                'estimated_drain_seconds' => null,
+                'attempts' => (int) ($row->attempts ?? 0),
+                'completed' => null,
                 'delayed' => (int) $row->delayed,
                 'driver' => 'database',
+                'source' => $connection['connection'],
             ];
         })->all();
+    }
+
+    /**
+     * @param  array<int, array{connection: string, queue_connection: string, database: string|null, table: string, queue: string|null}>  $connections
+     * @return array<string, array{failed: int, latest_error: string|null, last_failed_at: string|null}>
+     */
+    protected function failedByQueue(array $connections): array
+    {
+        return collect($connections)
+            ->flatMap(fn (array $connection): Collection => $this->failedForConnection($connection))
+            ->groupBy(fn (array $failure): string => $this->queueKey($failure))
+            ->map(fn (Collection $failures): array => [
+                'failed' => $failures->sum('failed'),
+                'latest_error' => $failures->pluck('latest_error')->filter()->first(),
+                'last_failed_at' => $failures->pluck('last_failed_at')->filter()->sortDesc()->first(),
+            ])
+            ->all();
+    }
+
+    /**
+     * @param  array{connection: string, queue_connection: string, database: string|null, table: string, queue: string|null}  $connection
+     * @return \Illuminate\Support\Collection<int, array<string, mixed>>
+     */
+    protected function failedForConnection(array $connection): Collection
+    {
+        try {
+            return DB::connection($connection['database'])
+                ->table(config('horizonxbrain.flow.database.failed_table', 'failed_jobs'))
+                ->select(['connection', 'queue', 'exception', 'failed_at'])
+                ->whereIn('connection', [$connection['queue_connection'], $connection['connection']])
+                ->when($connection['queue'], fn ($query, string $queue) => $query->where('queue', $queue))
+                ->orderByDesc('failed_at')
+                ->limit(100)
+                ->get()
+                ->map(fn (object $row): array => [
+                    'connection' => $connection['connection'],
+                    'queue_connection' => $row->connection,
+                    'storage_connection' => $connection['database'],
+                    'name' => $row->queue,
+                    'failed' => 1,
+                    'latest_error' => $this->exceptionSummary($row->exception ?? null),
+                    'last_failed_at' => (string) ($row->failed_at ?? ''),
+                ]);
+        } catch (Throwable) {
+            return collect();
+        }
     }
 
     /**
@@ -126,6 +221,8 @@ class DatabaseQueueFlowRepository implements QueueFlowRepository
                 'pending' => $queue['pending'],
                 'wait' => $queue['wait_seconds'],
                 'delayed' => $queue['delayed'],
+                'failed' => $queue['failed'] ?? 0,
+                'latest_error' => $queue['latest_error'] ?? null,
             ]);
         }
 
@@ -157,13 +254,13 @@ class DatabaseQueueFlowRepository implements QueueFlowRepository
         return $edges;
     }
 
-    protected function failedCount(): int
+    protected function connectionKey(array $connection): string
     {
-        try {
-            return DB::table(config('horizonxbrain.flow.database.failed_table', 'failed_jobs'))->count();
-        } catch (\Throwable) {
-            return 0;
-        }
+        return implode(':', [
+            $connection['database'] ?? config('database.default'),
+            $connection['table'],
+            $connection['queue'] ?? '*',
+        ]);
     }
 
     /**
@@ -171,7 +268,19 @@ class DatabaseQueueFlowRepository implements QueueFlowRepository
      */
     protected function queueId(array $queue): string
     {
-        return 'queue-'.preg_replace('/[^a-z0-9]+/i', '-', strtolower($queue['connection'].'-'.$queue['name']));
+        return 'queue-'.preg_replace('/[^a-z0-9]+/i', '-', strtolower($queue['driver'].'-'.$queue['connection'].'-'.$queue['name']));
+    }
+
+    /**
+     * @param  array<string, mixed>  $queue
+     */
+    protected function queueKey(array $queue): string
+    {
+        return implode(':', [
+            $queue['driver'] ?? 'database',
+            $queue['connection'],
+            $queue['name'],
+        ]);
     }
 
     /**
@@ -180,10 +289,22 @@ class DatabaseQueueFlowRepository implements QueueFlowRepository
     protected function status(array $queue): string
     {
         return match (true) {
+            ($queue['failed'] ?? 0) > 0 => 'critical',
             $queue['wait_seconds'] >= 30 || $queue['pending'] >= 500 => 'critical',
             $queue['wait_seconds'] >= 10 || $queue['pending'] >= 100 || $queue['delayed'] > 0 => 'warning',
             default => 'healthy',
         };
+    }
+
+    protected function exceptionSummary(?string $exception): ?string
+    {
+        $exception = trim((string) $exception);
+
+        if ($exception === '') {
+            return null;
+        }
+
+        return Str::limit(strtok($exception, "\n") ?: $exception, 180);
     }
 
     /**
