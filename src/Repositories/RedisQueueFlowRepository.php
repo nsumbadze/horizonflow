@@ -50,8 +50,9 @@ class RedisQueueFlowRepository implements QueueFlowRepository
                 'failed' => $failed,
                 'delayed' => null,
                 'throughput_per_minute' => $this->metrics->jobsProcessedPerMinute(),
+                'current_throughput_per_minute' => $queues->sum('current_throughput'),
                 'average_wait_seconds' => (int) round($queues->avg('wait') ?? 0),
-                'connections' => $queues->map(fn (array $queue): string => $this->connectionName($queue['name']))->unique()->values()->all(),
+                'connections' => ['redis'],
             ],
             'nodes' => $this->nodes($queues->all(), $failed),
             'edges' => $this->edges($queues->all(), $failed),
@@ -87,9 +88,7 @@ class RedisQueueFlowRepository implements QueueFlowRepository
             $queue['completed'] = max((int) $queue['completed'], $observation['completed']);
             $queue['attempts'] = max((int) $queue['attempts'], $observation['attempts']);
             $queue['latest_error'] ??= $observation['latest_error'];
-            $queue['current_throughput'] = (int) $queue['length'] > 0 || (int) $queue['processes'] > 0
-                ? (int) $queue['throughput']
-                : 0;
+            $queue['current_throughput'] = $this->currentThroughput((int) $queue['processes'], (int) $queue['throughput']);
 
             $queues[$name] = $queue;
         }
@@ -152,7 +151,7 @@ class RedisQueueFlowRepository implements QueueFlowRepository
             $edges[] = $this->edge($queueId, 'workers', $status, 'reserve', $throughput);
         }
 
-        $edges[] = $this->edge('workers', 'completed', 'healthy', 'finish', $this->metrics->jobsProcessedPerMinute());
+        $edges[] = $this->edge('workers', 'completed', 'healthy', 'finish', collect($queues)->sum('current_throughput'));
 
         if ($failed > 0) {
             $edges[] = $this->edge('workers', 'failed', 'critical', "{$failed} failed", 0);
@@ -213,7 +212,7 @@ class RedisQueueFlowRepository implements QueueFlowRepository
             'throughput_per_minute' => (int) $queue['throughput'],
             'current_throughput_per_minute' => (int) $queue['current_throughput'],
             'oldest_pending_seconds' => (int) $queue['wait'],
-            'estimated_drain_seconds' => $this->estimatedDrainSeconds((int) $queue['length'], (int) $queue['throughput']),
+            'estimated_drain_seconds' => $this->estimatedDrainSeconds((int) $queue['length'], (int) $queue['current_throughput']),
             'attempts' => (int) $queue['attempts'],
             'completed' => (int) $queue['completed'],
             'failed' => (int) $queue['failed'],
@@ -298,7 +297,7 @@ class RedisQueueFlowRepository implements QueueFlowRepository
             'wait' => (int) ($queue['wait'] ?? 0),
             'processes' => $processes,
             'throughput' => $throughput,
-            'current_throughput' => $length > 0 || $processes > 0 ? $throughput : 0,
+            'current_throughput' => $this->currentThroughput($processes, $throughput),
             'completed' => (int) ($queue['completed'] ?? 0),
             'failed' => (int) ($queue['failed'] ?? 0),
             'attempts' => (int) ($queue['attempts'] ?? 0),
@@ -392,6 +391,11 @@ class RedisQueueFlowRepository implements QueueFlowRepository
     protected function redisQueueKey(string $name): string
     {
         return 'redis:'.$this->queueName($name);
+    }
+
+    protected function currentThroughput(int $processes, int $throughput): int
+    {
+        return $processes > 0 ? $throughput : 0;
     }
 
     protected function estimatedDrainSeconds(int $pending, int $throughput): ?int

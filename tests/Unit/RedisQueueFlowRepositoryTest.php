@@ -97,10 +97,44 @@ class RedisQueueFlowRepositoryTest extends UnitTest
         $this->assertSame('RuntimeException: Upstream API timed out', $queue['latest_error']);
     }
 
+    public function test_current_throughput_requires_active_processes(): void
+    {
+        $idleRepository = $this->repository(
+            [
+                [
+                    'name' => 'redis:orders-sync',
+                    'length' => 2,
+                    'wait' => 20,
+                    'processes' => 0,
+                ],
+            ],
+            collect(),
+            null,
+            120
+        );
+
+        $activeRepository = $this->repository(
+            [
+                [
+                    'name' => 'redis:orders-sync',
+                    'length' => 2,
+                    'wait' => 20,
+                    'processes' => 1,
+                ],
+            ],
+            collect(),
+            null,
+            120
+        );
+
+        $this->assertSame(0, $idleRepository->exposedQueues()[0]['current_throughput']);
+        $this->assertSame(120, $activeRepository->exposedQueues()[0]['current_throughput']);
+    }
+
     /**
      * @param  array<int, array<string, mixed>>  $workloadQueues
      */
-    protected function repository(array $workloadQueues, Collection $pendingJobs, ?Collection $failedJobs = null): RedisQueueFlowRepository
+    protected function repository(array $workloadQueues, Collection $pendingJobs, ?Collection $failedJobs = null, int $throughput = 0): RedisQueueFlowRepository
     {
         $workload = Mockery::mock(WorkloadRepository::class);
         $workload->shouldReceive('get')->once()->andReturn($workloadQueues);
@@ -111,7 +145,7 @@ class RedisQueueFlowRepositoryTest extends UnitTest
         $jobs->shouldReceive('getFailed')->once()->with(-1)->andReturn($failedJobs ?? collect());
 
         $metrics = Mockery::mock(MetricsRepository::class);
-        $metrics->shouldReceive('throughputForQueue')->byDefault()->andReturn(0);
+        $metrics->shouldReceive('throughputForQueue')->byDefault()->andReturn($throughput);
 
         return new class(
             $workload,

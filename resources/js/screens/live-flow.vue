@@ -369,6 +369,12 @@
                 return `${queue.driver} · ${queue.connection} · ${this.formatNumber(queue.pending)} pending`;
             },
 
+            throughputState(queue) {
+                if (Number(queue.current_throughput_per_minute ?? 0) > 0) return 'active';
+                if (Number(queue.throughput_per_minute ?? 0) > 0) return 'last measured';
+                return 'idle';
+            },
+
             resultSubLabel(node) {
                 if (node.label === 'failed')  return `${this.formatNumber(this.summary.failed)} failed`;
                 if (node.label === 'delayed') return `${this.formatNumber(this.summary.delayed)} delayed`;
@@ -434,6 +440,7 @@
                     ['Wait', this.metricValue(queue.wait_seconds, 's')], ['Processes', this.formatNumber(queue.processes)],
                     ['Current rate', this.formatRate(queue.current_throughput_per_minute)],
                     ['Last measured', this.formatRate(queue.throughput_per_minute)],
+                    ['Flow state', this.throughputState(queue)],
                     ['Drain ETA', this.formatDuration(queue.estimated_drain_seconds)],
                     ['Attempts', this.formatNumber(queue.attempts ?? 0)],
                     ['Failed', this.formatNumber(queue.failed ?? 0)],
@@ -444,9 +451,21 @@
             },
 
             suggestedAction(node, queue) {
-                if (node.status === 'critical') return { type: 'critical', title: 'Immediate Action', text: queue ? (queue.latest_error ? `${queue.name} has failed jobs. Latest error: ${queue.latest_error}` : `Backlog is critical on ${queue.name}. Scale workers or reduce dispatch rate.`) : 'Failures above normal. Inspect failed job payloads.' };
+                if (node.status === 'critical') return { type: 'critical', title: 'Immediate Action', text: queue ? this.criticalActionText(queue) : 'Failures above normal. Inspect failed job payloads.' };
                 if (node.status === 'warning')  return { type: 'warn', title: 'Suggested Action', text: queue ? `${queue.name} is showing backpressure. Watch wait time and consider increasing process capacity.` : 'This node is under pressure. Monitor incoming rates.' };
                 return { type: 'ok', title: 'Status', text: 'Node is operating normally. No action required.' };
+            },
+
+            criticalActionText(queue) {
+                if (queue.latest_error) {
+                    return `${queue.name} has failed jobs. Latest error: ${queue.latest_error}`;
+                }
+
+                if (Number(queue.pending ?? 0) > 0 && Number(queue.processes ?? 0) === 0) {
+                    return `${queue.name} has pending jobs but no active workers. Add this queue to Horizon supervisor queues and restart Horizon.`;
+                }
+
+                return `Backlog is critical on ${queue.name}. Scale workers or reduce dispatch rate.`;
             },
         },
     }
@@ -798,7 +817,7 @@
                                     <td class="text-end" :class="{ 'text-warning': (queue.oldest_pending_seconds ?? 0) >= 10, 'text-danger': (queue.oldest_pending_seconds ?? 0) >= 30 }">{{ formatDuration(queue.oldest_pending_seconds ?? queue.wait_seconds) }}</td>
                                     <td class="text-end" :class="{ 'text-warning': queue.wait_seconds >= 10, 'text-danger': queue.wait_seconds >= 30 }">{{ metricValue(queue.wait_seconds, 's') }}</td>
                                     <td class="text-end text-muted">{{ formatNumber(queue.processes) }}</td>
-                                    <td class="text-end text-success">{{ formatRate(queue.current_throughput_per_minute) }}</td>
+                                    <td class="text-end" :class="{ 'text-success': (queue.current_throughput_per_minute ?? 0) > 0, 'text-muted': (queue.current_throughput_per_minute ?? 0) <= 0 }">{{ formatRate(queue.current_throughput_per_minute) }}</td>
                                     <td class="text-end text-muted">{{ formatRate(queue.throughput_per_minute) }}</td>
                                     <td class="text-end text-muted">{{ formatDuration(queue.estimated_drain_seconds) }}</td>
                                     <td class="text-end text-muted">{{ formatNumber(queue.attempts ?? 0) }}</td>
