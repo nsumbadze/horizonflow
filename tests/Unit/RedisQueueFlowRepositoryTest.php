@@ -131,10 +131,35 @@ class RedisQueueFlowRepositoryTest extends UnitTest
         $this->assertSame(120, $activeRepository->exposedQueues()[0]['current_throughput']);
     }
 
+    public function test_it_includes_discovered_redis_queue_keys(): void
+    {
+        $repository = $this->repository(
+            [],
+            collect(),
+            null,
+            0,
+            [
+                'redis:notifications' => [
+                    'length' => 3,
+                    'delayed' => 2,
+                    'reserved' => 1,
+                ],
+            ]
+        );
+
+        $queue = $repository->exposedQueues()[0];
+
+        $this->assertSame('notifications', $queue['name']);
+        $this->assertSame(3, $queue['length']);
+        $this->assertSame(2, $queue['delayed']);
+        $this->assertSame(1, $queue['reserved']);
+    }
+
     /**
      * @param  array<int, array<string, mixed>>  $workloadQueues
+     * @param  array<string, array{length: int, delayed: int, reserved: int}>  $discoveredQueues
      */
-    protected function repository(array $workloadQueues, Collection $pendingJobs, ?Collection $failedJobs = null, int $throughput = 0): RedisQueueFlowRepository
+    protected function repository(array $workloadQueues, Collection $pendingJobs, ?Collection $failedJobs = null, int $throughput = 0, array $discoveredQueues = []): RedisQueueFlowRepository
     {
         $workload = Mockery::mock(WorkloadRepository::class);
         $workload->shouldReceive('get')->once()->andReturn($workloadQueues);
@@ -147,16 +172,27 @@ class RedisQueueFlowRepositoryTest extends UnitTest
         $metrics = Mockery::mock(MetricsRepository::class);
         $metrics->shouldReceive('throughputForQueue')->byDefault()->andReturn($throughput);
 
-        return new class(
+        $repository = new class(
             $workload,
             $jobs,
             $metrics,
             Mockery::mock(SupervisorRepository::class)
         ) extends RedisQueueFlowRepository {
+            public array $discoveredQueues = [];
+
             public function exposedQueues(): Collection
             {
                 return $this->queues();
             }
+
+            protected function discoveredRedisQueues(): array
+            {
+                return $this->discoveredQueues;
+            }
         };
+
+        $repository->discoveredQueues = $discoveredQueues;
+
+        return $repository;
     }
 }

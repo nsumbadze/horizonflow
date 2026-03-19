@@ -4,6 +4,7 @@ namespace Laravel\Horizon\Repositories;
 
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Contracts\Redis\Factory as RedisFactory;
 use Illuminate\Support\Str;
 use Laravel\Horizon\Contracts\JobRepository;
 use Laravel\Horizon\Contracts\MetricsRepository;
@@ -24,6 +25,7 @@ class RedisQueueFlowRepository implements QueueFlowRepository
         protected JobRepository $jobs,
         protected MetricsRepository $metrics,
         protected SupervisorRepository $supervisors,
+        protected ?RedisFactory $redis = null,
     ) {
         //
     }
@@ -80,6 +82,15 @@ class RedisQueueFlowRepository implements QueueFlowRepository
             })
             ->all();
 
+        foreach ($this->discoveredRedisQueues() as $name => $discovered) {
+            $queue = $queues[$name] ?? $this->emptyQueue($name);
+            $queue['length'] = max((int) $queue['length'], $discovered['length']);
+            $queue['delayed'] = max((int) $queue['delayed'], $discovered['delayed']);
+            $queue['reserved'] = max((int) $queue['reserved'], $discovered['reserved']);
+
+            $queues[$name] = $queue;
+        }
+
         foreach ($this->queueObservations() as $name => $observation) {
             $queue = $queues[$name] ?? $this->emptyQueue($name);
             $queue['length'] = max((int) $queue['length'], $observation['pending']);
@@ -119,10 +130,12 @@ class RedisQueueFlowRepository implements QueueFlowRepository
                 $this->queueId($queue['name']),
                 'queue',
                 $queue['name'],
-                $this->status((int) $queue['wait'], (int) $queue['length'], (int) $queue['failed']),
+                $this->status((int) $queue['wait'], (int) $queue['length'], (int) $queue['failed'], (int) $queue['delayed']),
                 [
                     'pending' => (int) $queue['length'],
                     'wait' => (int) $queue['wait'],
+                    'delayed' => (int) $queue['delayed'],
+                    'reserved' => (int) $queue['reserved'],
                     'failed' => (int) $queue['failed'],
                     'latest_error' => $queue['latest_error'],
                     'current_throughput' => (int) $queue['current_throughput'],
@@ -143,7 +156,7 @@ class RedisQueueFlowRepository implements QueueFlowRepository
         $edges = [];
 
         foreach ($queues as $queue) {
-            $status = $this->status((int) $queue['wait'], (int) $queue['length'], (int) $queue['failed']);
+            $status = $this->status((int) $queue['wait'], (int) $queue['length'], (int) $queue['failed'], (int) $queue['delayed']);
             $queueId = $this->queueId($queue['name']);
             $throughput = (int) $queue['current_throughput'];
 
@@ -209,18 +222,100 @@ class RedisQueueFlowRepository implements QueueFlowRepository
             'pending' => (int) $queue['length'],
             'wait_seconds' => (int) $queue['wait'],
             'processes' => (int) $queue['processes'],
+            'reserved' => (int) $queue['reserved'],
             'throughput_per_minute' => (int) $queue['throughput'],
             'current_throughput_per_minute' => (int) $queue['current_throughput'],
             'oldest_pending_seconds' => (int) $queue['wait'],
             'estimated_drain_seconds' => $this->estimatedDrainSeconds((int) $queue['length'], (int) $queue['current_throughput']),
             'attempts' => (int) $queue['attempts'],
             'completed' => (int) $queue['completed'],
+            'delayed' => (int) $queue['delayed'],
             'failed' => (int) $queue['failed'],
             'failure_rate' => $this->failureRate((int) $queue['failed'], (int) $queue['completed']),
             'latest_error' => $queue['latest_error'],
             'driver' => 'redis',
             'source' => 'redis',
         ];
+    }
+
+    /**
+     * @return array<string, array{length: int, delayed: int, reserved: int}>
+     */
+    protected function discoveredRedisQueues(): array
+    {
+        $connection = $this->redisConnection();
+
+        if ($connection === null) {
+            return [];
+        }
+
+        $queues = [];
+
+        foreach ($this->redisQueueKeys($connection) as $key) {
+            $queue = $this->queueNameFromRedisKey($key);
+
+            if ($queue === null) {
+                continue;
+            }
+
+            $queues[$this->redisQueueKey($queue)] = $this->redisQueueSnapshot($connection, $queue);
+        }
+
+        return $queues;
+    }
+
+    protected function redisConnection(): mixed
+    {
+        try {
+            $redis = $this->redis ?? (app()->bound('redis') ? app('redis') : null);
+
+            if ($redis === null) {
+                return null;
+            }
+
+            $connection = config('queue.connections.redis.connection', config('horizon.use', 'default'));
+
+            return $redis->connection($connection);
+        } catch (Throwable) {
+            return null;
+        }
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    protected function redisQueueKeys(mixed $connection): array
+    {
+        try {
+            return (array) $connection->keys('queues:*');
+        } catch (Throwable) {
+            return [];
+        }
+    }
+
+    /**
+     * @return array{length: int, delayed: int, reserved: int}
+     */
+    protected function redisQueueSnapshot(mixed $connection, string $queue): array
+    {
+        try {
+            return [
+                'length' => (int) $connection->llen("queues:{$queue}"),
+                'delayed' => (int) $connection->zcard("queues:{$queue}:delayed"),
+                'reserved' => (int) $connection->zcard("queues:{$queue}:reserved"),
+            ];
+        } catch (Throwable) {
+            return ['length' => 0, 'delayed' => 0, 'reserved' => 0];
+        }
+    }
+
+    protected function queueNameFromRedisKey(string $key): ?string
+    {
+        if (! preg_match('/queues:([^:]+)(?::(?:delayed|reserved))?$/', $key, $matches)) {
+            return null;
+        }
+
+        return $matches[1];
     }
 
     /**
@@ -279,7 +374,7 @@ class RedisQueueFlowRepository implements QueueFlowRepository
     }
 
     /**
-     * @return array{key: string, storage_connection: string, name: string, length: int, wait: int, processes: int, throughput: int, current_throughput: int, completed: int, failed: int, attempts: int, latest_error: string|null}
+     * @return array{key: string, storage_connection: string, name: string, length: int, wait: int, processes: int, delayed: int, reserved: int, throughput: int, current_throughput: int, completed: int, failed: int, attempts: int, latest_error: string|null}
      */
     protected function normalizeQueue(array $queue): array
     {
@@ -296,6 +391,8 @@ class RedisQueueFlowRepository implements QueueFlowRepository
             'length' => $length,
             'wait' => (int) ($queue['wait'] ?? 0),
             'processes' => $processes,
+            'delayed' => (int) ($queue['delayed'] ?? 0),
+            'reserved' => (int) ($queue['reserved'] ?? 0),
             'throughput' => $throughput,
             'current_throughput' => $this->currentThroughput($processes, $throughput),
             'completed' => (int) ($queue['completed'] ?? 0),
@@ -306,7 +403,7 @@ class RedisQueueFlowRepository implements QueueFlowRepository
     }
 
     /**
-     * @return array{key: string, storage_connection: string, name: string, length: int, wait: int, processes: int, throughput: int, current_throughput: int, completed: int, failed: int, attempts: int, latest_error: string|null}
+     * @return array{key: string, storage_connection: string, name: string, length: int, wait: int, processes: int, delayed: int, reserved: int, throughput: int, current_throughput: int, completed: int, failed: int, attempts: int, latest_error: string|null}
      */
     protected function emptyQueue(string $name): array
     {
@@ -320,6 +417,8 @@ class RedisQueueFlowRepository implements QueueFlowRepository
             'length' => 0,
             'wait' => 0,
             'processes' => 0,
+            'delayed' => 0,
+            'reserved' => 0,
             'throughput' => $throughput,
             'current_throughput' => 0,
             'completed' => 0,
@@ -437,11 +536,11 @@ class RedisQueueFlowRepository implements QueueFlowRepository
         return 'queue-'.preg_replace('/[^a-z0-9]+/i', '-', strtolower($name));
     }
 
-    protected function status(int $wait, int $length, int $failed = 0): string
+    protected function status(int $wait, int $length, int $failed = 0, int $delayed = 0): string
     {
         return match (true) {
             $failed > 0 || $wait >= 30 || $length >= 500 => 'critical',
-            $wait >= 10 || $length >= 100 => 'warning',
+            $wait >= 10 || $length >= 100 || $delayed > 0 => 'warning',
             default => 'healthy',
         };
     }

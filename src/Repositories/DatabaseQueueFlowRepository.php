@@ -131,7 +131,7 @@ class DatabaseQueueFlowRepository implements QueueFlowRepository
             return [];
         }
 
-        return $rows->map(function (object $row) use ($connection): array {
+        $queues = $rows->map(function (object $row) use ($connection): array {
             $oldestAvailableAt = $row->oldest_available_at ? (int) $row->oldest_available_at : Carbon::now()->timestamp;
             $pending = (int) $row->pending;
 
@@ -153,7 +153,39 @@ class DatabaseQueueFlowRepository implements QueueFlowRepository
                 'driver' => 'database',
                 'source' => $connection['connection'],
             ];
-        })->all();
+        });
+
+        if ($queues->isEmpty() && $connection['queue'] !== null) {
+            return [$this->emptyQueue($connection, $connection['queue'])];
+        }
+
+        return $queues->all();
+    }
+
+    /**
+     * @param  array{connection: string, queue_connection: string, database: string|null, table: string, queue: string|null}  $connection
+     * @return array<string, mixed>
+     */
+    protected function emptyQueue(array $connection, string $queue): array
+    {
+        return [
+            'connection' => $connection['connection'],
+            'queue_connection' => $connection['queue_connection'],
+            'storage_connection' => $connection['database'],
+            'name' => $queue,
+            'pending' => 0,
+            'wait_seconds' => 0,
+            'oldest_pending_seconds' => 0,
+            'processes' => null,
+            'throughput_per_minute' => null,
+            'current_throughput_per_minute' => 0,
+            'estimated_drain_seconds' => null,
+            'attempts' => 0,
+            'completed' => null,
+            'delayed' => 0,
+            'driver' => 'database',
+            'source' => $connection['connection'],
+        ];
     }
 
     /**
