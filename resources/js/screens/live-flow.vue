@@ -80,8 +80,7 @@
                     const node = this.findQueueNode(queue);
                     return {
                         id: node?.id ?? this.queueNodeId(queue),
-                        type: 'queue', label: queue.name,
-                        sub: this.queueSubLabel(queue),
+                        type: 'queue', label: queue.name, sub: this.queueSubLabel(queue),
                         status: node?.status ?? this.queueStatus(queue),
                         x: 250, y: this.distributedY(i, this.filteredQueues.length, qYMin, qYMax),
                         width: 128, height: qH,
@@ -122,7 +121,7 @@
                 return [
                     {
                         id: 'producer-app', type: 'producer', label: this.appLabel,
-                        sub: `${this.meta.environment ?? 'app'} · ${this.formatNumber(this.summary.current_throughput_per_minute ?? this.summary.throughput_per_minute)} current/m`,
+                        sub: `${this.meta.environment ?? 'app'} · ${this.formatNumber(this.summary.current_throughput_per_minute ?? this.summary.throughput_per_minute)}/m`,
                         status: 'healthy', x: 28, y: Math.round(midY - prodSpread - pH / 2), width: 136, height: pH,
                         metrics: { throughput: this.summary.throughput_per_minute, current_throughput: this.summary.current_throughput_per_minute },
                     },
@@ -162,6 +161,21 @@
                 return generated;
             },
 
+            edgeGradients() {
+                return this.graphEdges.map(edge => {
+                    const s = this.graphNodeLookup[edge.source];
+                    const t = this.graphNodeLookup[edge.target];
+                    if (!s || !t) return null;
+                    return {
+                        id: `lf-grad-${this.svgId(edge.id)}`,
+                        x1: s.x + s.width, y1: s.y + s.height / 2,
+                        x2: t.x,           y2: t.y + t.height / 2,
+                        c1: this.nodeGradColor(s, edge.status),
+                        c2: this.nodeGradColor(t, edge.status),
+                    };
+                }).filter(Boolean);
+            },
+
             particles() {
                 if (!this.live) return [];
                 return this.graphEdges.filter(edge => {
@@ -187,6 +201,17 @@
                         duration: `${this.particleDuration(edge.status)}s`,
                     }));
                 }).slice(0, 28);
+            },
+
+            kpiMetrics() {
+                return [
+                    { key: 'pending',    label: 'PENDING',  value: this.metricValue(this.summary.pending),   sub: this.formatNumber(this.queues.length) + ' queues', cls: 'primary' },
+                    { key: 'processing', label: 'PROCS',    value: this.metricValue(this.summary.processing), sub: 'active',   cls: '' },
+                    { key: 'delayed',    label: 'DELAYED',  value: this.metricValue(this.summary.delayed),    sub: 'scheduled', cls: (this.summary.delayed ?? 0) > 0 ? 'warn' : '' },
+                    { key: 'failed',     label: 'FAILED',   value: this.metricValue(this.summary.failed),     sub: this.timeRange.toLowerCase(), cls: (this.summary.failed ?? 0) > 0 ? 'danger' : '' },
+                    { key: 'flow',       label: 'FLOW',     value: this.metricValue(this.summary.current_throughput_per_minute ?? this.summary.throughput_per_minute), sub: 'jobs / min', cls: 'ok' },
+                    { key: 'wait',       label: 'AVG WAIT', value: this.metricValue(this.summary.average_wait_seconds, 's'), sub: 'latency', cls: '' },
+                ];
             },
 
             viewportTransform() { return `translate(${this.panX} ${this.panY}) scale(${this.zoom})`; },
@@ -293,20 +318,20 @@
             svgId(value) { return String(value).replace(/[^a-z0-9_-]+/gi, '-'); },
 
             metricValue(value, suffix = '') {
-                if (value === null || value === undefined) return 'n/a';
+                if (value === null || value === undefined) return '—';
                 return this.formatNumber(value) + suffix;
             },
 
             formatNumber(value) {
-                if (value === null || value === undefined) return 'n/a';
+                if (value === null || value === undefined) return '—';
                 if (typeof value === 'number' && !Number.isInteger(value)) return value.toLocaleString(undefined, { maximumFractionDigits: 1 });
                 return Number(value).toLocaleString();
             },
 
-            formatRate(value)    { return (value === null || value === undefined) ? 'n/a' : `${this.formatNumber(value)}/m`; },
+            formatRate(value)    { return (value === null || value === undefined) ? '—' : `${this.formatNumber(value)}/m`; },
 
             formatDuration(value) {
-                if (value === null || value === undefined) return 'n/a';
+                if (value === null || value === undefined) return '—';
                 const s = Number(value);
                 if (s < 60) return `${s}s`;
                 if (s < 3600) return `${Math.round(s / 60)}m`;
@@ -315,12 +340,12 @@
             },
 
             formatPercent(value) {
-                if (value === null || value === undefined) return 'n/a';
+                if (value === null || value === undefined) return '—';
                 return `${this.formatNumber(value)}%`;
             },
 
             statusLabel(status) {
-                return { healthy: 'healthy', warning: 'backpressure', critical: 'critical' }[status] ?? status;
+                return { healthy: 'healthy', warning: 'warn', critical: 'critical' }[status] ?? status;
             },
 
             edge(source, target, status, label, rate) {
@@ -369,12 +394,6 @@
                 return `${queue.driver} · ${queue.connection} · ${this.formatNumber(queue.pending)} pending`;
             },
 
-            throughputState(queue) {
-                if (Number(queue.current_throughput_per_minute ?? 0) > 0) return 'active';
-                if (Number(queue.throughput_per_minute ?? 0) > 0) return 'last measured';
-                return 'idle';
-            },
-
             resultSubLabel(node) {
                 if (node.label === 'failed')  return `${this.formatNumber(this.summary.failed)} failed`;
                 if (node.label === 'delayed') return `${this.formatNumber(this.summary.delayed)} delayed`;
@@ -405,20 +424,30 @@
             nodeTextColor(node) {
                 if (node.status === 'critical') return 'var(--lf-red)';
                 if (node.status === 'warning')  return 'var(--lf-amber)';
-                return 'var(--lf-muted)';
+                return 'var(--lf-svg-muted)';
             },
 
             nodeKind(node) {
                 return { producer: 'PRODUCER', queue: 'QUEUE', worker: 'WORKER', result: node.label?.toUpperCase?.() ?? 'RESULT' }[node.type] ?? node.type?.toUpperCase?.();
             },
 
+            nodeGradColor(node, edgeStatus) {
+                if (edgeStatus === 'critical') return 'var(--lf-red)';
+                if (edgeStatus === 'warning')  return 'var(--lf-amber)';
+                return { producer: 'var(--lf-blue)', queue: 'var(--lf-violet)', worker: 'var(--lf-green)', result: 'var(--lf-green)' }[node.type] ?? 'var(--lf-cyan)';
+            },
+
             edgeColor(status) {
+                return { healthy: 'var(--lf-cyan)', warning: 'var(--lf-amber)', critical: 'var(--lf-red)' }[status] ?? 'var(--lf-cyan)';
+            },
+
+            particleColor(status) {
                 return { healthy: 'var(--lf-cyan)', warning: 'var(--lf-amber)', critical: 'var(--lf-red)' }[status] ?? 'var(--lf-cyan)';
             },
 
             particleFilter(status) {
                 if (!this.isDark) return 'none';
-                return { healthy: 'url(#lf-f-cyan)', warning: 'url(#lf-f-amber)', critical: 'url(#lf-f-red)' }[status] ?? 'url(#lf-f-cyan)';
+                return { healthy: 'url(#lf-glow-cyan)', warning: 'url(#lf-glow-amber)', critical: 'url(#lf-glow-red)' }[status] ?? 'url(#lf-glow-cyan)';
             },
 
             particleDuration(status) {
@@ -433,198 +462,123 @@
 
             inspectorMetrics(node, queue) {
                 if (queue) return [
-                    ['Source', queue.source ?? queue.driver], ['Connection', queue.connection],
-                    ['Storage', queue.storage_connection ?? 'n/a'], ['Driver', queue.driver],
-                    ['Pending', this.formatNumber(queue.pending)], ['Delayed', this.formatNumber(queue.delayed)],
-                    ['Oldest pending', this.formatDuration(queue.oldest_pending_seconds ?? queue.wait_seconds)],
-                    ['Wait', this.metricValue(queue.wait_seconds, 's')], ['Processes', this.formatNumber(queue.processes)],
-                    ['Current rate', this.formatRate(queue.current_throughput_per_minute)],
-                    ['Last measured', this.formatRate(queue.throughput_per_minute)],
-                    ['Flow state', this.throughputState(queue)],
-                    ['Drain ETA', this.formatDuration(queue.estimated_drain_seconds)],
-                    ['Attempts', this.formatNumber(queue.attempts ?? 0)],
-                    ['Failed', this.formatNumber(queue.failed ?? 0)],
-                    ['Failure rate', this.formatPercent(queue.failure_rate)],
-                    ['Latest error', queue.latest_error ?? 'none'],
+                    ['source',         queue.source ?? queue.driver],
+                    ['connection',     queue.connection],
+                    ['storage',        queue.storage_connection ?? '—'],
+                    ['driver',         queue.driver],
+                    ['pending',        this.formatNumber(queue.pending)],
+                    ['delayed',        this.formatNumber(queue.delayed)],
+                    ['oldest pending', this.formatDuration(queue.oldest_pending_seconds ?? queue.wait_seconds)],
+                    ['wait',           this.metricValue(queue.wait_seconds, 's')],
+                    ['processes',      this.formatNumber(queue.processes)],
+                    ['current rate',   this.formatRate(queue.current_throughput_per_minute)],
+                    ['last measured',  this.formatRate(queue.throughput_per_minute)],
+                    ['drain ETA',      this.formatDuration(queue.estimated_drain_seconds)],
+                    ['attempts',       this.formatNumber(queue.attempts ?? 0)],
+                    ['failed',         this.formatNumber(queue.failed ?? 0)],
+                    ['failure rate',   this.formatPercent(queue.failure_rate)],
+                    ['latest error',   queue.latest_error ?? 'none'],
                 ];
                 return Object.entries(node.metrics ?? {}).map(([k, v]) => [k.replace(/_/g, ' '), this.formatNumber(v)]);
             },
 
             suggestedAction(node, queue) {
-                if (node.status === 'critical') return { type: 'critical', title: 'Immediate Action', text: queue ? this.criticalActionText(queue) : 'Failures above normal. Inspect failed job payloads.' };
-                if (node.status === 'warning')  return { type: 'warn', title: 'Suggested Action', text: queue ? `${queue.name} is showing backpressure. Watch wait time and consider increasing process capacity.` : 'This node is under pressure. Monitor incoming rates.' };
+                if (node.status === 'critical') return { type: 'critical', title: 'Immediate Action', text: queue ? (queue.latest_error ? `${queue.name} has failed jobs. Latest error: ${queue.latest_error}` : `Backlog is critical on ${queue.name}. Scale workers or reduce dispatch rate.`) : 'Failures above normal. Inspect failed job payloads.' };
+                if (node.status === 'warning')  return { type: 'warn', title: 'Suggested Action', text: queue ? `${queue.name} is showing backpressure. Consider increasing process capacity.` : 'This node is under pressure. Monitor incoming rates.' };
                 return { type: 'ok', title: 'Status', text: 'Node is operating normally. No action required.' };
-            },
-
-            criticalActionText(queue) {
-                if (queue.latest_error) {
-                    return `${queue.name} has failed jobs. Latest error: ${queue.latest_error}`;
-                }
-
-                if (Number(queue.pending ?? 0) > 0 && Number(queue.processes ?? 0) === 0) {
-                    return `${queue.name} has pending jobs but no active workers. Add this queue to Horizon supervisor queues and restart Horizon.`;
-                }
-
-                return `Backlog is critical on ${queue.name}. Scale workers or reduce dispatch rate.`;
             },
         },
     }
 </script>
 
 <template>
-    <div>
+    <div class="lf" :class="{ 'lf-dark': isDark }">
         <poll @poll="refreshFlowPeriodically" :interval="5" />
 
-        <!-- Overview card -->
-        <div class="card overflow-hidden">
-            <div class="card-header d-flex align-items-center gap-3 flex-wrap">
-                <h2 class="h6 m-0">Overview</h2>
-
-                <span v-if="flow" class="badge lf-source-badge" :class="'lf-source-' + sourceClass">
-                    <span class="lf-pulse me-1"></span>{{ sourceLabel }}
-                </span>
-                <small v-if="generatedAt" class="text-muted">{{ generatedAt }}</small>
-
-                <div class="d-flex align-items-center gap-2 ms-auto flex-wrap">
-                    <input
-                        v-model="filterText"
-                        type="text"
-                        class="form-control form-control-sm"
-                        placeholder="Filter queues…"
-                        style="width:160px"
-                    >
-                    <select v-model="timeRange" class="form-select form-select-sm" style="width:auto">
-                        <option>Last 5m</option>
-                        <option>Last 15m</option>
-                        <option>Last 1h</option>
-                        <option>Last 6h</option>
-                        <option>Last 24h</option>
-                    </select>
-                    <button class="btn btn-sm btn-muted" type="button" @click="refreshFlowPeriodically">
-                        <svg
-                            :class="{ 'lf-spin': refreshing }"
-                            width="12" height="12" viewBox="0 0 12 12" fill="none"
-                            style="vertical-align:-1px;margin-right:3px"
-                        >
-                            <path d="M10.5 2A5 5 0 1 0 11 6.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-                            <path d="M10.5 2V5H7.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-                        </svg>
-                        Refresh
-                    </button>
-                    <button
-                        class="btn btn-sm d-flex align-items-center gap-1"
-                        :class="live ? 'btn-success' : 'btn-muted'"
-                        type="button"
-                        @click="toggleLive"
-                    >
-                        <span v-if="live" class="lf-pulse lf-pulse-live"></span>
-                        Live
-                    </button>
-                </div>
-            </div>
-
-            <!-- Demo notice -->
-            <div
-                v-if="ready && isMock"
-                class="alert alert-warning d-flex align-items-center gap-2 mb-0 rounded-0 border-start-0 border-end-0 border-top-0"
-                style="font-size:.85rem"
-            >
-                <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor" style="flex-shrink:0">
-                    <path fill-rule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd"/>
+        <!-- toolbar -->
+        <div class="lf-toolbar">
+            <span v-if="flow" class="lf-chip" :class="'lf-chip-' + sourceClass">
+                <span class="lf-blink"></span>{{ sourceLabel }}
+            </span>
+            <span v-if="generatedAt" class="lf-ts">{{ generatedAt }}</span>
+            <div class="lf-toolbar-gap"></div>
+            <input v-model="filterText" type="text" class="lf-input" placeholder="filter queues…">
+            <select v-model="timeRange" class="lf-select">
+                <option>Last 5m</option><option>Last 15m</option>
+                <option>Last 1h</option><option>Last 6h</option><option>Last 24h</option>
+            </select>
+            <button class="lf-btn" type="button" @click="refreshFlowPeriodically">
+                <svg :class="{ 'lf-spin': refreshing }" width="11" height="11" viewBox="0 0 12 12" fill="none">
+                    <path d="M10.5 2A5 5 0 1 0 11 6.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                    <path d="M10.5 2V5H7.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
                 </svg>
-                Demo data — not connected to a real queue. Configure a Redis or database connection to see live telemetry.
-            </div>
+                refresh
+            </button>
+            <button class="lf-btn" :class="{ 'lf-btn-live': live }" type="button" @click="toggleLive">
+                <span class="lf-blink lf-blink-inline"></span>live
+            </button>
+        </div>
 
-            <!-- KPI grid -->
-            <div class="card-bg-secondary">
-                <div class="d-flex">
-                    <div class="w-25">
-                        <div class="p-4">
-                            <small class="text-muted fw-bold">Pending</small>
-                            <p class="h4 mt-2 mb-0 text-primary">{{ metricValue(summary.pending) }}</p>
-                            <small class="text-muted">across {{ formatNumber(queues.length) }} queues</small>
-                        </div>
-                    </div>
-                    <div class="w-25">
-                        <div class="p-4">
-                            <small class="text-muted fw-bold">Processing</small>
-                            <p class="h4 mt-2 mb-0">{{ metricValue(summary.processing) }}</p>
-                            <small class="text-muted">active workers</small>
-                        </div>
-                    </div>
-                    <div class="w-25">
-                        <div class="p-4">
-                            <small class="text-muted fw-bold">Delayed</small>
-                            <p class="h4 mt-2 mb-0" :class="(summary.delayed ?? 0) > 0 ? 'text-warning' : ''">{{ metricValue(summary.delayed) }}</p>
-                            <small class="text-muted">scheduled</small>
-                        </div>
-                    </div>
-                    <div class="w-25">
-                        <div class="p-4">
-                            <small class="text-muted fw-bold">Failed</small>
-                            <p class="h4 mt-2 mb-0" :class="(summary.failed ?? 0) > 0 ? 'text-danger' : ''">{{ metricValue(summary.failed) }}</p>
-                            <small class="text-muted">{{ timeRange.toLowerCase() }}</small>
-                        </div>
-                    </div>
-                </div>
-                <div class="d-flex">
-                    <div class="w-25">
-                        <div class="p-4">
-                            <small class="text-muted fw-bold">Current Flow</small>
-                            <p class="h4 mt-2 mb-0 text-success">{{ metricValue(summary.current_throughput_per_minute ?? summary.throughput_per_minute) }}</p>
-                            <small class="text-muted">jobs / min</small>
-                        </div>
-                    </div>
-                    <div class="w-25">
-                        <div class="p-4">
-                            <small class="text-muted fw-bold">Avg Wait</small>
-                            <p class="h4 mt-2 mb-0">{{ metricValue(summary.average_wait_seconds, 's') }}</p>
-                            <small class="text-muted">queue latency</small>
-                        </div>
-                    </div>
-                </div>
+        <!-- demo notice -->
+        <div class="lf-notice lf-notice-warn" v-if="ready && isMock">
+            <svg width="12" height="12" viewBox="0 0 20 20" fill="currentColor" style="flex-shrink:0;opacity:.8">
+                <path fill-rule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd"/>
+            </svg>
+            Demo data — configure a Redis or database connection to see live telemetry.
+        </div>
+
+        <!-- metrics strip -->
+        <div class="lf-metrics">
+            <div
+                v-for="m in kpiMetrics"
+                :key="m.key"
+                class="lf-metric"
+            >
+                <span class="lf-metric-label">{{ m.label }}</span>
+                <span class="lf-metric-value" :class="m.cls ? 'lf-val-' + m.cls : ''">{{ m.value }}</span>
+                <span class="lf-metric-sub">{{ m.sub }}</span>
             </div>
         </div>
 
-        <!-- Loading state -->
-        <div class="d-flex align-items-center justify-content-center py-5 text-muted" v-if="!ready">
-            <svg class="lf-spin me-2" width="18" height="18" viewBox="0 0 20 20" fill="none">
-                <circle cx="10" cy="10" r="8" stroke="currentColor" stroke-width="1.5" stroke-opacity="0.3"/>
+        <!-- loading -->
+        <div class="lf-loading" v-if="!ready">
+            <svg class="lf-spin" width="16" height="16" viewBox="0 0 20 20" fill="none">
+                <circle cx="10" cy="10" r="8" stroke="currentColor" stroke-width="1.5" stroke-opacity="0.25"/>
                 <path d="M10 2a8 8 0 0 1 8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
             </svg>
-            Loading live flow…
+            loading live flow…
         </div>
 
-        <!-- Main layout -->
-        <div v-if="ready" class="row mt-4">
-            <div class="col-12 col-lg-8 col-xl-9">
+        <!-- main layout -->
+        <div class="lf-main" v-if="ready">
+            <div class="lf-col">
 
-                <!-- Flow Graph -->
-                <div class="card overflow-hidden">
-                    <div class="card-header d-flex align-items-center gap-2">
-                        <h2 class="h6 m-0">Flow Graph</h2>
-                        <small class="text-muted">{{ graphNodes.length }} nodes · {{ graphEdges.length }} edges</small>
-
-                        <div class="d-flex align-items-center gap-1 ms-auto">
-                            <button class="btn btn-sm btn-muted lf-vp-btn" @click="zoomOut" title="Zoom out">
-                                <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><line x1="2" y1="5" x2="8" y2="5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+                <!-- flow graph -->
+                <div class="lf-pane">
+                    <div class="lf-pane-head">
+                        <span class="lf-pane-title">Flow Graph</span>
+                        <span class="lf-pane-meta">{{ graphNodes.length }} nodes · {{ graphEdges.length }} edges</span>
+                        <div class="lf-vp">
+                            <button class="lf-vp-btn" @click="zoomOut" title="Zoom out">
+                                <svg width="9" height="9" viewBox="0 0 9 9" fill="none"><line x1="1.5" y1="4.5" x2="7.5" y2="4.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
                             </button>
-                            <small class="text-muted lf-zoom-label">{{ zoomLabel }}</small>
-                            <button class="btn btn-sm btn-muted lf-vp-btn" @click="zoomIn" title="Zoom in">
-                                <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><line x1="5" y1="2" x2="5" y2="8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="2" y1="5" x2="8" y2="5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+                            <span class="lf-vp-pct">{{ zoomLabel }}</span>
+                            <button class="lf-vp-btn" @click="zoomIn" title="Zoom in">
+                                <svg width="9" height="9" viewBox="0 0 9 9" fill="none"><line x1="4.5" y1="1.5" x2="4.5" y2="7.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><line x1="1.5" y1="4.5" x2="7.5" y2="4.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
                             </button>
-                            <button class="btn btn-sm btn-muted lf-vp-btn" @click="resetView" title="Reset view">
-                                <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><rect x="1" y="1" width="3" height="3" rx="0.5" stroke="currentColor" stroke-width="1.2"/><rect x="6" y="1" width="3" height="3" rx="0.5" stroke="currentColor" stroke-width="1.2"/><rect x="1" y="6" width="3" height="3" rx="0.5" stroke="currentColor" stroke-width="1.2"/><rect x="6" y="6" width="3" height="3" rx="0.5" stroke="currentColor" stroke-width="1.2"/></svg>
+                            <button class="lf-vp-btn" @click="resetView" title="Reset view">
+                                <svg width="9" height="9" viewBox="0 0 9 9" fill="none"><rect x="0.75" y="0.75" width="2.75" height="2.75" rx="0.5" stroke="currentColor" stroke-width="1.2"/><rect x="5.5" y="0.75" width="2.75" height="2.75" rx="0.5" stroke="currentColor" stroke-width="1.2"/><rect x="0.75" y="5.5" width="2.75" height="2.75" rx="0.5" stroke="currentColor" stroke-width="1.2"/><rect x="5.5" y="5.5" width="2.75" height="2.75" rx="0.5" stroke="currentColor" stroke-width="1.2"/></svg>
                             </button>
                         </div>
-
-                        <span class="badge bg-success ms-1">live</span>
+                        <span class="lf-live-tag">
+                            <span class="lf-blink lf-blink-inline lf-blink-green"></span>live
+                        </span>
                     </div>
 
-                    <div class="lf-canvas-wrap" :class="{ 'lf-dark': isDark }">
+                    <div class="lf-canvas" :class="{ 'lf-canvas-dark': isDark }">
                         <svg
                             ref="flowSvg"
-                            class="lf-flow-svg"
+                            class="lf-svg"
                             :viewBox="'0 0 980 ' + svgHeight"
                             xmlns="http://www.w3.org/2000/svg"
                             :style="{ cursor: isPanning ? 'grabbing' : 'grab' }"
@@ -635,43 +589,54 @@
                             @wheel.prevent="onCanvasWheel"
                         >
                             <defs>
-                                <filter id="lf-f-cyan" x="-80%" y="-80%" width="260%" height="260%">
+                                <!-- glow filters (dark mode only) -->
+                                <filter id="lf-glow-cyan" x="-80%" y="-80%" width="260%" height="260%">
                                     <feGaussianBlur stdDeviation="3.5" result="b"/>
                                     <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
                                 </filter>
-                                <filter id="lf-f-amber" x="-80%" y="-80%" width="260%" height="260%">
+                                <filter id="lf-glow-amber" x="-80%" y="-80%" width="260%" height="260%">
                                     <feGaussianBlur stdDeviation="3" result="b"/>
                                     <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
                                 </filter>
-                                <filter id="lf-f-red" x="-80%" y="-80%" width="260%" height="260%">
+                                <filter id="lf-glow-red" x="-80%" y="-80%" width="260%" height="260%">
                                     <feGaussianBlur stdDeviation="4" result="b"/>
                                     <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
                                 </filter>
-                                <radialGradient id="lf-congestion" cx="50%" cy="50%" r="50%">
+                                <!-- status halos -->
+                                <radialGradient id="lf-halo-red" cx="50%" cy="50%" r="50%">
                                     <stop offset="0%" stop-color="var(--lf-red)" stop-opacity="0.18"/>
                                     <stop offset="100%" stop-color="var(--lf-red)" stop-opacity="0"/>
                                 </radialGradient>
-                                <radialGradient id="lf-warning-grad" cx="50%" cy="50%" r="50%">
+                                <radialGradient id="lf-halo-amber" cx="50%" cy="50%" r="50%">
                                     <stop offset="0%" stop-color="var(--lf-amber)" stop-opacity="0.14"/>
                                     <stop offset="100%" stop-color="var(--lf-amber)" stop-opacity="0"/>
                                 </radialGradient>
+                                <!-- edge gradients -->
+                                <linearGradient
+                                    v-for="g in edgeGradients"
+                                    :key="g.id"
+                                    :id="g.id"
+                                    :x1="g.x1" :y1="g.y1"
+                                    :x2="g.x2" :y2="g.y2"
+                                    gradientUnits="userSpaceOnUse"
+                                >
+                                    <stop offset="0%"   :stop-color="g.c1" stop-opacity="0.85"/>
+                                    <stop offset="100%" :stop-color="g.c2" stop-opacity="0.50"/>
+                                </linearGradient>
                             </defs>
 
-                            <!-- Grid (static, not transformed) -->
+                            <!-- grid (not transformed) -->
                             <g class="lf-svg-grid">
                                 <line x1="230" y1="0" x2="230" :y2="svgHeight"/>
                                 <line x1="490" y1="0" x2="490" :y2="svgHeight"/>
                                 <line x1="740" y1="0" x2="740" :y2="svgHeight"/>
-                                <line x1="0" :y1="svgHeight * 0.25" x2="980" :y2="svgHeight * 0.25"/>
-                                <line x1="0" :y1="svgHeight * 0.50" x2="980" :y2="svgHeight * 0.50"/>
-                                <line x1="0" :y1="svgHeight * 0.75" x2="980" :y2="svgHeight * 0.75"/>
                             </g>
-                            <text x="96"  y="17" text-anchor="middle" class="lf-svg-text lf-stage-lbl">PRODUCERS</text>
-                            <text x="314" y="17" text-anchor="middle" class="lf-svg-text lf-stage-lbl">QUEUES</text>
-                            <text x="564" y="17" text-anchor="middle" class="lf-svg-text lf-stage-lbl">WORKERS</text>
-                            <text x="816" y="17" text-anchor="middle" class="lf-svg-text lf-stage-lbl">RESULTS</text>
+                            <text x="96"  y="17" text-anchor="middle" class="lf-stage">PRODUCERS</text>
+                            <text x="314" y="17" text-anchor="middle" class="lf-stage">QUEUES</text>
+                            <text x="564" y="17" text-anchor="middle" class="lf-stage">WORKERS</text>
+                            <text x="816" y="17" text-anchor="middle" class="lf-stage">RESULTS</text>
 
-                            <!-- Viewport group -->
+                            <!-- viewport group -->
                             <g :transform="viewportTransform">
 
                                 <!-- status halos -->
@@ -681,34 +646,35 @@
                                     :cx="node.x + node.width / 2"
                                     :cy="node.y + node.height / 2"
                                     :r="node.status === 'critical' ? 54 : 46"
-                                    :fill="node.status === 'critical' ? 'url(#lf-congestion)' : 'url(#lf-warning-grad)'"
+                                    :fill="node.status === 'critical' ? 'url(#lf-halo-red)' : 'url(#lf-halo-amber)'"
                                 >
                                     <animate attributeName="r" :values="node.status === 'critical' ? '48;64;48' : '40;54;40'" :dur="node.status === 'critical' ? '3s' : '4s'" repeatCount="indefinite"/>
-                                    <animate attributeName="opacity" values="0.9;0.35;0.9" :dur="node.status === 'critical' ? '3s' : '4s'" repeatCount="indefinite"/>
+                                    <animate attributeName="opacity" values="0.9;0.3;0.9" :dur="node.status === 'critical' ? '3s' : '4s'" repeatCount="indefinite"/>
                                 </circle>
 
-                                <!-- edges -->
+                                <!-- edges with gradient stroke -->
                                 <path
                                     v-for="edge in graphEdges"
                                     :id="'lf-path-' + svgId(edge.id)"
                                     :key="'edge-' + edge.id"
                                     :d="edgePath(edge)"
-                                    :stroke="edgeColor(edge.status)"
-                                    :stroke-width="edge.status === 'critical' ? 1.9 : 1.5"
+                                    :stroke="'url(#lf-grad-' + svgId(edge.id) + ')'"
+                                    :stroke-width="edge.status === 'critical' ? 2 : 1.6"
+                                    stroke-linecap="round"
                                     fill="none"
-                                    :opacity="edge.status === 'critical' ? 0.58 : 0.45"
+                                    :opacity="edge.status === 'critical' ? 0.75 : 0.55"
                                 />
 
                                 <!-- edge rate labels -->
                                 <text
                                     v-for="edge in graphEdges"
-                                    :key="'elbl-' + edge.id"
+                                    :key="'el-' + edge.id"
                                     :x="edgeLabelPos(edge).x"
                                     :y="edgeLabelPos(edge).y"
-                                    class="lf-svg-text"
-                                    font-size="8"
+                                    class="lf-svg-mono"
+                                    font-size="7.5"
                                     :fill="edgeColor(edge.status)"
-                                    :opacity="edge.status === 'critical' ? 0.85 : 0.65"
+                                    :opacity="edge.status === 'critical' ? 0.9 : 0.65"
                                 >{{ edgeDisplayLabel(edge) }}</text>
 
                                 <!-- nodes -->
@@ -719,29 +685,43 @@
                                     @click="selectNode(node.id)"
                                     @pointerdown.stop
                                 >
+                                    <!-- shadow / selection glow -->
+                                    <rect
+                                        v-if="node.id === selectedId"
+                                        :x="node.x - 3" :y="node.y - 3"
+                                        :width="node.width + 6" :height="node.height + 6"
+                                        rx="6" fill="none"
+                                        stroke="var(--lf-violet)" stroke-width="1"
+                                        stroke-opacity="0.4"
+                                        :stroke-dasharray="'4 3'"
+                                    />
+                                    <!-- node body -->
                                     <rect
                                         :x="node.x" :y="node.y"
                                         :width="node.width" :height="node.height"
-                                        rx="4"
+                                        rx="3"
                                         :fill="nodeFill(node)"
                                         :stroke="nodeStroke(node)"
                                         :stroke-width="nodeStrokeWidth(node)"
                                     >
-                                        <animate v-if="node.status === 'critical'" attributeName="stroke-opacity" values="1;0.4;1" dur="2s" repeatCount="indefinite"/>
+                                        <animate v-if="node.status === 'critical'" attributeName="stroke-opacity" values="1;0.35;1" dur="2s" repeatCount="indefinite"/>
                                     </rect>
-                                    <rect v-if="node.id === selectedId" :x="node.x" :y="node.y" :width="node.width" :height="node.height" rx="4" fill="var(--lf-violet)" opacity="0.07"/>
-                                    <rect :x="node.x" :y="node.y" width="4" :height="node.height" rx="2" :fill="nodeAccent(node)" opacity="0.65"/>
-                                    <text :x="node.x + node.width / 2" :y="node.y + 19" text-anchor="middle" class="lf-svg-text" font-size="8.5" :fill="nodeAccent(node)" letter-spacing="0.5">{{ nodeKind(node) }}</text>
-                                    <text :x="node.x + node.width / 2" :y="node.y + 32" text-anchor="middle" class="lf-svg-text" font-size="9.5" fill="var(--lf-text)">{{ node.label }}</text>
-                                    <text :x="node.x + node.width / 2" :y="node.y + 44" text-anchor="middle" class="lf-svg-text" font-size="8" :fill="nodeTextColor(node)">{{ node.sub }}</text>
+                                    <!-- selected highlight -->
+                                    <rect v-if="node.id === selectedId" :x="node.x" :y="node.y" :width="node.width" :height="node.height" rx="3" fill="var(--lf-violet)" opacity="0.06"/>
+                                    <!-- accent bar -->
+                                    <rect :x="node.x" :y="node.y + 2" width="3" :height="node.height - 4" rx="1.5" :fill="nodeAccent(node)" opacity="0.7"/>
+                                    <!-- labels -->
+                                    <text :x="node.x + node.width / 2" :y="node.y + 18" text-anchor="middle" class="lf-svg-mono" font-size="8" :fill="nodeAccent(node)" letter-spacing="0.7">{{ nodeKind(node) }}</text>
+                                    <text :x="node.x + node.width / 2" :y="node.y + 31" text-anchor="middle" class="lf-svg-mono" font-size="9.5" fill="var(--lf-svg-text)">{{ node.label }}</text>
+                                    <text :x="node.x + node.width / 2" :y="node.y + 43" text-anchor="middle" class="lf-svg-mono" font-size="7.5" :fill="nodeTextColor(node)">{{ node.sub }}</text>
                                 </g>
 
                                 <!-- particles -->
                                 <circle
                                     v-for="p in particles"
                                     :key="p.id"
-                                    :r="p.status === 'critical' ? 3 : 2.5"
-                                    :fill="edgeColor(p.status)"
+                                    :r="p.status === 'critical' ? 2.8 : 2.2"
+                                    :fill="particleColor(p.status)"
                                     :filter="particleFilter(p.status)"
                                 >
                                     <animateMotion :dur="p.duration" :begin="p.delay" repeatCount="indefinite" calcMode="linear">
@@ -753,311 +733,652 @@
                         </svg>
                     </div>
 
-                    <!-- Legend -->
-                    <div class="card-footer d-flex align-items-center gap-3 flex-wrap py-2">
-                        <div class="d-flex align-items-center gap-1 small text-muted"><span class="lf-ldot lf-ldot-producer"></span> Producer</div>
-                        <div class="d-flex align-items-center gap-1 small text-muted"><span class="lf-ldot lf-ldot-queue"></span> Queue</div>
-                        <div class="d-flex align-items-center gap-1 small text-muted"><span class="lf-ldot lf-ldot-worker"></span> Worker</div>
-                        <div class="d-flex align-items-center gap-1 small text-muted"><span class="lf-ldot lf-ldot-completed"></span> Completed</div>
-                        <div class="d-flex align-items-center gap-1 small text-muted"><span class="lf-ldot lf-ldot-failed"></span> Failed</div>
-                        <div class="vr"></div>
-                        <div class="d-flex align-items-center gap-1 small text-muted"><span class="lf-lline lf-lline-healthy"></span> Healthy</div>
-                        <div class="d-flex align-items-center gap-1 small text-muted"><span class="lf-lline lf-lline-warning"></span> Backpressure</div>
-                        <div class="d-flex align-items-center gap-1 small text-muted"><span class="lf-lline lf-lline-critical"></span> Critical</div>
+                    <!-- legend -->
+                    <div class="lf-legend">
+                        <span class="lf-leg-item"><span class="lf-ld lf-ld-producer"></span>Producer</span>
+                        <span class="lf-leg-item"><span class="lf-ld lf-ld-queue"></span>Queue</span>
+                        <span class="lf-leg-item"><span class="lf-ld lf-ld-worker"></span>Worker</span>
+                        <span class="lf-leg-item"><span class="lf-ld lf-ld-done"></span>Completed</span>
+                        <span class="lf-leg-item"><span class="lf-ld lf-ld-fail"></span>Failed</span>
+                        <span class="lf-leg-sep"></span>
+                        <span class="lf-leg-item"><span class="lf-ll lf-ll-ok"></span>Healthy</span>
+                        <span class="lf-leg-item"><span class="lf-ll lf-ll-warn"></span>Backpressure</span>
+                        <span class="lf-leg-item"><span class="lf-ll lf-ll-crit"></span>Critical</span>
                     </div>
                 </div>
 
-                <!-- Queue table -->
-                <div class="card overflow-hidden mt-4">
-                    <div class="card-header d-flex align-items-center justify-content-between">
-                        <h2 class="h6 m-0">Queues</h2>
-                        <small class="text-muted">{{ filteredQueues.length }} queue{{ filteredQueues.length === 1 ? '' : 's' }}</small>
+                <!-- queue table -->
+                <div class="lf-pane lf-pane-gap">
+                    <div class="lf-pane-head">
+                        <span class="lf-pane-title">Queues</span>
+                        <span class="lf-pane-meta">{{ filteredQueues.length }} queue{{ filteredQueues.length === 1 ? '' : 's' }}</span>
                     </div>
-                    <div class="table-responsive">
-                        <table class="table table-hover mb-0">
+                    <div class="lf-tbl-wrap">
+                        <table class="lf-tbl">
                             <thead>
                                 <tr>
-                                    <th>Queue</th>
-                                    <th>Source</th>
-                                    <th>Connection</th>
-                                    <th>Driver</th>
-                                    <th class="text-end">Pending</th>
-                                    <th class="text-end">Delayed</th>
-                                    <th class="text-end">Oldest</th>
-                                    <th class="text-end">Wait</th>
-                                    <th class="text-end">Procs</th>
-                                    <th class="text-end">Current</th>
-                                    <th class="text-end">Last</th>
-                                    <th class="text-end">ETA</th>
-                                    <th class="text-end">Attempts</th>
-                                    <th class="text-end">Failed</th>
-                                    <th class="text-end">Fail %</th>
-                                    <th class="text-end">Status</th>
+                                    <th>Queue</th><th>Src</th><th>Connection</th><th>Driver</th>
+                                    <th class="r">Pending</th><th class="r">Delayed</th><th class="r">Oldest</th><th class="r">Wait</th>
+                                    <th class="r">Procs</th><th class="r">Current</th><th class="r">Last</th><th class="r">ETA</th>
+                                    <th class="r">Attempts</th><th class="r">Failed</th><th class="r">Fail %</th><th class="r">Status</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 <tr
                                     v-for="queue in filteredQueues"
                                     :key="queue.driver + ':' + queue.connection + ':' + queue.name"
-                                    :class="{ 'lf-row-selected': selectedId === (findQueueNode(queue)?.id ?? queueNodeId(queue)) }"
-                                    style="cursor:pointer"
+                                    :class="{ 'lf-tbl-sel': selectedId === (findQueueNode(queue)?.id ?? queueNodeId(queue)) }"
                                     @click="selectNode(findQueueNode(queue)?.id ?? queueNodeId(queue))"
                                 >
-                                    <td>
-                                        <span class="d-flex align-items-center gap-2">
-                                            <span class="lf-sdot" :class="'lf-s-' + queueStatus(queue)"></span>
-                                            {{ queue.name }}
-                                        </span>
-                                    </td>
-                                    <td class="text-muted">{{ queue.source ?? queue.driver }}</td>
-                                    <td class="text-muted">{{ queue.connection }}</td>
-                                    <td><span class="badge lf-driver-badge" :class="'lf-driver-' + queue.driver">{{ queue.driver }}</span></td>
-                                    <td class="text-end" :class="{ 'text-warning': queue.pending > 100, 'text-danger': queue.pending > 500 }">{{ formatNumber(queue.pending) }}</td>
-                                    <td class="text-end text-muted">{{ formatNumber(queue.delayed) }}</td>
-                                    <td class="text-end" :class="{ 'text-warning': (queue.oldest_pending_seconds ?? 0) >= 10, 'text-danger': (queue.oldest_pending_seconds ?? 0) >= 30 }">{{ formatDuration(queue.oldest_pending_seconds ?? queue.wait_seconds) }}</td>
-                                    <td class="text-end" :class="{ 'text-warning': queue.wait_seconds >= 10, 'text-danger': queue.wait_seconds >= 30 }">{{ metricValue(queue.wait_seconds, 's') }}</td>
-                                    <td class="text-end text-muted">{{ formatNumber(queue.processes) }}</td>
-                                    <td class="text-end" :class="{ 'text-success': (queue.current_throughput_per_minute ?? 0) > 0, 'text-muted': (queue.current_throughput_per_minute ?? 0) <= 0 }">{{ formatRate(queue.current_throughput_per_minute) }}</td>
-                                    <td class="text-end text-muted">{{ formatRate(queue.throughput_per_minute) }}</td>
-                                    <td class="text-end text-muted">{{ formatDuration(queue.estimated_drain_seconds) }}</td>
-                                    <td class="text-end text-muted">{{ formatNumber(queue.attempts ?? 0) }}</td>
-                                    <td class="text-end" :class="{ 'text-danger fw-semibold': (queue.failed ?? 0) > 0 }">{{ formatNumber(queue.failed ?? 0) }}</td>
-                                    <td class="text-end" :class="{ 'text-danger': (queue.failure_rate ?? 0) > 0 }">{{ formatPercent(queue.failure_rate) }}</td>
-                                    <td class="text-end">
-                                        <span class="badge" :class="{
-                                            'bg-success': queueStatus(queue) === 'healthy',
-                                            'bg-warning text-dark': queueStatus(queue) === 'warning',
-                                            'bg-danger': queueStatus(queue) === 'critical',
-                                        }">{{ statusLabel(queueStatus(queue)) }}</span>
+                                    <td><span class="lf-qname"><span class="lf-dot lf-dot-{{ queueStatus(queue) }}"></span>{{ queue.name }}</span></td>
+                                    <td class="muted">{{ queue.source ?? queue.driver }}</td>
+                                    <td class="muted">{{ queue.connection }}</td>
+                                    <td><span class="lf-drv" :class="'lf-drv-' + queue.driver">{{ queue.driver }}</span></td>
+                                    <td class="r num" :class="{ warn: queue.pending > 100, crit: queue.pending > 500 }">{{ formatNumber(queue.pending) }}</td>
+                                    <td class="r num muted">{{ formatNumber(queue.delayed) }}</td>
+                                    <td class="r num" :class="{ warn: (queue.oldest_pending_seconds ?? 0) >= 10, crit: (queue.oldest_pending_seconds ?? 0) >= 30 }">{{ formatDuration(queue.oldest_pending_seconds ?? queue.wait_seconds) }}</td>
+                                    <td class="r num" :class="{ warn: queue.wait_seconds >= 10, crit: queue.wait_seconds >= 30 }">{{ metricValue(queue.wait_seconds, 's') }}</td>
+                                    <td class="r num muted">{{ formatNumber(queue.processes) }}</td>
+                                    <td class="r num ok">{{ formatRate(queue.current_throughput_per_minute) }}</td>
+                                    <td class="r num muted">{{ formatRate(queue.throughput_per_minute) }}</td>
+                                    <td class="r num muted">{{ formatDuration(queue.estimated_drain_seconds) }}</td>
+                                    <td class="r num muted">{{ formatNumber(queue.attempts ?? 0) }}</td>
+                                    <td class="r num" :class="{ crit: (queue.failed ?? 0) > 0 }">{{ formatNumber(queue.failed ?? 0) }}</td>
+                                    <td class="r num" :class="{ warn: (queue.failure_rate ?? 0) > 0 }">{{ formatPercent(queue.failure_rate) }}</td>
+                                    <td class="r">
+                                        <span class="lf-status" :class="'lf-status-' + queueStatus(queue)">{{ statusLabel(queueStatus(queue)) }}</span>
                                     </td>
                                 </tr>
                                 <tr v-if="filteredQueues.length === 0">
-                                    <td colspan="16" class="text-center text-muted py-4">
-                                        {{ filterText ? 'No queues match the filter.' : 'No queues found.' }}
-                                    </td>
+                                    <td colspan="16" class="lf-empty">{{ filterText ? 'No queues match the filter.' : 'No queues found.' }}</td>
                                 </tr>
                             </tbody>
                         </table>
                     </div>
                 </div>
 
-                <!-- Activity -->
-                <div class="card overflow-hidden mt-4">
-                    <div class="card-header d-flex align-items-center justify-content-between">
-                        <h2 class="h6 m-0">Activity</h2>
-                        <span class="badge bg-secondary">recent events</span>
+                <!-- activity -->
+                <div class="lf-pane lf-pane-gap">
+                    <div class="lf-pane-head">
+                        <span class="lf-pane-title">Activity</span>
+                        <span class="lf-tag">recent</span>
                     </div>
-                    <div class="lf-activity-scroll">
+                    <div class="lf-activity">
                         <div
-                            v-for="(event, index) in flow?.events ?? []"
-                            :key="index"
-                            class="d-flex align-items-start gap-3 px-3 py-2 border-bottom"
+                            v-for="(event, i) in flow?.events ?? []"
+                            :key="i"
+                            class="lf-event"
                         >
-                            <span class="lf-sdot mt-1 flex-shrink-0" :class="'lf-s-' + event.status"></span>
-                            <div>
-                                <div class="small">{{ event.label }}</div>
-                                <div class="small text-muted">{{ index === 0 ? 'now' : index * 9 + 's ago' }}</div>
-                            </div>
+                            <span class="lf-event-time">{{ i === 0 ? 'now' : i * 9 + 's' }}</span>
+                            <span class="lf-dot" :class="'lf-dot-' + event.status" style="flex-shrink:0"></span>
+                            <span class="lf-event-label">{{ event.label }}</span>
                         </div>
-                        <div class="px-3 py-2 small text-muted" v-if="(flow?.events ?? []).length === 0">
-                            No recent flow events.
-                        </div>
+                        <div class="lf-empty" v-if="(flow?.events ?? []).length === 0">No recent flow events.</div>
                     </div>
                 </div>
 
             </div>
 
-            <!-- Inspector -->
-            <div class="col-12 col-lg-4 col-xl-3 mt-4 mt-lg-0">
-                <div class="card overflow-hidden lf-inspector">
-                    <div class="card-header d-flex align-items-center">
-                        <h2 class="h6 m-0">Inspector</h2>
-                        <span class="badge ms-auto" :class="{
-                            'bg-success': selectedInspector.node.status === 'healthy',
-                            'bg-warning text-dark': selectedInspector.node.status === 'warning',
-                            'bg-danger': selectedInspector.node.status === 'critical',
-                        }">{{ statusLabel(selectedInspector.node.status) }}</span>
+            <!-- inspector -->
+            <aside class="lf-inspector">
+                <div class="lf-pane lf-pane-sticky">
+                    <div class="lf-pane-head">
+                        <span class="lf-pane-title">Inspector</span>
+                        <span class="lf-status ms-auto" :class="'lf-status-' + selectedInspector.node.status">{{ statusLabel(selectedInspector.node.status) }}</span>
                     </div>
 
-                    <div class="p-3 border-bottom">
-                        <div class="fw-semibold mb-1">{{ selectedInspector.node.label }}</div>
-                        <div class="d-flex align-items-center gap-2 flex-wrap">
-                            <small class="text-muted text-uppercase fw-bold lf-kind-label">{{ nodeKind(selectedInspector.node) }}</small>
-                            <span class="badge bg-secondary fw-normal lf-con-tag">{{ selectedInspector.queue ? selectedInspector.queue.connection + ' · ' + selectedInspector.queue.name : selectedInspector.node.id }}</span>
+                    <div class="lf-insp-top">
+                        <div class="lf-insp-name">{{ selectedInspector.node.label }}</div>
+                        <div class="lf-insp-meta">
+                            <span class="lf-insp-kind">{{ nodeKind(selectedInspector.node) }}</span>
+                            <span class="lf-insp-conn">{{ selectedInspector.queue ? selectedInspector.queue.connection + ' · ' + selectedInspector.queue.name : selectedInspector.node.id }}</span>
                         </div>
                     </div>
 
-                    <div class="p-3 border-bottom">
-                        <p class="lf-sec-title">Metrics</p>
-                        <div
-                            class="d-flex justify-content-between align-items-baseline gap-2 py-1 small"
-                            v-for="m in selectedInspector.metrics"
-                            :key="m[0]"
-                        >
-                            <span class="text-muted text-capitalize">{{ m[0] }}</span>
-                            <strong class="fw-medium font-monospace text-end">{{ m[1] }}</strong>
+                    <div class="lf-insp-sec">
+                        <div class="lf-insp-sec-title">Metrics</div>
+                        <div class="lf-kv" v-for="m in selectedInspector.metrics" :key="m[0]">
+                            <span class="lf-kv-k">{{ m[0] }}</span>
+                            <span class="lf-kv-v">{{ m[1] }}</span>
                         </div>
                     </div>
 
-                    <div class="p-3 border-bottom">
-                        <p class="lf-sec-title">Incoming</p>
-                        <div class="d-flex align-items-center gap-2 py-1 small" v-for="edge in selectedInspector.incoming" :key="edge.id">
-                            <span class="lf-sdot flex-shrink-0" :class="'lf-s-' + edge.status"></span>
-                            <span class="flex-grow-1">{{ graphNodeLookup[edge.source]?.label ?? edge.source }}</span>
-                            <small class="text-muted">{{ edgeDisplayLabel(edge) }}</small>
+                    <div class="lf-insp-sec">
+                        <div class="lf-insp-sec-title">Incoming</div>
+                        <div class="lf-edge-row" v-for="edge in selectedInspector.incoming" :key="edge.id">
+                            <span class="lf-dot" :class="'lf-dot-' + edge.status"></span>
+                            <span class="lf-edge-lbl">{{ graphNodeLookup[edge.source]?.label ?? edge.source }}</span>
+                            <span class="lf-edge-rate">{{ edgeDisplayLabel(edge) }}</span>
                         </div>
-                        <div class="small text-muted" v-if="selectedInspector.incoming.length === 0">—</div>
+                        <div class="lf-empty-sm" v-if="selectedInspector.incoming.length === 0">—</div>
                     </div>
 
-                    <div class="p-3 border-bottom">
-                        <p class="lf-sec-title">Outgoing</p>
-                        <div class="d-flex align-items-center gap-2 py-1 small" v-for="edge in selectedInspector.outgoing" :key="edge.id">
-                            <span class="lf-sdot flex-shrink-0" :class="'lf-s-' + edge.status"></span>
-                            <span class="flex-grow-1">{{ graphNodeLookup[edge.target]?.label ?? edge.target }}</span>
-                            <small class="text-muted">{{ edgeDisplayLabel(edge) }}</small>
+                    <div class="lf-insp-sec">
+                        <div class="lf-insp-sec-title">Outgoing</div>
+                        <div class="lf-edge-row" v-for="edge in selectedInspector.outgoing" :key="edge.id">
+                            <span class="lf-dot" :class="'lf-dot-' + edge.status"></span>
+                            <span class="lf-edge-lbl">{{ graphNodeLookup[edge.target]?.label ?? edge.target }}</span>
+                            <span class="lf-edge-rate">{{ edgeDisplayLabel(edge) }}</span>
                         </div>
-                        <div class="small text-muted" v-if="selectedInspector.outgoing.length === 0">—</div>
+                        <div class="lf-empty-sm" v-if="selectedInspector.outgoing.length === 0">—</div>
                     </div>
 
-                    <div
-                        class="alert mb-0 rounded-0 border-0 border-top p-3"
-                        :class="{
-                            'alert-success': selectedInspector.action.type === 'ok',
-                            'alert-warning': selectedInspector.action.type === 'warn',
-                            'alert-danger':  selectedInspector.action.type === 'critical',
-                        }"
-                    >
-                        <p class="lf-sec-title mb-1">{{ selectedInspector.action.title }}</p>
-                        <p class="small mb-0">{{ selectedInspector.action.text }}</p>
+                    <div class="lf-action" :class="'lf-action-' + selectedInspector.action.type">
+                        <div class="lf-action-title">{{ selectedInspector.action.title }}</div>
+                        <div class="lf-action-text">{{ selectedInspector.action.text }}</div>
                     </div>
                 </div>
-            </div>
+            </aside>
         </div>
     </div>
 </template>
 
 <style scoped>
-    /* ── SVG CANVAS — light palette ──────────────────────────────── */
-    .lf-canvas-wrap {
+    /* ══ DESIGN TOKENS — light ═════════════════════════════════════════════ */
+    .lf {
+        --lf-bg:      var(--bs-body-bg, #f8f9fa);
+        --lf-panel:   var(--bs-card-bg, #ffffff);
+        --lf-border:  var(--bs-border-color, #dee2e6);
+        --lf-border2: var(--bs-border-color-translucent, rgba(0,0,0,.175));
+        --lf-text:    var(--bs-body-color, #212529);
+        --lf-muted:   var(--bs-secondary-color, #6c757d);
+        --lf-dim:     rgba(108,117,125,.6);
+        --lf-hover:   var(--bs-tertiary-bg, #f8f9fa);
+
+        --lf-violet:  #7746ec;
+        --lf-blue:    #2563eb;
+        --lf-cyan:    #0891b2;
+        --lf-green:   #059669;
+        --lf-amber:   #d97706;
+        --lf-red:     #dc2626;
+
+        --lf-canvas-bg: var(--bs-secondary-bg, #e9ecef);
+        --lf-dot-color: rgba(119, 70, 236, 0.10);
+        --lf-grid:      rgba(119, 70, 236, 0.055);
+        --lf-stage:     rgba(90, 88, 84, 0.50);
+
+        --lf-svg-text:  #111827;
+        --lf-svg-muted: #6b7280;
+
+        --lf-node-producer-bg:     rgba(37, 99, 235, 0.07);
+        --lf-node-producer-stroke: rgba(37, 99, 235, 0.28);
+        --lf-node-queue-bg:        rgba(119, 70, 236, 0.07);
+        --lf-node-queue-stroke:    rgba(119, 70, 236, 0.28);
+        --lf-node-worker-bg:       rgba(5, 150, 105, 0.07);
+        --lf-node-worker-stroke:   rgba(5, 150, 105, 0.28);
+        --lf-node-result-bg:       rgba(5, 150, 105, 0.07);
+        --lf-node-result-stroke:   rgba(5, 150, 105, 0.28);
+        --lf-node-warning-bg:      rgba(217, 119, 6, 0.09);
+        --lf-node-warning-stroke:  #d97706;
+        --lf-node-critical-bg:     rgba(220, 38, 38, 0.07);
+        --lf-node-critical-stroke: #dc2626;
+
+        font-size: 12px;
+        padding-bottom: 2rem;
+    }
+
+    /* ══ DESIGN TOKENS — dark ══════════════════════════════════════════════ */
+    .lf.lf-dark {
+        --lf-violet:  #a78bfa;
+        --lf-blue:    #4a8fda;
+        --lf-cyan:    #00c8d4;
+        --lf-green:   #22c878;
+        --lf-amber:   #f0a030;
+        --lf-red:     #e84050;
+
+        --lf-canvas-bg: #06090d;
+        --lf-dot-color: rgba(0, 200, 212, 0.09);
+        --lf-grid:      rgba(0, 200, 212, 0.038);
+        --lf-stage:     rgba(104, 120, 160, 0.45);
+
+        --lf-svg-text:  #c8d6e8;
+        --lf-svg-muted: #6b7e96;
+
+        --lf-node-producer-bg:     rgba(74, 143, 218, 0.10);
+        --lf-node-producer-stroke: rgba(74, 143, 218, 0.30);
+        --lf-node-queue-bg:        rgba(167, 139, 250, 0.10);
+        --lf-node-queue-stroke:    rgba(167, 139, 250, 0.30);
+        --lf-node-worker-bg:       rgba(34, 200, 120, 0.10);
+        --lf-node-worker-stroke:   rgba(34, 200, 120, 0.30);
+        --lf-node-result-bg:       rgba(34, 200, 120, 0.10);
+        --lf-node-result-stroke:   rgba(34, 200, 120, 0.30);
+        --lf-node-warning-bg:      rgba(240, 160, 48, 0.10);
+        --lf-node-warning-stroke:  #f0a030;
+        --lf-node-critical-bg:     rgba(232, 64, 80, 0.10);
+        --lf-node-critical-stroke: #e84050;
+    }
+
+    /* ── TOOLBAR ─────────────────────────────────────────────────────────── */
+    .lf-toolbar {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 0 0 10px;
+        flex-wrap: wrap;
+    }
+    .lf-toolbar-gap { flex: 1; min-width: 0; }
+
+    .lf-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        padding: 3px 8px;
+        border-radius: 3px;
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: .09em;
+        text-transform: uppercase;
+    }
+    .lf-chip-mock   { background: rgba(37,99,235,.09);  color: var(--lf-blue);   border: 1px solid rgba(37,99,235,.20); }
+    .lf-chip-auto   { background: rgba(119,70,236,.09); color: var(--lf-violet); border: 1px solid rgba(119,70,236,.20); }
+    .lf-chip-redis  { background: rgba(220,38,38,.09);  color: var(--lf-red);    border: 1px solid rgba(220,38,38,.20); }
+    .lf-chip-db     { background: rgba(5,150,105,.09);  color: var(--lf-green);  border: 1px solid rgba(5,150,105,.20); }
+
+    .lf-ts { font-size: 11px; color: var(--lf-dim); }
+
+    .lf-input, .lf-select {
+        height: 28px;
+        padding: 4px 9px;
+        border-radius: 3px;
+        border: 1px solid var(--lf-border);
+        background: var(--lf-panel);
+        color: var(--lf-text);
+        font-family: inherit;
+        font-size: 11px;
+        outline: none;
+        transition: border-color .12s;
+    }
+    .lf-input { width: 155px; }
+    .lf-input:focus, .lf-select:focus { border-color: var(--lf-violet); }
+    .lf-input::placeholder { color: var(--lf-dim); }
+
+    .lf-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        height: 28px;
+        padding: 0 10px;
+        border-radius: 3px;
+        border: 1px solid var(--lf-border);
+        background: var(--lf-panel);
+        color: var(--lf-muted);
+        font-family: inherit;
+        font-size: 11px;
+        cursor: pointer;
+        letter-spacing: .03em;
+        transition: all .12s;
+    }
+    .lf-btn:hover       { border-color: var(--lf-violet); color: var(--lf-violet); background: rgba(119,70,236,.06); }
+    .lf-btn-live        { border-color: var(--lf-green);  color: var(--lf-green);  background: rgba(5,150,105,.07); }
+
+    /* ── NOTICE ──────────────────────────────────────────────────────────── */
+    .lf-notice {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 7px 12px;
+        border-radius: 4px;
+        font-size: 11.5px;
+        margin-bottom: 10px;
+    }
+    .lf-notice-warn { background: rgba(217,119,6,.09); border: 1px solid rgba(217,119,6,.22); color: var(--lf-amber); }
+
+    /* ── METRICS STRIP ───────────────────────────────────────────────────── */
+    .lf-metrics {
+        display: flex;
+        border: 1px solid var(--lf-border);
+        border-radius: 5px;
+        overflow: hidden;
+        background: var(--lf-panel);
+        margin-bottom: 12px;
+    }
+    .lf-metric {
+        flex: 1;
+        padding: 11px 14px 10px;
+        border-right: 1px solid var(--lf-border);
+        min-width: 0;
+    }
+    .lf-metric:last-child { border-right: none; }
+    .lf-metric-label {
+        display: block;
+        font-size: 9px;
+        font-weight: 700;
+        letter-spacing: .13em;
+        color: var(--lf-dim);
+        text-transform: uppercase;
+        margin-bottom: 5px;
+    }
+    .lf-metric-value {
+        display: block;
+        font-size: 22px;
+        font-weight: 700;
+        line-height: 1;
+        font-variant-numeric: tabular-nums;
+        color: var(--lf-text);
+        font-family: ui-monospace, "Cascadia Code", "SF Mono", Consolas, monospace;
+        letter-spacing: -.02em;
+    }
+    .lf-metric-sub {
+        display: block;
+        font-size: 9.5px;
+        color: var(--lf-dim);
+        margin-top: 4px;
+    }
+    .lf-val-primary { color: var(--lf-violet) !important; }
+    .lf-val-warn    { color: var(--lf-amber)  !important; }
+    .lf-val-danger  { color: var(--lf-red)    !important; }
+    .lf-val-ok      { color: var(--lf-green)  !important; }
+
+    /* ── LOADING ─────────────────────────────────────────────────────────── */
+    .lf-loading {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 9px;
+        padding: 56px 20px;
+        color: var(--lf-muted);
+        font-size: 12.5px;
+    }
+
+    /* ── MAIN GRID ───────────────────────────────────────────────────────── */
+    .lf-main { display: grid; grid-template-columns: minmax(0, 1fr) 308px; gap: 12px; }
+    .lf-col  { display: flex; flex-direction: column; min-width: 0; }
+
+    /* ── PANE (card) ─────────────────────────────────────────────────────── */
+    .lf-pane {
+        background: var(--lf-panel);
+        border: 1px solid var(--lf-border);
+        border-radius: 5px;
+        overflow: hidden;
+    }
+    .lf-pane-gap    { margin-top: 12px; }
+    .lf-pane-sticky { position: sticky; top: 10px; max-height: calc(100vh - 20px); overflow-y: auto; }
+
+    .lf-pane-head {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 12px;
+        border-bottom: 1px solid var(--lf-border);
+        background: var(--lf-hover);
+    }
+    .lf-pane-title {
+        font-size: 10.5px;
+        font-weight: 700;
+        letter-spacing: .10em;
+        text-transform: uppercase;
+        color: var(--lf-muted);
+    }
+    .lf-pane-meta { font-size: 10px; color: var(--lf-dim); }
+
+    /* ── VIEWPORT CONTROLS ───────────────────────────────────────────────── */
+    .lf-vp { display: flex; align-items: center; gap: 2px; margin-left: auto; margin-right: 6px; }
+    .lf-vp-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 22px;
+        height: 22px;
+        border-radius: 3px;
+        border: 1px solid var(--lf-border);
+        background: var(--lf-panel);
+        color: var(--lf-muted);
+        cursor: pointer;
+        padding: 0;
+        transition: all .1s;
+    }
+    .lf-vp-btn:hover { border-color: var(--lf-violet); color: var(--lf-violet); background: rgba(119,70,236,.06); }
+    .lf-vp-pct { font-size: 10px; color: var(--lf-dim); min-width: 34px; text-align: center; font-variant-numeric: tabular-nums; font-family: ui-monospace, Consolas, monospace; }
+
+    .lf-live-tag {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 2px 7px;
+        border-radius: 3px;
+        font-size: 9.5px;
+        font-weight: 700;
+        letter-spacing: .08em;
+        text-transform: uppercase;
+        background: rgba(5,150,105,.10);
+        color: var(--lf-green);
+        border: 1px solid rgba(5,150,105,.22);
+    }
+
+    .lf-tag {
+        padding: 2px 6px;
+        border-radius: 3px;
+        font-size: 9.5px;
+        font-weight: 600;
+        letter-spacing: .07em;
+        text-transform: uppercase;
+        background: var(--lf-hover);
+        color: var(--lf-dim);
+        border: 1px solid var(--lf-border);
+        margin-left: auto;
+    }
+
+    /* ── SVG CANVAS ──────────────────────────────────────────────────────── */
+    .lf-canvas {
         overflow: hidden;
         user-select: none;
-        background: var(--bs-secondary-bg, #f3f4f6);
-        --lf-node-producer-bg:     rgba(13,  110, 253, 0.07);
-        --lf-node-producer-stroke: rgba(13,  110, 253, 0.28);
-        --lf-node-queue-bg:        rgba(119,  70, 236, 0.07);
-        --lf-node-queue-stroke:    rgba(119,  70, 236, 0.28);
-        --lf-node-worker-bg:       rgba( 25, 135,  84, 0.07);
-        --lf-node-worker-stroke:   rgba( 25, 135,  84, 0.28);
-        --lf-node-result-bg:       rgba( 25, 135,  84, 0.07);
-        --lf-node-result-stroke:   rgba( 25, 135,  84, 0.28);
-        --lf-node-warning-bg:      rgba(255, 193,   7, 0.10);
-        --lf-node-warning-stroke:  #d97706;
-        --lf-node-critical-bg:     rgba(220,  53,  69, 0.07);
-        --lf-node-critical-stroke: #dc3545;
-        --lf-grid-line:  rgba(119, 70, 236, 0.055);
-        --lf-stage-fill: rgba(75, 85, 99, 0.50);
-        --lf-text:   #111827;
-        --lf-muted:  #6b7280;
-        --lf-cyan:   #0891b2;
-        --lf-amber:  #d97706;
-        --lf-green:  #059669;
-        --lf-red:    #dc2626;
-        --lf-violet: #7746ec;
-        --lf-blue:   #2563eb;
+        background-color: var(--lf-canvas-bg);
+        background-image: radial-gradient(circle, var(--lf-dot-color) 1px, transparent 1px);
+        background-size: 22px 22px;
+        background-position: 11px 11px;
+    }
+    .lf-svg { width: 100%; height: auto; min-height: 280px; max-height: 660px; display: block; }
+    .lf-svg-mono { font-family: ui-monospace, "Cascadia Code", "SF Mono", Consolas, monospace; }
+    .lf-svg-node { cursor: pointer; }
+    .lf-svg-node:hover > rect:first-child { filter: brightness(1.08); }
+    .lf-svg-grid line { stroke: var(--lf-grid); stroke-width: 1; }
+    .lf-stage { fill: var(--lf-stage); font-size: 8px; letter-spacing: 1.8px; font-family: ui-monospace, Consolas, monospace; }
+
+    /* ── LEGEND ──────────────────────────────────────────────────────────── */
+    .lf-legend {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 7px 12px;
+        border-top: 1px solid var(--lf-border);
+        background: var(--lf-hover);
+        flex-wrap: wrap;
+    }
+    .lf-leg-item { display: inline-flex; align-items: center; gap: 5px; font-size: 10px; color: var(--lf-muted); }
+    .lf-ld  { display: inline-block; width: 7px; height: 7px; border-radius: 50%; }
+    .lf-ld-producer { background: var(--lf-blue); opacity: .65; }
+    .lf-ld-queue    { background: var(--lf-violet); opacity: .65; }
+    .lf-ld-worker   { background: var(--lf-green); opacity: .65; }
+    .lf-ld-done     { background: var(--lf-green); }
+    .lf-ld-fail     { background: var(--lf-red); }
+    .lf-ll  { display: inline-block; width: 16px; height: 2px; border-radius: 1px; }
+    .lf-ll-ok   { background: var(--lf-cyan); }
+    .lf-ll-warn { background: var(--lf-amber); }
+    .lf-ll-crit { background: var(--lf-red); }
+    .lf-leg-sep { display: inline-block; width: 1px; height: 11px; background: var(--lf-border); }
+
+    /* ── TABLE ───────────────────────────────────────────────────────────── */
+    .lf-tbl-wrap { overflow-x: auto; }
+    .lf-tbl      { width: 100%; border-collapse: collapse; }
+    .lf-tbl th {
+        padding: 6px 10px;
+        font-size: 9px;
+        font-weight: 700;
+        letter-spacing: .11em;
+        text-transform: uppercase;
+        color: var(--lf-dim);
+        border-bottom: 1px solid var(--lf-border);
+        background: var(--lf-hover);
+        white-space: nowrap;
+        text-align: left;
+    }
+    .lf-tbl td {
+        padding: 5px 10px;
+        font-size: 11.5px;
+        color: var(--lf-text);
+        border-bottom: 1px solid var(--lf-border);
+        white-space: nowrap;
+    }
+    .lf-tbl .r { text-align: right; }
+    .lf-tbl .num { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: 11px; font-variant-numeric: tabular-nums; }
+    .lf-tbl .muted { color: var(--lf-muted); }
+    .lf-tbl .warn  { color: var(--lf-amber) !important; }
+    .lf-tbl .crit  { color: var(--lf-red)   !important; }
+    .lf-tbl .ok    { color: var(--lf-green)  !important; }
+    .lf-tbl tbody tr { cursor: pointer; transition: background .08s; }
+    .lf-tbl tbody tr:last-child td { border-bottom: none; }
+    .lf-tbl tbody tr:hover { background: var(--lf-hover); }
+    .lf-tbl-sel { background: rgba(119,70,236,.05) !important; box-shadow: inset 2px 0 0 var(--lf-violet); }
+    .lf-empty { text-align: center !important; padding: 22px 10px !important; color: var(--lf-dim) !important; }
+
+    .lf-qname { display: inline-flex; align-items: center; gap: 6px; }
+    .lf-drv { display: inline-block; padding: 1px 5px; border-radius: 2px; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
+    .lf-drv-redis    { background: rgba(220,38,38,.09);  color: var(--lf-red); }
+    .lf-drv-mysql,
+    .lf-drv-database { background: rgba(37,99,235,.09);  color: var(--lf-blue); }
+    .lf-drv-pgsql    { background: rgba(5,150,105,.09);  color: var(--lf-green); }
+
+    /* ── STATUS ──────────────────────────────────────────────────────────── */
+    .lf-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+    .lf-dot-healthy  { background: var(--lf-green); }
+    .lf-dot-warning  { background: var(--lf-amber); }
+    .lf-dot-critical { background: var(--lf-red); animation: lf-blink-anim 1s ease-in-out infinite; }
+
+    .lf-status { display: inline-block; padding: 2px 6px; border-radius: 3px; font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
+    .lf-status-healthy  { background: rgba(5,150,105,.10);  color: var(--lf-green); }
+    .lf-status-warning  { background: rgba(217,119,6,.10);  color: var(--lf-amber); }
+    .lf-status-critical { background: rgba(220,38,38,.10);  color: var(--lf-red); }
+
+    /* ── ACTIVITY ────────────────────────────────────────────────────────── */
+    .lf-activity { max-height: 200px; overflow-y: auto; padding: 4px 0; }
+    .lf-event {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 5px 12px;
+        transition: background .08s;
+    }
+    .lf-event:hover { background: var(--lf-hover); }
+    .lf-event-time {
+        font-size: 10px;
+        color: var(--lf-dim);
+        min-width: 28px;
+        font-family: ui-monospace, Consolas, monospace;
+        font-variant-numeric: tabular-nums;
+    }
+    .lf-event-label { font-size: 11.5px; color: var(--lf-text); }
+    .lf-empty-sm { padding: 6px 12px; font-size: 11px; color: var(--lf-dim); }
+
+    /* ── INSPECTOR ───────────────────────────────────────────────────────── */
+    .lf-inspector { align-self: start; }
+
+    .lf-insp-top { padding: 10px 12px; border-bottom: 1px solid var(--lf-border); }
+    .lf-insp-name { font-size: 13.5px; font-weight: 600; color: var(--lf-text); margin-bottom: 4px; }
+    .lf-insp-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+    .lf-insp-kind {
+        font-size: 9px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: .12em;
+        color: var(--lf-muted);
+    }
+    .lf-insp-conn {
+        font-size: 10px;
+        padding: 1px 5px;
+        border-radius: 2px;
+        background: var(--lf-hover);
+        border: 1px solid var(--lf-border);
+        color: var(--lf-muted);
+        font-family: ui-monospace, Consolas, monospace;
     }
 
-    /* ── SVG CANVAS — dark palette ───────────────────────────────── */
-    .lf-canvas-wrap.lf-dark {
-        background: #090c12;
-        --lf-node-producer-bg:     rgba(  0, 160, 210, 0.10);
-        --lf-node-producer-stroke: rgba(  0, 160, 210, 0.30);
-        --lf-node-queue-bg:        rgba(119,  70, 236, 0.10);
-        --lf-node-queue-stroke:    rgba(119,  70, 236, 0.32);
-        --lf-node-worker-bg:       rgba( 34, 200, 120, 0.10);
-        --lf-node-worker-stroke:   rgba( 34, 200, 120, 0.30);
-        --lf-node-result-bg:       rgba( 34, 200, 120, 0.10);
-        --lf-node-result-stroke:   rgba( 34, 200, 120, 0.30);
-        --lf-node-warning-bg:      rgba(240, 160,  48, 0.10);
-        --lf-node-warning-stroke:  #f0a030;
-        --lf-node-critical-bg:     rgba(224,  64,  74, 0.10);
-        --lf-node-critical-stroke: #e0404a;
-        --lf-grid-line:  rgba(0, 200, 212, 0.04);
-        --lf-stage-fill: rgba(107, 126, 150, 0.45);
-        --lf-text:   #c8d6e8;
-        --lf-muted:  #6b7e96;
-        --lf-cyan:   #00c8d4;
-        --lf-amber:  #f0a030;
-        --lf-green:  #22c878;
-        --lf-red:    #e0404a;
-        --lf-violet: #a78bfa;
-        --lf-blue:   #4a90d9;
+    .lf-insp-sec { padding: 8px 12px; border-top: 1px solid var(--lf-border); }
+    .lf-insp-sec-title {
+        font-size: 9px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: .12em;
+        color: var(--lf-dim);
+        margin-bottom: 6px;
     }
 
-    /* ── SVG ─────────────────────────────────────────────────────── */
-    .lf-flow-svg     { width: 100%; height: auto; min-height: 280px; max-height: 660px; display: block; }
-    .lf-svg-text     { font-family: ui-monospace, "SF Mono", "Cascadia Code", Consolas, monospace; }
-    .lf-svg-node     { cursor: pointer; }
-    .lf-svg-node:hover > rect:first-child { filter: brightness(1.06); }
-    .lf-svg-grid line { stroke: var(--lf-grid-line); stroke-width: 1; }
-    .lf-stage-lbl    { fill: var(--lf-stage-fill); font-size: 8.5px; letter-spacing: 1.5px; }
+    .lf-kv {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        gap: 8px;
+        padding: 2px 0;
+    }
+    .lf-kv-k {
+        font-size: 11px;
+        color: var(--lf-muted);
+        text-transform: capitalize;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        min-width: 0;
+    }
+    .lf-kv-v {
+        font-size: 11px;
+        font-weight: 500;
+        color: var(--lf-text);
+        font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+        text-align: right;
+        flex-shrink: 0;
+    }
 
-    /* ── INSPECTOR ───────────────────────────────────────────────── */
-    .lf-inspector { position: sticky; top: 1rem; max-height: calc(100vh - 2rem); overflow-y: auto; }
+    .lf-edge-row {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 2.5px 0;
+        font-size: 11px;
+    }
+    .lf-edge-lbl  { flex: 1; color: var(--lf-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .lf-edge-rate { color: var(--lf-dim); font-family: ui-monospace, Consolas, monospace; font-size: 10.5px; white-space: nowrap; }
 
-    /* ── STATUS DOTS ─────────────────────────────────────────────── */
-    .lf-sdot       { display: inline-block; width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
-    .lf-s-healthy  { background: #198754; }
-    .lf-s-warning  { background: #d97706; }
-    .lf-s-critical { background: #dc3545; animation: lf-blink 1s ease-in-out infinite; }
+    .lf-action { margin: 0 12px 12px; padding: 9px 10px; border-radius: 4px; border-left-width: 3px; border-left-style: solid; }
+    .lf-action-ok       { background: rgba(5,150,105,.07);  border-color: var(--lf-green);  border: 1px solid rgba(5,150,105,.18);  border-left: 3px solid var(--lf-green); }
+    .lf-action-warn     { background: rgba(217,119,6,.07);  border-color: var(--lf-amber);  border: 1px solid rgba(217,119,6,.18);  border-left: 3px solid var(--lf-amber); }
+    .lf-action-critical { background: rgba(220,38,38,.07);  border-color: var(--lf-red);    border: 1px solid rgba(220,38,38,.18);  border-left: 3px solid var(--lf-red); }
+    .lf-action-title { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .10em; margin-bottom: 4px; }
+    .lf-action-ok       .lf-action-title { color: var(--lf-green); }
+    .lf-action-warn     .lf-action-title { color: var(--lf-amber); }
+    .lf-action-critical .lf-action-title { color: var(--lf-red); }
+    .lf-action-text { font-size: 11px; color: var(--lf-muted); line-height: 1.55; }
 
-    /* ── SOURCE BADGE ────────────────────────────────────────────── */
-    .lf-source-badge  { font-size: 10px; letter-spacing: .07em; font-weight: 700; }
-    .lf-source-mock   { background: rgba( 13,110,253,.10); color: #0d6efd; border: 1px solid rgba( 13,110,253,.22); }
-    .lf-source-auto   { background: rgba(119, 70,236,.10); color: #7746ec; border: 1px solid rgba(119, 70,236,.22); }
-    .lf-source-redis  { background: rgba(220, 53, 69,.10); color: #dc3545; border: 1px solid rgba(220, 53, 69,.22); }
-    .lf-source-db     { background: rgba( 25,135, 84,.10); color: #198754; border: 1px solid rgba( 25,135, 84,.22); }
+    /* ── BLINK / PULSE ───────────────────────────────────────────────────── */
+    .lf-blink {
+        display: inline-block;
+        width: 6px; height: 6px;
+        border-radius: 50%;
+        background: currentColor;
+        animation: lf-blink-anim 2s ease-in-out infinite;
+    }
+    .lf-blink-inline { vertical-align: middle; margin-right: 1px; }
+    .lf-blink-green  { background: var(--lf-green); }
 
-    /* ── DRIVER BADGE ────────────────────────────────────────────── */
-    .lf-driver-badge    { font-size: 9px; font-weight: 700; text-transform: uppercase; }
-    .lf-driver-redis    { background: rgba(220,53,69,.10);  color: #dc3545; }
-    .lf-driver-mysql,
-    .lf-driver-database { background: rgba(13,110,253,.10); color: #0d6efd; }
-    .lf-driver-pgsql    { background: rgba(25,135,84,.10);  color: #198754; }
+    /* ── ANIMATIONS ──────────────────────────────────────────────────────── */
+    @keyframes lf-blink-anim { 0%,100%{opacity:1} 50%{opacity:.2} }
+    @keyframes lf-spin-anim  { to{transform:rotate(360deg)} }
+    .lf-spin { animation: lf-spin-anim .9s linear infinite; display: inline-block; }
 
-    /* ── LEGEND ──────────────────────────────────────────────────── */
-    .lf-ldot           { display: inline-block; width: 8px; height: 8px; border-radius: 50%; }
-    .lf-ldot-producer  { background: rgba(13,110,253,.55); }
-    .lf-ldot-queue     { background: rgba(119,70,236,.55); }
-    .lf-ldot-worker    { background: rgba(25,135,84,.55); }
-    .lf-ldot-completed { background: #198754; }
-    .lf-ldot-failed    { background: #dc3545; }
-    .lf-lline          { display: inline-block; width: 18px; height: 2px; border-radius: 1px; }
-    .lf-lline-healthy  { background: #0891b2; }
-    .lf-lline-warning  { background: #d97706; }
-    .lf-lline-critical { background: #dc3545; }
+    /* ── RESPONSIVE ──────────────────────────────────────────────────────── */
+    @media (max-width: 1100px) {
+        .lf-main { grid-template-columns: 1fr; }
+        .lf-inspector .lf-pane-sticky { position: static; max-height: none; }
+    }
+    @media (max-width: 820px) {
+        .lf-metrics { flex-wrap: wrap; }
+        .lf-metric  { flex: 1 1 30%; }
+    }
+    @media (max-width: 520px) {
+        .lf-metric { flex: 1 1 45%; }
+    }
 
-    /* ── PULSE ───────────────────────────────────────────────────── */
-    .lf-pulse      { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: currentColor; animation: lf-blink 2s ease-in-out infinite; }
-    .lf-pulse-live { background: #fff; }
-
-    /* ── TABLE ───────────────────────────────────────────────────── */
-    .lf-row-selected { background: rgba(119,70,236,.06) !important; border-left: 2px solid #7746ec; }
-
-    /* ── VIEWPORT CONTROLS ───────────────────────────────────────── */
-    .lf-vp-btn   { width: 26px; height: 26px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
-    .lf-zoom-label { min-width: 36px; text-align: center; font-variant-numeric: tabular-nums; font-size: .75rem; }
-
-    /* ── ACTIVITY ────────────────────────────────────────────────── */
-    .lf-activity-scroll { max-height: 220px; overflow-y: auto; }
-    .lf-activity-scroll > div:last-child { border-bottom: none !important; }
-
-    /* ── INSPECTOR TYPOGRAPHY ────────────────────────────────────── */
-    .lf-sec-title  { font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--bs-secondary-color, #6c757d); margin-bottom: 0; }
-    .lf-kind-label { font-size: .7rem; letter-spacing: .06em; }
-    .lf-con-tag    { font-size: .7rem; font-weight: 400; }
-
-    /* ── ANIMATIONS ──────────────────────────────────────────────── */
-    @keyframes lf-blink { 0%,100%{opacity:1} 50%{opacity:.25} }
-    @keyframes lf-spin  { to{transform:rotate(360deg)} }
-    .lf-spin { animation: lf-spin .9s linear infinite; display: inline-block; }
+    ::-webkit-scrollbar { width: 4px; height: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--lf-border); border-radius: 2px; }
 </style>
