@@ -770,7 +770,7 @@
                                     :class="{ 'lf-tbl-sel': selectedId === (findQueueNode(queue)?.id ?? queueNodeId(queue)) }"
                                     @click="selectNode(findQueueNode(queue)?.id ?? queueNodeId(queue))"
                                 >
-                                    <td><span class="lf-qname"><span class="lf-dot lf-dot-{{ queueStatus(queue) }}"></span>{{ queue.name }}</span></td>
+                                    <td><span class="lf-qname"><span class="lf-dot" :class="'lf-dot-' + queueStatus(queue)"></span>{{ queue.name }}</span></td>
                                     <td class="muted">{{ queue.source ?? queue.driver }}</td>
                                     <td class="muted">{{ queue.connection }}</td>
                                     <td><span class="lf-drv" :class="'lf-drv-' + queue.driver">{{ queue.driver }}</span></td>
@@ -919,6 +919,14 @@
 
     /* ══ DESIGN TOKENS — dark ══════════════════════════════════════════════ */
     .lf.lf-dark {
+        /* layout — explicit so Bootstrap 5.3 vars aren't required */
+        --lf-panel:   #1c2030;
+        --lf-border:  #252e40;
+        --lf-text:    #d0dce8;
+        --lf-muted:   #6878a0;
+        --lf-dim:     rgba(104, 120, 160, .65);
+        --lf-hover:   #141824;
+
         --lf-violet:  #a78bfa;
         --lf-blue:    #4a8fda;
         --lf-cyan:    #00c8d4;
