@@ -127,8 +127,23 @@ class RedisQueueFlowRepositoryTest extends UnitTest
             120
         );
 
+        $reservedRepository = $this->repository(
+            [],
+            collect(),
+            null,
+            120,
+            [
+                'redis:orders-sync' => [
+                    'length' => 0,
+                    'delayed' => 0,
+                    'reserved' => 1,
+                ],
+            ]
+        );
+
         $this->assertSame(0, $idleRepository->exposedQueues()[0]['current_throughput']);
         $this->assertSame(120, $activeRepository->exposedQueues()[0]['current_throughput']);
+        $this->assertSame(120, $reservedRepository->exposedQueues()[0]['current_throughput']);
     }
 
     public function test_it_includes_discovered_redis_queue_keys(): void
@@ -155,11 +170,29 @@ class RedisQueueFlowRepositoryTest extends UnitTest
         $this->assertSame(1, $queue['reserved']);
     }
 
+    public function test_it_includes_configured_redis_queues(): void
+    {
+        $repository = $this->repository(
+            [],
+            collect(),
+            null,
+            0,
+            [],
+            ['redis:emails']
+        );
+
+        $queue = $repository->exposedQueues()[0];
+
+        $this->assertSame('emails', $queue['name']);
+        $this->assertSame(0, $queue['length']);
+    }
+
     /**
      * @param  array<int, array<string, mixed>>  $workloadQueues
      * @param  array<string, array{length: int, delayed: int, reserved: int}>  $discoveredQueues
+     * @param  array<int, string>  $configuredQueues
      */
-    protected function repository(array $workloadQueues, Collection $pendingJobs, ?Collection $failedJobs = null, int $throughput = 0, array $discoveredQueues = []): RedisQueueFlowRepository
+    protected function repository(array $workloadQueues, Collection $pendingJobs, ?Collection $failedJobs = null, int $throughput = 0, array $discoveredQueues = [], array $configuredQueues = []): RedisQueueFlowRepository
     {
         $workload = Mockery::mock(WorkloadRepository::class);
         $workload->shouldReceive('get')->once()->andReturn($workloadQueues);
@@ -179,10 +212,16 @@ class RedisQueueFlowRepositoryTest extends UnitTest
             Mockery::mock(SupervisorRepository::class)
         ) extends RedisQueueFlowRepository {
             public array $discoveredQueues = [];
+            public array $configuredQueues = [];
 
             public function exposedQueues(): Collection
             {
                 return $this->queues();
+            }
+
+            protected function configuredRedisQueues(): array
+            {
+                return $this->configuredQueues;
             }
 
             protected function discoveredRedisQueues(): array
@@ -192,6 +231,7 @@ class RedisQueueFlowRepositoryTest extends UnitTest
         };
 
         $repository->discoveredQueues = $discoveredQueues;
+        $repository->configuredQueues = $configuredQueues;
 
         return $repository;
     }

@@ -82,6 +82,10 @@ class RedisQueueFlowRepository implements QueueFlowRepository
             })
             ->all();
 
+        foreach ($this->configuredRedisQueues() as $name) {
+            $queues[$name] ??= $this->emptyQueue($name);
+        }
+
         foreach ($this->discoveredRedisQueues() as $name => $discovered) {
             $queue = $queues[$name] ?? $this->emptyQueue($name);
             $queue['length'] = max((int) $queue['length'], $discovered['length']);
@@ -99,12 +103,20 @@ class RedisQueueFlowRepository implements QueueFlowRepository
             $queue['completed'] = max((int) $queue['completed'], $observation['completed']);
             $queue['attempts'] = max((int) $queue['attempts'], $observation['attempts']);
             $queue['latest_error'] ??= $observation['latest_error'];
-            $queue['current_throughput'] = $this->currentThroughput((int) $queue['processes'], (int) $queue['throughput']);
 
             $queues[$name] = $queue;
         }
 
         return collect($queues)
+            ->map(function (array $queue): array {
+                $queue['current_throughput'] = $this->currentThroughput(
+                    (int) $queue['processes'],
+                    (int) $queue['reserved'],
+                    (int) $queue['throughput']
+                );
+
+                return $queue;
+            })
             ->sortBy(fn (array $queue): string => $this->connectionName($queue['name']).':'.$this->queueName($queue['name']))
             ->values();
     }
@@ -264,6 +276,46 @@ class RedisQueueFlowRepository implements QueueFlowRepository
         return $queues;
     }
 
+    /**
+     * @return array<int, string>
+     */
+    protected function configuredRedisQueues(): array
+    {
+        if (! app()->bound('config')) {
+            return [];
+        }
+
+        $queues = collect();
+        $redisQueue = config('queue.connections.redis.queue');
+
+        if (is_string($redisQueue) && $redisQueue !== '') {
+            $queues->push($redisQueue);
+        }
+
+        $supervisors = collect(config('horizon.defaults', []))
+            ->merge(collect(config('horizon.environments.'.app()->environment(), [])));
+
+        foreach ($supervisors as $supervisor) {
+            if (($supervisor['connection'] ?? null) !== 'redis') {
+                continue;
+            }
+
+            foreach ((array) ($supervisor['queue'] ?? []) as $queue) {
+                if (is_string($queue) && $queue !== '') {
+                    $queues->push($queue);
+                }
+            }
+        }
+
+        return $queues
+            ->flatMap(fn (string $queue): array => array_map('trim', explode(',', $queue)))
+            ->filter()
+            ->unique()
+            ->map(fn (string $queue): string => $this->redisQueueKey($queue))
+            ->values()
+            ->all();
+    }
+
     protected function redisConnection(): mixed
     {
         try {
@@ -286,6 +338,28 @@ class RedisQueueFlowRepository implements QueueFlowRepository
      */
     protected function redisQueueKeys(mixed $connection): array
     {
+        try {
+            $keys = [];
+            $cursor = null;
+
+            do {
+                $scan = $connection->scan($cursor ?? 0, ['match' => 'queues:*', 'count' => 100]);
+
+                if (! is_array($scan)) {
+                    break;
+                }
+
+                [$cursor, $results] = $scan;
+                $keys = [...$keys, ...(array) $results];
+            } while ((int) $cursor > 0);
+
+            if ($keys !== []) {
+                return $keys;
+            }
+        } catch (Throwable) {
+            //
+        }
+
         try {
             return (array) $connection->keys('queues:*');
         } catch (Throwable) {
@@ -394,7 +468,7 @@ class RedisQueueFlowRepository implements QueueFlowRepository
             'delayed' => (int) ($queue['delayed'] ?? 0),
             'reserved' => (int) ($queue['reserved'] ?? 0),
             'throughput' => $throughput,
-            'current_throughput' => $this->currentThroughput($processes, $throughput),
+            'current_throughput' => $this->currentThroughput($processes, (int) ($queue['reserved'] ?? 0), $throughput),
             'completed' => (int) ($queue['completed'] ?? 0),
             'failed' => (int) ($queue['failed'] ?? 0),
             'attempts' => (int) ($queue['attempts'] ?? 0),
@@ -492,9 +566,9 @@ class RedisQueueFlowRepository implements QueueFlowRepository
         return 'redis:'.$this->queueName($name);
     }
 
-    protected function currentThroughput(int $processes, int $throughput): int
+    protected function currentThroughput(int $processes, int $reserved, int $throughput): int
     {
-        return $processes > 0 ? $throughput : 0;
+        return $processes > 0 || $reserved > 0 ? $throughput : 0;
     }
 
     protected function estimatedDrainSeconds(int $pending, int $throughput): ?int
