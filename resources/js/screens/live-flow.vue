@@ -17,6 +17,8 @@
                 loadingJobDetails: false,
                 masters: [],
                 controllingHorizon: [],
+                nodeOffsets: {},
+                draggingNodeId: null,
             };
         },
 
@@ -150,7 +152,7 @@
                 }));
 
                 const prodSpread = Math.min(120, H * 0.16);
-                return [
+                const baseNodes = [
                     {
                         id: 'producer-app', type: 'producer', label: this.appLabel,
                         sub: `${this.meta.environment ?? 'app'} · ${this.formatNumber(this.summary.current_throughput_per_minute ?? this.summary.throughput_per_minute)}/m`,
@@ -166,6 +168,10 @@
                     },
                     ...queues, ...jobNodes, ...workerNodes, ...results,
                 ];
+                return baseNodes.map(n => {
+                    const off = this.nodeOffsets[n.id];
+                    return off ? { ...n, x: n.x + off.dx, y: n.y + off.dy } : n;
+                });
             },
 
             graphNodeLookup() {
@@ -243,6 +249,8 @@
 
             viewportTransform() { return `translate(${this.panX} ${this.panY}) scale(${this.zoom})`; },
             zoomLabel()         { return Math.round(this.zoom * 100) + '%'; },
+            zoomMode()          { return this.zoom >= 1.35 ? 'individual' : 'class'; },
+            hasCustomLayout()   { return Object.keys(this.nodeOffsets).length > 0; },
 
             selectedNode() {
                 return this.graphNodeLookup[this.selectedId] ?? this.graphNodes.find(n => n.type === 'queue') ?? this.graphNodes[0];
@@ -376,6 +384,46 @@
                         this.controllingHorizon = this.controllingHorizon.filter(item => item !== key);
                     });
             },
+
+            onNodePointerDown(e, node) {
+                e.stopPropagation();
+                const svgPos = this.getSVGCoords(e);
+                this._dragState = {
+                    id: node.id,
+                    startSvg: svgPos,
+                    startOffset: { ...(this.nodeOffsets[node.id] ?? { dx: 0, dy: 0 }) },
+                    moved: false,
+                };
+                this.draggingNodeId = node.id;
+                e.currentTarget.setPointerCapture(e.pointerId);
+            },
+
+            onNodePointerMove(e, node) {
+                if (!this._dragState || this._dragState.id !== node.id) return;
+                const curr = this.getSVGCoords(e);
+                const dx = curr.x - this._dragState.startSvg.x;
+                const dy = curr.y - this._dragState.startSvg.y;
+                if (!this._dragState.moved && Math.hypot(dx, dy) < 5) return;
+                this._dragState.moved = true;
+                this.nodeOffsets = {
+                    ...this.nodeOffsets,
+                    [node.id]: {
+                        dx: this._dragState.startOffset.dx + dx,
+                        dy: this._dragState.startOffset.dy + dy,
+                    },
+                };
+            },
+
+            onNodePointerUp(e, node) {
+                if (!this._dragState || this._dragState.id !== node.id) return;
+                const wasDrag = this._dragState.moved;
+                this._dragState = null;
+                this.draggingNodeId = null;
+                try { e.currentTarget.releasePointerCapture(e.pointerId); } catch {}
+                if (!wasDrag) this.selectNode(node.id);
+            },
+
+            resetLayout() { this.nodeOffsets = {}; },
 
             selectNode(id) { this.selectedId = id; },
             toggleLive()   { this.live = !this.live; },
@@ -823,7 +871,13 @@
                     <div class="lf-pane-head">
                         <span class="lf-pane-title">Flow Graph</span>
                         <span class="lf-pane-meta">{{ graphNodes.length }} nodes · {{ graphEdges.length }} edges</span>
+                        <span class="lf-zoom-mode-badge" :class="'lf-zmb-' + zoomMode" :title="zoomMode === 'individual' ? 'Showing individual job instances (zoom ≥ 135%)' : 'Showing job classes (zoom in to see individual jobs)'">
+                            {{ zoomMode === 'individual' ? '⊕ jobs' : '⊞ classes' }}
+                        </span>
                         <div class="lf-vp">
+                            <button v-if="hasCustomLayout" class="lf-vp-btn lf-vp-reset" @click="resetLayout" title="Reset node positions">
+                                <svg width="9" height="9" viewBox="0 0 9 9" fill="none"><path d="M7.5 2A3.5 3.5 0 1 0 8 4.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><path d="M7.5 2V4H5.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                            </button>
                             <button class="lf-vp-btn" @click="zoomOut" title="Zoom out">
                                 <svg width="9" height="9" viewBox="0 0 9 9" fill="none"><line x1="1.5" y1="4.5" x2="7.5" y2="4.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
                             </button>
@@ -854,6 +908,10 @@
                             @wheel.prevent="onCanvasWheel"
                         >
                             <defs>
+                                <!-- node drag elevation -->
+                                <filter id="lf-drag-shadow" x="-25%" y="-25%" width="150%" height="150%">
+                                    <feDropShadow dx="0" dy="5" stdDeviation="7" flood-color="rgba(0,0,0,0.28)"/>
+                                </filter>
                                 <!-- glow filters (dark mode only) -->
                                 <filter id="lf-glow-cyan" x="-80%" y="-80%" width="260%" height="260%">
                                     <feGaussianBlur stdDeviation="3.5" result="b"/>
@@ -948,9 +1006,13 @@
                                 <g
                                     v-for="node in graphNodes"
                                     :key="node.id"
-                                    class="lf-svg-node"
-                                    @click="selectNode(node.id)"
-                                    @pointerdown.stop
+                                    :class="['lf-svg-node', draggingNodeId === node.id ? 'lf-svg-node-dragging' : '']"
+                                    :filter="draggingNodeId === node.id ? 'url(#lf-drag-shadow)' : 'none'"
+                                    :style="{ cursor: draggingNodeId === node.id ? 'grabbing' : 'grab' }"
+                                    @pointerdown="onNodePointerDown($event, node)"
+                                    @pointermove="onNodePointerMove($event, node)"
+                                    @pointerup="onNodePointerUp($event, node)"
+                                    @pointerleave="onNodePointerUp($event, node)"
                                 >
                                     <!-- shadow / selection glow -->
                                     <rect
@@ -1006,6 +1068,7 @@
                     <div class="lf-legend">
                         <span class="lf-leg-item"><span class="lf-ld lf-ld-producer"></span>Producer</span>
                         <span class="lf-leg-item"><span class="lf-ld lf-ld-queue"></span>Queue</span>
+                        <span class="lf-leg-item"><span class="lf-ld lf-ld-job"></span>Job</span>
                         <span class="lf-leg-item"><span class="lf-ld lf-ld-worker"></span>Worker</span>
                         <span class="lf-leg-item"><span class="lf-ld lf-ld-done"></span>Completed</span>
                         <span class="lf-leg-item"><span class="lf-ld lf-ld-fail"></span>Failed</span>
@@ -1072,8 +1135,8 @@
                         <span class="lf-pane-title">Horizon Controls</span>
                         <span class="lf-pane-meta">{{ supervisors.length }} supervisor{{ supervisors.length === 1 ? '' : 's' }}</span>
                         <div class="lf-head-actions">
-                            <button class="lf-mini-btn" type="button" :disabled="isControllingHorizon('masters:pause')" @click="controlMasters('pause')">pause all</button>
-                            <button class="lf-mini-btn" type="button" :disabled="isControllingHorizon('masters:continue')" @click="controlMasters('continue')">continue all</button>
+                            <button class="lf-mini-btn lf-mini-btn-danger" type="button" :disabled="isControllingHorizon('masters:pause')" @click="controlMasters('pause')">pause all</button>
+                            <button class="lf-mini-btn lf-mini-btn-safe" type="button" :disabled="isControllingHorizon('masters:continue')" @click="controlMasters('continue')">continue all</button>
                         </div>
                     </div>
                     <div class="lf-supervisors" v-if="supervisors.length">
@@ -1086,8 +1149,8 @@
                                 </div>
                             </div>
                             <span class="lf-status" :class="'lf-status-' + (supervisor.status === 'paused' ? 'warning' : supervisor.status === 'inactive' ? 'critical' : 'healthy')">{{ supervisor.status }}</span>
-                            <button class="lf-mini-btn" type="button" :disabled="isControllingHorizon(supervisor.name + ':pause') || supervisor.status === 'inactive'" @click="controlSupervisor(supervisor, 'pause')">pause</button>
-                            <button class="lf-mini-btn" type="button" :disabled="isControllingHorizon(supervisor.name + ':continue') || supervisor.status === 'inactive'" @click="controlSupervisor(supervisor, 'continue')">continue</button>
+                            <button class="lf-mini-btn lf-mini-btn-danger" type="button" :disabled="isControllingHorizon(supervisor.name + ':pause') || supervisor.status === 'inactive'" @click="controlSupervisor(supervisor, 'pause')">pause</button>
+                            <button class="lf-mini-btn lf-mini-btn-safe" type="button" :disabled="isControllingHorizon(supervisor.name + ':continue') || supervisor.status === 'inactive'" @click="controlSupervisor(supervisor, 'continue')">continue</button>
                         </div>
                     </div>
                     <div class="lf-empty-sm" v-else>No Horizon supervisors detected.</div>
@@ -1209,7 +1272,7 @@
             </aside>
         </div>
 
-        <div class="lf-modal-backdrop" v-if="selectedJob" @click.self="closeJobModal">
+        <div class="lf-modal-backdrop" v-if="selectedJob" @click.self="closeJobModal" @keydown.esc="closeJobModal" tabindex="-1">
             <div class="lf-modal">
                 <div class="lf-modal-head">
                     <div>
@@ -1880,23 +1943,77 @@
         font-size: 11px;
     }
     .lf-modal-loading { padding: 16px; color: var(--lf-muted); font-size: 12px; }
-    .lf-modal-error {
-        margin: 0;
-        max-height: 420px;
-        overflow: auto;
-        padding: 14px 16px;
-        background: rgba(220, 38, 38, .045);
-        color: var(--lf-text);
-        border-bottom: 1px solid var(--lf-border);
-        font-size: 11px;
-        line-height: 1.55;
-        white-space: pre-wrap;
-    }
     .lf-modal-actions {
         display: flex;
         justify-content: flex-end;
         gap: 8px;
         padding: 12px 16px;
+    }
+
+    /* ── DRAG ────────────────────────────────────────────────────────────── */
+    .lf-svg-node-dragging { opacity: .92; }
+    .lf-svg-node-dragging > rect:first-child { filter: brightness(1.12); }
+
+    /* ── ZOOM MODE BADGE ─────────────────────────────────────────────────── */
+    .lf-zoom-mode-badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 2px 7px;
+        border-radius: 3px;
+        font-size: 9px;
+        font-weight: 700;
+        letter-spacing: .08em;
+        text-transform: uppercase;
+        border: 1px solid;
+        transition: all .2s;
+        cursor: default;
+    }
+    .lf-zmb-class      { background: rgba(119,70,236,.08); color: var(--lf-violet); border-color: rgba(119,70,236,.22); }
+    .lf-zmb-individual { background: rgba(8,145,178,.10);  color: var(--lf-cyan);   border-color: rgba(8,145,178,.28); }
+
+    /* ── VIEWPORT RESET BUTTON ───────────────────────────────────────────── */
+    .lf-vp-reset { color: var(--lf-amber); }
+    .lf-vp-reset:hover { border-color: var(--lf-amber); color: var(--lf-amber); background: rgba(217,119,6,.08); }
+
+    /* ── HORIZON CONTROLS: DANGER / SAFE ────────────────────────────────── */
+    .lf-mini-btn-danger { border-color: rgba(220,38,38,.30); color: var(--lf-red); }
+    .lf-mini-btn-danger:hover:not(:disabled) { border-color: var(--lf-red); background: rgba(220,38,38,.08); color: var(--lf-red); }
+    .lf-mini-btn-safe   { border-color: rgba(5,150,105,.30); color: var(--lf-green); }
+    .lf-mini-btn-safe:hover:not(:disabled)   { border-color: var(--lf-green); background: rgba(5,150,105,.08); color: var(--lf-green); }
+
+    /* ── LEGEND JOB TYPE ─────────────────────────────────────────────────── */
+    .lf-ld-job { background: var(--lf-cyan); opacity: .65; }
+
+    /* ── MODAL: IMPROVED STACK TRACE ─────────────────────────────────────── */
+    .lf-modal-error {
+        margin: 0;
+        max-height: 380px;
+        overflow: auto;
+        padding: 14px 16px;
+        background: rgba(220,38,38,.04);
+        color: var(--lf-text);
+        border-bottom: 1px solid var(--lf-border);
+        font-family: ui-monospace, "Cascadia Code", "SF Mono", Consolas, monospace;
+        font-size: 11px;
+        line-height: 1.65;
+        white-space: pre-wrap;
+        word-break: break-all;
+        tab-size: 2;
+    }
+    .lf-dark .lf-modal-error { background: rgba(220,38,38,.07); }
+
+    /* ── MOBILE ──────────────────────────────────────────────────────────── */
+    @media (max-width: 680px) {
+        .lf-pane-head { flex-wrap: wrap; row-gap: 5px; }
+        .lf-vp { margin-left: 0; margin-top: 2px; width: 100%; justify-content: flex-end; }
+        .lf-live-tag { margin-left: auto; }
+        .lf-zoom-mode-badge { order: -1; }
+        .lf-toolbar { gap: 5px; }
+        .lf-input { width: 120px; }
+        .lf-modal { border-radius: 6px; }
+        .lf-modal-error { font-size: 10.5px; }
+        .lf-supervisors { overflow-x: auto; }
+        .lf-supervisor { min-width: 320px; }
     }
 
     /* ── BLINK / PULSE ───────────────────────────────────────────────────── */
