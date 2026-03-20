@@ -12,6 +12,9 @@
                 isDark: this.sniffDark(),
                 panX: 0, panY: 0, zoom: 1, isPanning: false,
                 retryingJobs: [],
+                selectedJob: null,
+                selectedJobDetails: null,
+                loadingJobDetails: false,
             };
         },
 
@@ -62,17 +65,19 @@
             svgHeight() {
                 const nodeH = 52, gap = 22, topPad = 44, botPad = 32;
                 const queueCount  = Math.max(1, this.filteredQueues.length);
+                const jobCount = Math.max(1, this.queueJobNodes().length);
                 const workerCount = Math.max(1, (this.flow?.nodes ?? []).filter(n => n.type === 'worker').slice(0, 4).length);
                 const resultCount = Math.max(1, (this.flow?.nodes ?? []).filter(n => n.type === 'result').slice(0, 4).length);
-                const maxCol = Math.max(queueCount, workerCount, resultCount);
+                const maxCol = Math.max(queueCount, jobCount, workerCount, resultCount);
                 return Math.max(390, topPad + maxCol * (nodeH + gap) - gap + botPad);
             },
 
             graphNodes() {
                 const H = this.svgHeight;
                 const topPad = 44, botPad = 32;
-                const qH = 50, wH = 46, rH = 50, pH = 52;
+                const qH = 50, jH = 46, wH = 46, rH = 50, pH = 52;
                 const qYMin = topPad,     qYMax = H - qH - botPad;
+                const jYMin = topPad + 2, jYMax = H - jH - botPad - 2;
                 const wYMin = topPad + 4, wYMax = H - wH - botPad - 4;
                 const rYMin = topPad,     rYMax = H - rH - botPad;
                 const midY = H / 2;
@@ -83,7 +88,7 @@
                         id: node?.id ?? this.queueNodeId(queue),
                         type: 'queue', label: queue.name, sub: this.queueSubLabel(queue),
                         status: node?.status ?? this.queueStatus(queue),
-                        x: 250, y: this.distributedY(i, this.filteredQueues.length, qYMin, qYMax),
+                        x: 205, y: this.distributedY(i, this.filteredQueues.length, qYMin, qYMax),
                         width: 128, height: qH,
                         metrics: {
                             pending: queue.pending, delayed: queue.delayed,
@@ -95,18 +100,34 @@
                     };
                 });
 
+                const jobSources = this.queueJobNodes();
+                const jobNodes = jobSources.map((job, i, all) => ({
+                    id: job.id,
+                    type: 'job',
+                    label: this.shortJobName(job.name),
+                    sub: this.jobNodeSub(job),
+                    status: this.jobNodeStatus(job),
+                    queueId: job.queueId,
+                    name: job.name,
+                    x: 395,
+                    y: this.distributedY(i, all.length || 1, jYMin, jYMax),
+                    width: 134,
+                    height: jH,
+                    metrics: job,
+                }));
+
                 const workerList = (this.flow?.nodes ?? []).filter(n => n.type === 'worker').slice(0, 4);
                 const workers = workerList.map((n, i, all) => ({
                     id: n.id, type: 'worker', label: n.label,
                     sub: `${this.formatNumber(n.metrics?.processes ?? this.summary.processing)} processes`,
                     status: n.status,
-                    x: 500, y: this.distributedY(i, all.length || 1, wYMin, wYMax),
+                    x: 590, y: this.distributedY(i, all.length || 1, wYMin, wYMax),
                     width: 128, height: wH, metrics: n.metrics ?? {},
                 }));
                 const workerNodes = workers.length ? workers : [{
                     id: 'workers', type: 'worker', label: 'workers',
                     sub: `${this.formatNumber(this.summary.processing)} active`,
-                    status: 'healthy', x: 500, y: midY - wH / 2, width: 128, height: wH,
+                    status: 'healthy', x: 590, y: midY - wH / 2, width: 128, height: wH,
                     metrics: { processes: this.summary.processing },
                 }];
 
@@ -114,7 +135,7 @@
                 const results = resultList.map((n, i, all) => ({
                     id: n.id, type: 'result', label: n.label,
                     sub: this.resultSubLabel(n), status: n.status,
-                    x: 750, y: this.distributedY(i, all.length || 1, rYMin, rYMax),
+                    x: 790, y: this.distributedY(i, all.length || 1, rYMin, rYMax),
                     width: 132, height: rH, metrics: n.metrics ?? {},
                 }));
 
@@ -133,7 +154,7 @@
                         x: 28, y: Math.round(midY + prodSpread - pH / 2), width: 136, height: pH,
                         metrics: { delayed: this.summary.delayed },
                     },
-                    ...queues, ...workerNodes, ...results,
+                    ...queues, ...jobNodes, ...workerNodes, ...results,
                 ];
             },
 
@@ -143,7 +164,8 @@
 
             graphEdges() {
                 const existing = (this.flow?.edges ?? []).filter(e => this.graphNodeLookup[e.source] && this.graphNodeLookup[e.target]);
-                if (existing.length) return existing;
+                const jobNodes = this.graphNodes.filter(n => n.type === 'job');
+                if (existing.length && jobNodes.length === 0) return existing;
 
                 const workers   = this.graphNodes.filter(n => n.type === 'worker');
                 const results   = this.graphNodes.filter(n => n.type === 'result');
@@ -154,8 +176,21 @@
                 this.graphNodes.filter(n => n.type === 'queue').forEach((q, i) => {
                     const w = workers[i % workers.length];
                     const producer = (q.status === 'critical' || q.status === 'warning') ? 'producer-scheduler' : 'producer-app';
+                    const queueJobs = jobNodes.filter(j => j.queueId === q.id);
+
                     generated.push(this.edge(producer, q.id, q.status, 'dispatch', q.metrics.current_throughput ?? q.metrics.throughput));
-                    generated.push(this.edge(q.id, w.id, q.status, 'reserve', q.metrics.current_throughput ?? q.metrics.throughput));
+
+                    if (queueJobs.length === 0) {
+                        generated.push(this.edge(q.id, w.id, q.status, 'reserve', q.metrics.current_throughput ?? q.metrics.throughput));
+                        return;
+                    }
+
+                    queueJobs.forEach(job => {
+                        generated.push(this.edge(q.id, job.id, job.status, 'jobs', this.jobNodeFlow(job)));
+                        generated.push(this.edge(job.id, w.id, job.status, 'reserve', this.jobNodeFlow(job)));
+                        if (completed && Number(job.metrics.completed ?? 0) > 0) generated.push(this.edge(job.id, completed.id, 'healthy', 'done', job.metrics.completed));
+                        if (failed && Number(job.metrics.failed ?? 0) > 0) generated.push(this.edge(job.id, failed.id, 'critical', 'failed', job.metrics.failed));
+                    });
                 });
                 if (completed) workers.forEach(w => generated.push(this.edge(w.id, completed.id, 'healthy', 'finish', this.summary.throughput_per_minute)));
                 if (failed && Number(this.summary.failed ?? 0) > 0) generated.push(this.edge(workers[workers.length - 1].id, failed.id, 'critical', 'exception', this.summary.failed));
@@ -182,7 +217,7 @@
 
                 return (this.flow?.events ?? [])
                     .flatMap((event, index) => this.jobEventParticle(event, index))
-                    .slice(0, 28);
+                    .slice(0, 60);
             },
 
             kpiMetrics() {
@@ -341,6 +376,40 @@
                 return (queue?.jobs ?? []).slice(0, 12);
             },
 
+            queueJobNodes() {
+                return this.filteredQueues.flatMap(queue => {
+                    const queueId = this.queueNodeId(queue);
+
+                    return (queue.job_classes ?? [])
+                        .slice(0, 3)
+                        .map(jobClass => ({
+                            ...jobClass,
+                            id: this.jobNodeId(queue, jobClass.name),
+                            queueId,
+                            queue: queue.name,
+                            connection: queue.connection,
+                        }));
+                });
+            },
+
+            jobNodeId(queue, name) {
+                return `job-${queue.driver}-${queue.connection}-${queue.name}-${name}`.replace(/[^a-z0-9-]+/gi, '-').toLowerCase();
+            },
+
+            jobNodeStatus(job) {
+                if (Number(job.failed ?? 0) > 0) return 'critical';
+                if (Number(job.pending ?? 0) > 0 || Number(job.reserved ?? 0) > 0) return 'warning';
+                return 'healthy';
+            },
+
+            jobNodeFlow(job) {
+                return Number(job.pending ?? 0) + Number(job.reserved ?? 0) + Number(job.completed ?? 0) + Number(job.failed ?? 0);
+            },
+
+            jobNodeSub(job) {
+                return this.jobCounts(job);
+            },
+
             jobCounts(jobClass) {
                 const parts = [
                     ['pending', jobClass.pending],
@@ -387,6 +456,34 @@
                     });
             },
 
+            openJobModal(job) {
+                if (!job || job.status !== 'failed') return;
+
+                this.selectedJob = job;
+                this.selectedJobDetails = null;
+
+                if (job.inspectable === false || !job.id) return;
+
+                this.loadingJobDetails = true;
+                this.$http.get(Horizon.basePath + '/api/jobs/failed/' + job.id)
+                    .then(response => { this.selectedJobDetails = response.data; })
+                    .finally(() => { this.loadingJobDetails = false; });
+            },
+
+            closeJobModal() {
+                this.selectedJob = null;
+                this.selectedJobDetails = null;
+                this.loadingJobDetails = false;
+            },
+
+            modalJobName() {
+                return this.selectedJobDetails?.name ?? this.selectedJob?.name ?? 'Queued job';
+            },
+
+            modalJobError() {
+                return this.selectedJobDetails?.exception ?? this.selectedJob?.exception ?? 'No exception text was captured.';
+            },
+
             statusLabel(status) {
                 return { healthy: 'healthy', warning: 'warn', critical: 'critical' }[status] ?? status;
             },
@@ -401,10 +498,10 @@
                 if (!edge) return [];
 
                 return [{
-                    id: `${index}-${this.svgId(event.job ?? event.label ?? edge.id)}`,
+                    id: `${this.svgId(this.flow?.generated_at ?? 'flow')}-${index}-${this.svgId(event.id ?? event.job ?? event.label ?? edge.id)}`,
                     edgeId: this.svgId(edge.id),
                     status: event.status ?? edge.status,
-                    delay: `${(index % 8) * 0.18}s`,
+                    delay: `${(index % 12) * 0.14}s`,
                     duration: `${this.particleDuration(event.status ?? edge.status)}s`,
                 }];
             },
@@ -412,22 +509,35 @@
             jobEventEdge(event) {
                 const worker = this.graphNodes.find(n => n.type === 'worker');
                 const queue = this.graphNodes.find(n => n.type === 'queue' && n.label === event.queue);
+                const job = this.graphNodes.find(n => n.type === 'job' && n.queueId === queue?.id && (
+                    n.name === event.job || n.label === this.shortJobName(event.job)
+                ));
                 const completed = this.graphNodes.find(n => n.type === 'result' && n.label === 'completed');
                 const failed = this.graphNodes.find(n => n.type === 'result' && n.label === 'failed');
 
-                const target = event.result === 'completed' && worker && completed
-                    ? [worker.id, completed.id]
-                    : event.result === 'failed' && worker && failed
-                        ? [worker.id, failed.id]
-                        : event.result === 'workers' && queue && worker
-                            ? [queue.id, worker.id]
-                            : event.result === 'queue' && queue
-                                ? ['producer-app', queue.id]
-                                : null;
+                const target = event.result === 'completed' && job && completed
+                    ? [job.id, completed.id]
+                    : event.result === 'completed' && worker && completed
+                        ? [worker.id, completed.id]
+                        : event.result === 'failed' && job && failed
+                            ? [job.id, failed.id]
+                            : event.result === 'failed' && worker && failed
+                                ? [worker.id, failed.id]
+                                : event.result === 'workers' && job && worker
+                                    ? [job.id, worker.id]
+                                    : event.result === 'workers' && queue && worker
+                                        ? [queue.id, worker.id]
+                                        : event.result === 'queue' && queue && job
+                                            ? [queue.id, job.id]
+                                            : event.result === 'queue' && queue
+                                                ? ['producer-app', queue.id]
+                                                : null;
 
                 if (!target) return null;
 
-                return this.graphEdges.find(edge => edge.source === target[0] && edge.target === target[1]) ?? null;
+                return this.graphEdges.find(edge => edge.source === target[0] && edge.target === target[1])
+                    ?? (event.result === 'queue' && queue ? this.graphEdges.find(edge => edge.target === queue.id) : null)
+                    ?? null;
             },
 
             edgePath(edge) {
@@ -481,14 +591,14 @@
             nodeFill(node) {
                 if (node.status === 'critical') return 'var(--lf-node-critical-bg)';
                 if (node.status === 'warning')  return 'var(--lf-node-warning-bg)';
-                return { producer: 'var(--lf-node-producer-bg)', queue: 'var(--lf-node-queue-bg)', worker: 'var(--lf-node-worker-bg)', result: 'var(--lf-node-result-bg)' }[node.type] ?? 'var(--lf-node-queue-bg)';
+                return { producer: 'var(--lf-node-producer-bg)', queue: 'var(--lf-node-queue-bg)', job: 'var(--lf-node-queue-bg)', worker: 'var(--lf-node-worker-bg)', result: 'var(--lf-node-result-bg)' }[node.type] ?? 'var(--lf-node-queue-bg)';
             },
 
             nodeStroke(node) {
                 if (node.id === this.selectedId) return 'var(--lf-violet)';
                 if (node.status === 'critical')  return 'var(--lf-node-critical-stroke)';
                 if (node.status === 'warning')   return 'var(--lf-node-warning-stroke)';
-                return { producer: 'var(--lf-node-producer-stroke)', queue: 'var(--lf-node-queue-stroke)', worker: 'var(--lf-node-worker-stroke)', result: 'var(--lf-node-result-stroke)' }[node.type] ?? 'var(--lf-node-queue-stroke)';
+                return { producer: 'var(--lf-node-producer-stroke)', queue: 'var(--lf-node-queue-stroke)', job: 'var(--lf-cyan)', worker: 'var(--lf-node-worker-stroke)', result: 'var(--lf-node-result-stroke)' }[node.type] ?? 'var(--lf-node-queue-stroke)';
             },
 
             nodeStrokeWidth(node) { return node.id === this.selectedId ? 2.2 : 1.5; },
@@ -496,7 +606,7 @@
             nodeAccent(node) {
                 if (node.status === 'critical') return 'var(--lf-red)';
                 if (node.status === 'warning')  return 'var(--lf-amber)';
-                return { producer: 'var(--lf-blue)', queue: 'var(--lf-violet)', worker: 'var(--lf-green)', result: 'var(--lf-green)' }[node.type] ?? 'var(--lf-violet)';
+                return { producer: 'var(--lf-blue)', queue: 'var(--lf-violet)', job: 'var(--lf-cyan)', worker: 'var(--lf-green)', result: 'var(--lf-green)' }[node.type] ?? 'var(--lf-violet)';
             },
 
             nodeTextColor(node) {
@@ -506,13 +616,13 @@
             },
 
             nodeKind(node) {
-                return { producer: 'PRODUCER', queue: 'QUEUE', worker: 'WORKER', result: node.label?.toUpperCase?.() ?? 'RESULT' }[node.type] ?? node.type?.toUpperCase?.();
+                return { producer: 'PRODUCER', queue: 'QUEUE', job: 'JOB', worker: 'WORKER', result: node.label?.toUpperCase?.() ?? 'RESULT' }[node.type] ?? node.type?.toUpperCase?.();
             },
 
             nodeGradColor(node, edgeStatus) {
                 if (edgeStatus === 'critical') return 'var(--lf-red)';
                 if (edgeStatus === 'warning')  return 'var(--lf-amber)';
-                return { producer: 'var(--lf-blue)', queue: 'var(--lf-violet)', worker: 'var(--lf-green)', result: 'var(--lf-green)' }[node.type] ?? 'var(--lf-cyan)';
+                return { producer: 'var(--lf-blue)', queue: 'var(--lf-violet)', job: 'var(--lf-cyan)', worker: 'var(--lf-green)', result: 'var(--lf-green)' }[node.type] ?? 'var(--lf-cyan)';
             },
 
             edgeColor(status) {
@@ -706,14 +816,16 @@
 
                             <!-- grid (not transformed) -->
                             <g class="lf-svg-grid">
-                                <line x1="230" y1="0" x2="230" :y2="svgHeight"/>
-                                <line x1="490" y1="0" x2="490" :y2="svgHeight"/>
-                                <line x1="740" y1="0" x2="740" :y2="svgHeight"/>
+                                <line x1="185" y1="0" x2="185" :y2="svgHeight"/>
+                                <line x1="375" y1="0" x2="375" :y2="svgHeight"/>
+                                <line x1="570" y1="0" x2="570" :y2="svgHeight"/>
+                                <line x1="770" y1="0" x2="770" :y2="svgHeight"/>
                             </g>
                             <text x="96"  y="17" text-anchor="middle" class="lf-stage">PRODUCERS</text>
-                            <text x="314" y="17" text-anchor="middle" class="lf-stage">QUEUES</text>
-                            <text x="564" y="17" text-anchor="middle" class="lf-stage">WORKERS</text>
-                            <text x="816" y="17" text-anchor="middle" class="lf-stage">RESULTS</text>
+                            <text x="270" y="17" text-anchor="middle" class="lf-stage">QUEUES</text>
+                            <text x="462" y="17" text-anchor="middle" class="lf-stage">JOBS</text>
+                            <text x="654" y="17" text-anchor="middle" class="lf-stage">WORKERS</text>
+                            <text x="856" y="17" text-anchor="middle" class="lf-stage">RESULTS</text>
 
                             <!-- viewport group -->
                             <g :transform="viewportTransform">
@@ -799,11 +911,13 @@
                                 <circle
                                     v-for="p in particles"
                                     :key="p.id"
+                                    opacity="0"
                                     :r="p.status === 'critical' ? 2.8 : 2.2"
                                     :fill="particleColor(p.status)"
                                     :filter="particleFilter(p.status)"
                                 >
-                                    <animateMotion :dur="p.duration" :begin="p.delay" repeatCount="indefinite" calcMode="linear">
+                                    <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.08;0.84;1" :dur="p.duration" :begin="p.delay" fill="freeze"/>
+                                    <animateMotion :dur="p.duration" :begin="p.delay" repeatCount="1" calcMode="linear" fill="freeze">
                                         <mpath :href="'#lf-path-' + p.edgeId"></mpath>
                                     </animateMotion>
                                 </circle>
@@ -936,11 +1050,16 @@
 
                     <div class="lf-insp-sec" v-if="selectedInspector.queue">
                         <div class="lf-insp-sec-title">Recent Jobs</div>
-                        <div class="lf-job-row" v-for="job in selectedInspector.jobs" :key="job.id">
+                        <div
+                            class="lf-job-row"
+                            v-for="job in selectedInspector.jobs"
+                            :key="job.id"
+                            :class="{ 'lf-job-row-clickable': job.status === 'failed' }"
+                            @click="openJobModal(job)"
+                        >
                             <span class="lf-dot" :class="'lf-dot-' + jobStatusClass(job.status)"></span>
                             <div class="lf-job-main">
-                                <a class="lf-job-name lf-job-link" :href="jobHref(job)" v-if="jobHref(job)">{{ shortJobName(job.name) }}</a>
-                                <div class="lf-job-name" v-else>{{ shortJobName(job.name) }}</div>
+                                <div class="lf-job-name">{{ shortJobName(job.name) }}</div>
                                 <div class="lf-job-sub">
                                     {{ job.status }} · attempts {{ formatNumber(job.attempts ?? 0) }} · age {{ formatDuration(job.age_seconds) }}
                                 </div>
@@ -951,7 +1070,7 @@
                                 type="button"
                                 v-if="job.retryable"
                                 :disabled="isRetryingJob(job)"
-                                @click="retryJob(job)"
+                                @click.stop="retryJob(job)"
                             >
                                 {{ isRetryingJob(job) ? 'retrying' : 'retry' }}
                             </button>
@@ -985,6 +1104,40 @@
                     </div>
                 </div>
             </aside>
+        </div>
+
+        <div class="lf-modal-backdrop" v-if="selectedJob" @click.self="closeJobModal">
+            <div class="lf-modal">
+                <div class="lf-modal-head">
+                    <div>
+                        <div class="lf-modal-kicker">Failed Job</div>
+                        <div class="lf-modal-title">{{ shortJobName(modalJobName()) }}</div>
+                    </div>
+                    <button class="lf-modal-close" type="button" @click="closeJobModal">×</button>
+                </div>
+
+                <div class="lf-modal-meta">
+                    <span>{{ selectedJob.connection }} · {{ selectedJob.queue }}</span>
+                    <span>attempts {{ formatNumber(selectedJob.attempts ?? 0) }}</span>
+                    <span>age {{ formatDuration(selectedJob.age_seconds) }}</span>
+                </div>
+
+                <div class="lf-modal-loading" v-if="loadingJobDetails">Loading full Horizon failure payload…</div>
+                <pre class="lf-modal-error" v-else>{{ modalJobError() }}</pre>
+
+                <div class="lf-modal-actions">
+                    <a class="lf-btn" :href="jobHref(selectedJob)" v-if="jobHref(selectedJob)">open in Horizon</a>
+                    <button
+                        class="lf-btn lf-btn-live"
+                        type="button"
+                        v-if="selectedJob.retryable"
+                        :disabled="isRetryingJob(selectedJob)"
+                        @click="retryJob(selectedJob)"
+                    >
+                        {{ isRetryingJob(selectedJob) ? 'retrying…' : 'retry failed job' }}
+                    </button>
+                </div>
+            </div>
         </div>
     </div>
 </template>
@@ -1475,6 +1628,8 @@
     }
     .lf-job-link { text-decoration: none; }
     .lf-job-link:hover { color: var(--lf-violet); text-decoration: underline; }
+    .lf-job-row-clickable { cursor: pointer; }
+    .lf-job-row-clickable:hover { background: var(--lf-hover); margin-left: -6px; margin-right: -6px; padding-left: 6px; padding-right: 6px; border-radius: 4px; }
     .lf-job-sub {
         margin-top: 2px;
         color: var(--lf-dim);
@@ -1533,6 +1688,84 @@
     .lf-action-warn     .lf-action-title { color: var(--lf-amber); }
     .lf-action-critical .lf-action-title { color: var(--lf-red); }
     .lf-action-text { font-size: 11px; color: var(--lf-muted); line-height: 1.55; }
+
+    /* ── MODAL ───────────────────────────────────────────────────────────── */
+    .lf-modal-backdrop {
+        position: fixed;
+        inset: 0;
+        z-index: 1050;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+        background: rgba(15, 23, 42, .48);
+        backdrop-filter: blur(3px);
+    }
+    .lf-modal {
+        width: min(760px, 100%);
+        max-height: min(720px, calc(100vh - 48px));
+        overflow: hidden;
+        border: 1px solid var(--lf-border);
+        border-radius: 8px;
+        background: var(--lf-panel);
+        box-shadow: 0 24px 80px rgba(15, 23, 42, .30);
+        color: var(--lf-text);
+    }
+    .lf-modal-head {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 14px 16px;
+        border-bottom: 1px solid var(--lf-border);
+        background: var(--lf-hover);
+    }
+    .lf-modal-kicker {
+        color: var(--lf-red);
+        font-size: 9px;
+        font-weight: 800;
+        letter-spacing: .12em;
+        text-transform: uppercase;
+    }
+    .lf-modal-title { margin-top: 3px; color: var(--lf-text); font-size: 15px; font-weight: 700; }
+    .lf-modal-close {
+        border: 0;
+        background: transparent;
+        color: var(--lf-muted);
+        font-size: 24px;
+        line-height: 1;
+        padding: 0 2px;
+    }
+    .lf-modal-close:hover { color: var(--lf-text); }
+    .lf-modal-meta {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        padding: 10px 16px;
+        border-bottom: 1px solid var(--lf-border);
+        color: var(--lf-muted);
+        font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+        font-size: 11px;
+    }
+    .lf-modal-loading { padding: 16px; color: var(--lf-muted); font-size: 12px; }
+    .lf-modal-error {
+        margin: 0;
+        max-height: 420px;
+        overflow: auto;
+        padding: 14px 16px;
+        background: rgba(220, 38, 38, .045);
+        color: var(--lf-text);
+        border-bottom: 1px solid var(--lf-border);
+        font-size: 11px;
+        line-height: 1.55;
+        white-space: pre-wrap;
+    }
+    .lf-modal-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+        padding: 12px 16px;
+    }
 
     /* ── BLINK / PULSE ───────────────────────────────────────────────────── */
     .lf-blink {

@@ -67,10 +67,7 @@ class DatabaseQueueFlowRepository implements QueueFlowRepository
             'nodes' => $this->nodes($queues->all(), $failedCount),
             'edges' => $this->edges($queues->all(), $failedCount),
             'queues' => $queues->all(),
-            'events' => [
-                ['status' => 'healthy', 'label' => 'Database queue tables scanned: '.$queues->pluck('connection')->unique()->implode(', ')],
-                ['status' => 'warning', 'label' => 'Database queue processing counts require worker telemetry'],
-            ],
+            'events' => $this->events($queues->all()),
         ];
     }
 
@@ -489,6 +486,66 @@ class DatabaseQueueFlowRepository implements QueueFlowRepository
         }
 
         return $edges;
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $queues
+     * @return array<int, array<string, mixed>>
+     */
+    protected function events(array $queues): array
+    {
+        $events = collect($queues)
+            ->flatMap(fn (array $queue): array => collect($queue['jobs'] ?? [])
+                ->map(fn (array $job): array => $this->event($queue, $job))
+                ->all())
+            ->sortByDesc(fn (array $event): int => (int) ($event['timestamp'] ?? 0))
+            ->take(40)
+            ->values();
+
+        if ($events->isNotEmpty()) {
+            return $events->all();
+        }
+
+        return [[
+            'status' => 'healthy',
+            'label' => 'Database queue tables scanned: '.collect($queues)->pluck('connection')->unique()->implode(', '),
+        ]];
+    }
+
+    /**
+     * @param  array<string, mixed>  $queue
+     * @param  array<string, mixed>  $job
+     * @return array<string, mixed>
+     */
+    protected function event(array $queue, array $job): array
+    {
+        $state = (string) ($job['status'] ?? 'pending');
+
+        return [
+            'id' => (string) ($job['id'] ?? sha1((string) ($job['name'] ?? 'Queued job').(string) ($job['timestamp'] ?? ''))),
+            'status' => match ($state) {
+                'failed' => 'critical',
+                'reserved', 'pending' => 'warning',
+                default => 'healthy',
+            },
+            'state' => $state,
+            'connection' => (string) ($job['connection'] ?? $queue['connection']),
+            'queue' => (string) ($job['queue'] ?? $queue['name']),
+            'job' => (string) ($job['name'] ?? 'Queued job'),
+            'timestamp' => $job['timestamp'] ?? null,
+            'result' => match ($state) {
+                'failed' => 'failed',
+                'reserved' => 'workers',
+                'completed' => 'completed',
+                default => 'queue',
+            },
+            'label' => sprintf('%s on %s:%s is %s',
+                $job['name'] ?? 'Queued job',
+                $job['connection'] ?? $queue['connection'],
+                $job['queue'] ?? $queue['name'],
+                $state
+            ),
+        ];
     }
 
     protected function connectionKey(array $connection): string

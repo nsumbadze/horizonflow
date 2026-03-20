@@ -210,14 +210,18 @@ class RedisQueueFlowRepository implements QueueFlowRepository
             'healthy' => fn () => $this->jobs->getCompleted(-1),
         ] as $status => $resolver) {
             try {
-                $jobs = $jobs->merge($resolver()->take(4)->map(fn (object $job): array => $this->event($job, $status)));
+                $jobs = $jobs->merge($resolver()->take(20)->map(fn (object $job): array => $this->event($job, $status)));
             } catch (\Throwable) {
                 //
             }
         }
 
         if ($jobs->isNotEmpty()) {
-            return $jobs->take(8)->values()->all();
+            return $jobs
+                ->sortByDesc(fn (array $event): int => (int) ($event['timestamp'] ?? 0))
+                ->take(40)
+                ->values()
+                ->all();
         }
 
         return collect($this->supervisors->all())->take(3)->map(fn (array $supervisor): array => [
@@ -235,11 +239,13 @@ class RedisQueueFlowRepository implements QueueFlowRepository
         $queue = (string) ($job->queue ?? 'default');
 
         return [
+            'id' => (string) ($job->id ?? sha1((string) ($job->name ?? 'Queued job').(string) ($job->payload ?? '').(string) ($job->created_at ?? ''))),
             'status' => $status,
             'state' => $state,
             'connection' => (string) ($job->connection ?? 'redis'),
             'queue' => $queue,
             'job' => (string) ($job->name ?? 'Queued job'),
+            'timestamp' => $this->jobActivityTimestamp($job),
             'result' => match ($state) {
                 'completed' => 'completed',
                 'failed' => 'failed',

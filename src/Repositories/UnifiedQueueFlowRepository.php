@@ -131,6 +131,8 @@ class UnifiedQueueFlowRepository implements QueueFlowRepository
             'failure_rate' => $queue['failure_rate'] ?? null,
             'latest_error' => $queue['latest_error'] ?? null,
             'last_failed_at' => $queue['last_failed_at'] ?? null,
+            'jobs' => $queue['jobs'] ?? [],
+            'job_classes' => $queue['job_classes'] ?? [],
             'driver' => (string) ($queue['driver'] ?? 'unknown'),
             'source' => (string) ($queue['source'] ?? $queue['driver'] ?? 'unknown'),
         ];
@@ -160,7 +162,32 @@ class UnifiedQueueFlowRepository implements QueueFlowRepository
             'failure_rate' => $this->failureRate($queues->sum('failed'), (int) $queues->sum('completed')),
             'latest_error' => $queues->pluck('latest_error')->filter()->first(),
             'last_failed_at' => $queues->pluck('last_failed_at')->filter()->sortDesc()->first(),
+            'jobs' => $queues->pluck('jobs')->flatten(1)->sortByDesc(fn (array $job): int => (int) ($job['timestamp'] ?? 0))->take(12)->values()->all(),
+            'job_classes' => $this->mergeJobClasses($queues->pluck('job_classes')->flatten(1)->all()),
         ];
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $classes
+     * @return array<int, array<string, mixed>>
+     */
+    protected function mergeJobClasses(array $classes): array
+    {
+        return collect($classes)
+            ->groupBy(fn (array $class): string => (string) ($class['name'] ?? 'Queued job'))
+            ->map(fn (Collection $classes, string $name): array => [
+                'name' => $name,
+                'pending' => $classes->sum('pending'),
+                'reserved' => $classes->sum('reserved'),
+                'completed' => $classes->sum('completed'),
+                'failed' => $classes->sum('failed'),
+                'attempts' => $classes->max('attempts') ?? 0,
+                'latest_error' => $classes->pluck('latest_error')->filter()->first(),
+            ])
+            ->sortByDesc(fn (array $class): int => (int) $class['failed'] + (int) $class['pending'] + (int) $class['reserved'] + (int) $class['completed'])
+            ->take(8)
+            ->values()
+            ->all();
     }
 
     /**
@@ -225,11 +252,14 @@ class UnifiedQueueFlowRepository implements QueueFlowRepository
         return $sources
             ->flatMap(fn (array $source): array => collect($source['events'] ?? [])
                 ->map(fn (array $event): array => [
+                    ...$event,
                     'status' => $event['status'] ?? 'healthy',
                     'label' => '['.($source['source'] ?? 'source').'] '.($event['label'] ?? 'Queue event'),
+                    'source' => $source['source'] ?? null,
                 ])
                 ->all())
-            ->take(10)
+            ->sortByDesc(fn (array $event): int => (int) ($event['timestamp'] ?? 0))
+            ->take(60)
             ->values()
             ->all();
     }
