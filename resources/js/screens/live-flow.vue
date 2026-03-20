@@ -365,6 +365,7 @@
 
             jobHref(job) {
                 if (!job?.id) return null;
+                if (job.inspectable === false) return null;
                 if (job.status === 'failed') return `${Horizon.basePath}/failed/${job.id}`;
                 if (job.status === 'completed') return `${Horizon.basePath}/jobs/completed/${job.id}`;
                 return `${Horizon.basePath}/jobs/pending/${job.id}`;

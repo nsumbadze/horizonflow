@@ -26,13 +26,21 @@ class DatabaseQueueFlowRepository implements QueueFlowRepository
         $queues = collect($connections)
             ->flatMap(fn (array $connection): array => $this->queuesForConnection($connection))
             ->map(function (array $queue) use ($failed): array {
-                $failure = $failed[$this->queueKey($queue)] ?? ['failed' => 0, 'latest_error' => null, 'last_failed_at' => null];
+                $failure = $failed[$this->queueKey($queue)] ?? [
+                    'failed' => 0,
+                    'latest_error' => null,
+                    'last_failed_at' => null,
+                    'jobs' => [],
+                    'job_classes' => [],
+                ];
 
                 return [
                     ...$queue,
                     'failed' => $failure['failed'],
                     'latest_error' => $failure['latest_error'],
                     'last_failed_at' => $failure['last_failed_at'],
+                    'jobs' => $this->mergeRecentJobs($queue['jobs'] ?? [], $failure['jobs']),
+                    'job_classes' => $this->mergeJobClasses($queue['job_classes'] ?? [], $failure['job_classes']),
                     'failure_rate' => null,
                 ];
             })
@@ -121,6 +129,8 @@ class DatabaseQueueFlowRepository implements QueueFlowRepository
     protected function queuesForConnection(array $connection): array
     {
         try {
+            $pendingJobs = $this->pendingJobsForConnection($connection)->groupBy('name');
+
             $rows = DB::connection($connection['database'])
                 ->table($connection['table'])
                 ->selectRaw('queue, count(*) as pending, sum(case when available_at > ? then 1 else 0 end) as delayed, min(case when available_at <= ? then available_at else null end) as oldest_available_at, max(attempts) as attempts', [Carbon::now()->timestamp, Carbon::now()->timestamp])
@@ -134,6 +144,7 @@ class DatabaseQueueFlowRepository implements QueueFlowRepository
         $queues = $rows->map(function (object $row) use ($connection): array {
             $oldestAvailableAt = $row->oldest_available_at ? (int) $row->oldest_available_at : Carbon::now()->timestamp;
             $pending = (int) $row->pending;
+            $jobs = $pendingJobs->get($row->queue, collect())->values()->all();
 
             return [
                 'connection' => $connection['connection'],
@@ -150,6 +161,8 @@ class DatabaseQueueFlowRepository implements QueueFlowRepository
                 'attempts' => (int) ($row->attempts ?? 0),
                 'completed' => null,
                 'delayed' => (int) $row->delayed,
+                'jobs' => $jobs,
+                'job_classes' => $this->jobClasses($jobs),
                 'driver' => 'database',
                 'source' => $connection['connection'],
             ];
@@ -183,6 +196,8 @@ class DatabaseQueueFlowRepository implements QueueFlowRepository
             'attempts' => 0,
             'completed' => null,
             'delayed' => 0,
+            'jobs' => [],
+            'job_classes' => [],
             'driver' => 'database',
             'source' => $connection['connection'],
         ];
@@ -190,18 +205,24 @@ class DatabaseQueueFlowRepository implements QueueFlowRepository
 
     /**
      * @param  array<int, array{connection: string, queue_connection: string, database: string|null, table: string, queue: string|null}>  $connections
-     * @return array<string, array{failed: int, latest_error: string|null, last_failed_at: string|null}>
+     * @return array<string, array{failed: int, latest_error: string|null, last_failed_at: string|null, jobs: array<int, array<string, mixed>>, job_classes: array<int, array<string, mixed>>}>
      */
     protected function failedByQueue(array $connections): array
     {
         return collect($connections)
             ->flatMap(fn (array $connection): Collection => $this->failedForConnection($connection))
             ->groupBy(fn (array $failure): string => $this->queueKey($failure))
-            ->map(fn (Collection $failures): array => [
-                'failed' => $failures->sum('failed'),
-                'latest_error' => $failures->pluck('latest_error')->filter()->first(),
-                'last_failed_at' => $failures->pluck('last_failed_at')->filter()->sortDesc()->first(),
-            ])
+            ->map(function (Collection $failures): array {
+                $jobs = $failures->pluck('jobs')->flatten(1)->values()->all();
+
+                return [
+                    'failed' => $failures->sum('failed'),
+                    'latest_error' => $failures->pluck('latest_error')->filter()->first(),
+                    'last_failed_at' => $failures->pluck('last_failed_at')->filter()->sortDesc()->first(),
+                    'jobs' => $jobs,
+                    'job_classes' => $this->jobClasses($jobs),
+                ];
+            })
             ->all();
     }
 
@@ -214,23 +235,207 @@ class DatabaseQueueFlowRepository implements QueueFlowRepository
         try {
             return DB::connection($connection['database'])
                 ->table(config('horizonxbrain.flow.database.failed_table', 'failed_jobs'))
-                ->select(['connection', 'queue', 'exception', 'failed_at'])
+                ->select('*')
                 ->whereIn('connection', [$connection['queue_connection'], $connection['connection']])
                 ->when($connection['queue'], fn ($query, string $queue) => $query->where('queue', $queue))
                 ->orderByDesc('failed_at')
                 ->limit(100)
                 ->get()
-                ->map(fn (object $row): array => [
-                    'connection' => $connection['connection'],
-                    'queue_connection' => $row->connection,
-                    'storage_connection' => $connection['database'],
-                    'name' => $row->queue,
-                    'failed' => 1,
-                    'latest_error' => $this->exceptionSummary($row->exception ?? null),
-                    'last_failed_at' => (string) ($row->failed_at ?? ''),
-                ]);
+                ->map(function (object $row) use ($connection): array {
+                    $job = $this->failedJobSummary($row, $connection);
+
+                    return [
+                        'connection' => $connection['connection'],
+                        'queue_connection' => $row->connection,
+                        'storage_connection' => $connection['database'],
+                        'name' => $row->queue,
+                        'failed' => 1,
+                        'latest_error' => $this->exceptionSummary($row->exception ?? null),
+                        'last_failed_at' => (string) ($row->failed_at ?? ''),
+                        'jobs' => [$job],
+                        'job_classes' => $this->jobClasses([$job]),
+                    ];
+                });
         } catch (Throwable) {
             return collect();
+        }
+    }
+
+    /**
+     * @param  array{connection: string, queue_connection: string, database: string|null, table: string, queue: string|null}  $connection
+     * @return \Illuminate\Support\Collection<int, array<string, mixed>>
+     */
+    protected function pendingJobsForConnection(array $connection): Collection
+    {
+        try {
+            return DB::connection($connection['database'])
+                ->table($connection['table'])
+                ->select(['id', 'queue', 'payload', 'attempts', 'reserved_at', 'available_at', 'created_at'])
+                ->when($connection['queue'], fn ($query, string $queue) => $query->where('queue', $queue))
+                ->orderByDesc('created_at')
+                ->limit(100)
+                ->get()
+                ->map(fn (object $row): array => $this->pendingJobSummary($row, $connection));
+        } catch (Throwable) {
+            return collect();
+        }
+    }
+
+    /**
+     * @param  array{connection: string, queue_connection: string, database: string|null, table: string, queue: string|null}  $connection
+     * @return array<string, mixed>
+     */
+    protected function pendingJobSummary(object $row, array $connection): array
+    {
+        $createdAt = (int) ($row->created_at ?? Carbon::now()->timestamp);
+        $reservedAt = (int) ($row->reserved_at ?? 0);
+        $availableAt = (int) ($row->available_at ?? 0);
+
+        return [
+            'id' => 'database-'.$connection['connection'].'-'.$row->id,
+            'name' => $this->payloadName($row->payload ?? null),
+            'status' => $reservedAt > 0 ? 'reserved' : 'pending',
+            'connection' => $connection['queue_connection'],
+            'queue' => (string) ($row->queue ?? 'default'),
+            'attempts' => (int) ($row->attempts ?? 0),
+            'runtime_seconds' => null,
+            'age_seconds' => max(0, Carbon::now()->timestamp - $createdAt),
+            'available_in_seconds' => max(0, $availableAt - Carbon::now()->timestamp),
+            'timestamp' => max($reservedAt, $createdAt),
+            'exception' => null,
+            'inspectable' => false,
+            'retryable' => false,
+        ];
+    }
+
+    /**
+     * @param  array{connection: string, queue_connection: string, database: string|null, table: string, queue: string|null}  $connection
+     * @return array<string, mixed>
+     */
+    protected function failedJobSummary(object $row, array $connection): array
+    {
+        return [
+            'id' => 'database-failed-'.($row->uuid ?? $row->id ?? sha1((string) ($row->payload ?? '').(string) ($row->failed_at ?? ''))),
+            'name' => $this->payloadName($row->payload ?? null),
+            'status' => 'failed',
+            'connection' => (string) ($row->connection ?? $connection['queue_connection']),
+            'queue' => (string) ($row->queue ?? 'default'),
+            'attempts' => 0,
+            'runtime_seconds' => null,
+            'age_seconds' => null,
+            'timestamp' => $this->timestampFrom($row->failed_at ?? null),
+            'exception' => $this->exceptionSummary($row->exception ?? null),
+            'inspectable' => false,
+            'retryable' => false,
+        ];
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $jobs
+     * @return array<int, array<string, mixed>>
+     */
+    protected function jobClasses(array $jobs): array
+    {
+        return collect($jobs)
+            ->groupBy(fn (array $job): string => (string) $job['name'])
+            ->map(fn (Collection $jobs, string $name): array => [
+                'name' => $name,
+                'pending' => $jobs->where('status', 'pending')->count(),
+                'reserved' => $jobs->where('status', 'reserved')->count(),
+                'completed' => $jobs->where('status', 'completed')->count(),
+                'failed' => $jobs->where('status', 'failed')->count(),
+                'attempts' => $jobs->max('attempts') ?? 0,
+                'latest_error' => $jobs->pluck('exception')->filter()->first(),
+            ])
+            ->sortByDesc(fn (array $class): int => (int) $class['failed'] + (int) $class['pending'] + (int) $class['reserved'])
+            ->take(8)
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $existing
+     * @param  array<int, array<string, mixed>>  $incoming
+     * @return array<int, array<string, mixed>>
+     */
+    protected function mergeRecentJobs(array $existing, array $incoming): array
+    {
+        return collect($existing)
+            ->merge($incoming)
+            ->unique(fn (array $job): string => (string) $job['id'])
+            ->sortByDesc(fn (array $job): int => (int) ($job['timestamp'] ?? 0))
+            ->take(12)
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $existing
+     * @param  array<int, array<string, mixed>>  $incoming
+     * @return array<int, array<string, mixed>>
+     */
+    protected function mergeJobClasses(array $existing, array $incoming): array
+    {
+        $classes = [];
+
+        foreach ([$existing, $incoming] as $group) {
+            foreach ($group as $class) {
+                $name = (string) ($class['name'] ?? 'Queued job');
+                $classes[$name] ??= [
+                    'name' => $name,
+                    'pending' => 0,
+                    'reserved' => 0,
+                    'completed' => 0,
+                    'failed' => 0,
+                    'attempts' => 0,
+                    'latest_error' => null,
+                ];
+
+                foreach (['pending', 'reserved', 'completed', 'failed'] as $state) {
+                    $classes[$name][$state] += (int) ($class[$state] ?? 0);
+                }
+
+                $classes[$name]['attempts'] = max((int) $classes[$name]['attempts'], (int) ($class['attempts'] ?? 0));
+                $classes[$name]['latest_error'] ??= $class['latest_error'] ?? null;
+            }
+        }
+
+        return collect($classes)
+            ->sortByDesc(fn (array $class): int => (int) $class['failed'] + (int) $class['pending'] + (int) $class['reserved'] + (int) $class['completed'])
+            ->take(8)
+            ->values()
+            ->all();
+    }
+
+    protected function payloadName(mixed $payload): string
+    {
+        if (! is_string($payload) || $payload === '') {
+            return 'Queued job';
+        }
+
+        $decoded = json_decode($payload, true);
+
+        if (! is_array($decoded)) {
+            return 'Queued job';
+        }
+
+        return (string) ($decoded['displayName'] ?? $decoded['data']['commandName'] ?? $decoded['job'] ?? 'Queued job');
+    }
+
+    protected function timestampFrom(mixed $value): ?int
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        if (is_numeric($value)) {
+            return (int) $value;
+        }
+
+        try {
+            return Carbon::parse((string) $value)->timestamp;
+        } catch (Throwable) {
+            return null;
         }
     }
 
