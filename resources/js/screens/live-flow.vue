@@ -15,12 +15,15 @@
                 selectedJob: null,
                 selectedJobDetails: null,
                 loadingJobDetails: false,
+                masters: [],
+                controllingHorizon: [],
             };
         },
 
         mounted() {
             document.title = "HorizonXBrain - Live Flow";
             this.refreshFlowPeriodically();
+            this.loadSupervisorControls();
             this.isDark = this.sniffDark();
             this.initDarkWatcher();
         },
@@ -53,6 +56,13 @@
 
             isMock()  { return this.flow?.source === 'mock'; },
             queues()  { return this.flow?.queues ?? []; },
+
+            supervisors() {
+                return (this.masters ?? []).flatMap(master => (master.supervisors ?? []).map(supervisor => ({
+                    ...supervisor,
+                    master: master.name,
+                })));
+            },
 
             filteredQueues() {
                 const f = this.filterText.trim().toLowerCase();
@@ -331,6 +341,42 @@
                     .finally(() => { this.refreshing = false; });
             },
 
+            loadSupervisorControls() {
+                return this.$http.get(Horizon.basePath + '/api/masters')
+                    .then(response => { this.masters = Object.values(response.data ?? {}); })
+                    .catch(() => { this.masters = []; });
+            },
+
+            isControllingHorizon(key) {
+                return this.controllingHorizon.includes(key);
+            },
+
+            controlMasters(action) {
+                const key = `masters:${action}`;
+                if (this.isControllingHorizon(key)) return;
+
+                this.controllingHorizon = [...this.controllingHorizon, key];
+
+                return this.$http.post(`${Horizon.basePath}/api/masters/${action}`)
+                    .then(() => Promise.all([this.loadSupervisorControls(), this.refreshFlowPeriodically()]))
+                    .finally(() => {
+                        this.controllingHorizon = this.controllingHorizon.filter(item => item !== key);
+                    });
+            },
+
+            controlSupervisor(supervisor, action) {
+                const key = `${supervisor.name}:${action}`;
+                if (this.isControllingHorizon(key)) return;
+
+                this.controllingHorizon = [...this.controllingHorizon, key];
+
+                return this.$http.post(`${Horizon.basePath}/api/supervisors/${encodeURIComponent(supervisor.name)}/${action}`)
+                    .then(() => Promise.all([this.loadSupervisorControls(), this.refreshFlowPeriodically()]))
+                    .finally(() => {
+                        this.controllingHorizon = this.controllingHorizon.filter(item => item !== key);
+                    });
+            },
+
             selectNode(id) { this.selectedId = id; },
             toggleLive()   { this.live = !this.live; },
 
@@ -380,6 +426,27 @@
                 return this.filteredQueues.flatMap(queue => {
                     const queueId = this.queueNodeId(queue);
 
+                    if (this.zoom >= 1.35) {
+                        return (queue.jobs ?? [])
+                            .slice(0, 8)
+                            .map(job => ({
+                                id: this.jobInstanceNodeId(queue, job),
+                                queueId,
+                                queue: queue.name,
+                                connection: queue.connection,
+                                name: job.name,
+                                individual: true,
+                                status: job.status,
+                                attempts: job.attempts,
+                                age_seconds: job.age_seconds,
+                                pending: job.status === 'pending' ? 1 : 0,
+                                reserved: job.status === 'reserved' ? 1 : 0,
+                                completed: job.status === 'completed' ? 1 : 0,
+                                failed: job.status === 'failed' ? 1 : 0,
+                                latest_error: job.exception,
+                            }));
+                    }
+
                     return (queue.job_classes ?? [])
                         .slice(0, 3)
                         .map(jobClass => ({
@@ -396,7 +463,12 @@
                 return `job-${queue.driver}-${queue.connection}-${queue.name}-${name}`.replace(/[^a-z0-9-]+/gi, '-').toLowerCase();
             },
 
+            jobInstanceNodeId(queue, job) {
+                return `job-${queue.driver}-${queue.connection}-${queue.name}-${job.id ?? job.name}`.replace(/[^a-z0-9-]+/gi, '-').toLowerCase();
+            },
+
             jobNodeStatus(job) {
+                if (job.individual) return this.jobStatusClass(job.status);
                 if (Number(job.failed ?? 0) > 0) return 'critical';
                 if (Number(job.pending ?? 0) > 0 || Number(job.reserved ?? 0) > 0) return 'warning';
                 return 'healthy';
@@ -407,6 +479,10 @@
             },
 
             jobNodeSub(job) {
+                if (job.individual) {
+                    return `${job.status} · attempts ${this.formatNumber(job.attempts ?? 0)} · ${this.formatDuration(job.age_seconds)}`;
+                }
+
                 return this.jobCounts(job);
             },
 
@@ -988,6 +1064,33 @@
                             </tbody>
                         </table>
                     </div>
+                </div>
+
+                <!-- horizon controls -->
+                <div class="lf-pane lf-pane-gap">
+                    <div class="lf-pane-head">
+                        <span class="lf-pane-title">Horizon Controls</span>
+                        <span class="lf-pane-meta">{{ supervisors.length }} supervisor{{ supervisors.length === 1 ? '' : 's' }}</span>
+                        <div class="lf-head-actions">
+                            <button class="lf-mini-btn" type="button" :disabled="isControllingHorizon('masters:pause')" @click="controlMasters('pause')">pause all</button>
+                            <button class="lf-mini-btn" type="button" :disabled="isControllingHorizon('masters:continue')" @click="controlMasters('continue')">continue all</button>
+                        </div>
+                    </div>
+                    <div class="lf-supervisors" v-if="supervisors.length">
+                        <div class="lf-supervisor" v-for="supervisor in supervisors" :key="supervisor.name">
+                            <span class="lf-dot" :class="'lf-dot-' + (supervisor.status === 'paused' ? 'warning' : supervisor.status === 'inactive' ? 'critical' : 'healthy')"></span>
+                            <div class="lf-supervisor-main">
+                                <div class="lf-supervisor-name">{{ supervisor.name }}</div>
+                                <div class="lf-supervisor-sub">
+                                    {{ supervisor.options?.connection ?? 'connection' }} · {{ supervisor.options?.queue ?? 'queues' }} · {{ formatNumber(Object.values(supervisor.processes ?? {}).reduce((sum, value) => sum + Number(value ?? 0), 0)) }} procs
+                                </div>
+                            </div>
+                            <span class="lf-status" :class="'lf-status-' + (supervisor.status === 'paused' ? 'warning' : supervisor.status === 'inactive' ? 'critical' : 'healthy')">{{ supervisor.status }}</span>
+                            <button class="lf-mini-btn" type="button" :disabled="isControllingHorizon(supervisor.name + ':pause') || supervisor.status === 'inactive'" @click="controlSupervisor(supervisor, 'pause')">pause</button>
+                            <button class="lf-mini-btn" type="button" :disabled="isControllingHorizon(supervisor.name + ':continue') || supervisor.status === 'inactive'" @click="controlSupervisor(supervisor, 'continue')">continue</button>
+                        </div>
+                    </div>
+                    <div class="lf-empty-sm" v-else>No Horizon supervisors detected.</div>
                 </div>
 
                 <!-- activity -->
@@ -1668,6 +1771,35 @@
     }
     .lf-mini-btn:hover:not(:disabled) { border-color: var(--lf-violet); color: var(--lf-violet); }
     .lf-mini-btn:disabled { opacity: .55; cursor: not-allowed; }
+
+    .lf-head-actions { display: flex; gap: 6px; margin-left: auto; }
+    .lf-supervisors { padding: 3px 0; }
+    .lf-supervisor {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 7px 12px;
+        border-top: 1px solid var(--lf-border);
+    }
+    .lf-supervisor:first-child { border-top: none; }
+    .lf-supervisor-main { flex: 1; min-width: 0; }
+    .lf-supervisor-name {
+        color: var(--lf-text);
+        font-size: 11.5px;
+        font-weight: 700;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    .lf-supervisor-sub {
+        margin-top: 2px;
+        color: var(--lf-muted);
+        font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+        font-size: 10px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
 
     .lf-edge-row {
         display: flex;

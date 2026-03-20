@@ -14,6 +14,10 @@ Route::prefix('api')->group(function () {
 
     // Master Supervisor Routes...
     Route::get('/masters', 'MasterSupervisorController@index')->name('horizon.masters.index');
+    Route::post('/masters/pause', 'SupervisorControlController@pauseMasters')->name('horizonxbrain.masters.pause');
+    Route::post('/masters/continue', 'SupervisorControlController@continueMasters')->name('horizonxbrain.masters.continue');
+    Route::post('/supervisors/{name}/pause', 'SupervisorControlController@pauseSupervisor')->name('horizonxbrain.supervisors.pause');
+    Route::post('/supervisors/{name}/continue', 'SupervisorControlController@continueSupervisor')->name('horizonxbrain.supervisors.continue');
 
     // Monitoring Routes...
     Route::get('/monitoring', 'MonitoringController@index')->name('horizon.monitoring.index');

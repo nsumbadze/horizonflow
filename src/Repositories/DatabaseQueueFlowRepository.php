@@ -312,7 +312,7 @@ class DatabaseQueueFlowRepository implements QueueFlowRepository
     protected function failedJobSummary(object $row, array $connection): array
     {
         return [
-            'id' => 'database-failed-'.($row->uuid ?? $row->id ?? sha1((string) ($row->payload ?? '').(string) ($row->failed_at ?? ''))),
+            'id' => (string) ($row->uuid ?? $row->id ?? sha1((string) ($row->payload ?? '').(string) ($row->failed_at ?? ''))),
             'name' => $this->payloadName($row->payload ?? null),
             'status' => 'failed',
             'connection' => (string) ($row->connection ?? $connection['queue_connection']),
@@ -323,7 +323,7 @@ class DatabaseQueueFlowRepository implements QueueFlowRepository
             'timestamp' => $this->timestampFrom($row->failed_at ?? null),
             'exception' => $this->exceptionSummary($row->exception ?? null),
             'inspectable' => false,
-            'retryable' => false,
+            'retryable' => true,
         ];
     }
 
