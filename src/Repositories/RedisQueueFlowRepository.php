@@ -86,6 +86,10 @@ class RedisQueueFlowRepository implements QueueFlowRepository
             $queues[$name] ??= $this->emptyQueue($name);
         }
 
+        foreach ($this->measuredRedisQueues() as $name) {
+            $queues[$name] ??= $this->emptyQueue($name);
+        }
+
         foreach ($this->discoveredRedisQueues() as $name => $discovered) {
             $queue = $queues[$name] ?? $this->emptyQueue($name);
             $queue['length'] = max((int) $queue['length'], $discovered['length']);
@@ -102,6 +106,7 @@ class RedisQueueFlowRepository implements QueueFlowRepository
             $queue['failed'] = max((int) $queue['failed'], $observation['failed']);
             $queue['completed'] = max((int) $queue['completed'], $observation['completed']);
             $queue['attempts'] = max((int) $queue['attempts'], $observation['attempts']);
+            $queue['recent_activity'] = max((int) $queue['recent_activity'], $observation['recent_activity']);
             $queue['latest_error'] ??= $observation['latest_error'];
 
             $queues[$name] = $queue;
@@ -113,6 +118,10 @@ class RedisQueueFlowRepository implements QueueFlowRepository
                     (int) $queue['processes'],
                     (int) $queue['reserved'],
                     (int) $queue['throughput']
+                );
+                $queue['current_throughput'] = max(
+                    (int) $queue['current_throughput'],
+                    (int) $queue['recent_activity']
                 );
 
                 return $queue;
@@ -151,6 +160,7 @@ class RedisQueueFlowRepository implements QueueFlowRepository
                     'failed' => (int) $queue['failed'],
                     'latest_error' => $queue['latest_error'],
                     'current_throughput' => (int) $queue['current_throughput'],
+                    'recent_activity' => (int) $queue['recent_activity'],
                     'throughput' => (int) $queue['throughput'],
                 ]
             );
@@ -198,15 +208,7 @@ class RedisQueueFlowRepository implements QueueFlowRepository
             'healthy' => fn () => $this->jobs->getCompleted(-1),
         ] as $status => $resolver) {
             try {
-                $jobs = $jobs->merge($resolver()->take(4)->map(fn (object $job): array => [
-                    'status' => $status,
-                    'label' => sprintf('%s on %s:%s is %s',
-                        $job->name ?? 'Queued job',
-                        $job->connection ?? $this->connectionName($job->queue ?? 'default'),
-                        $job->queue ?? 'default',
-                        $job->status ?? $status
-                    ),
-                ]));
+                $jobs = $jobs->merge($resolver()->take(4)->map(fn (object $job): array => $this->event($job, $status)));
             } catch (\Throwable) {
                 //
             }
@@ -225,6 +227,35 @@ class RedisQueueFlowRepository implements QueueFlowRepository
     /**
      * @return array<string, mixed>
      */
+    protected function event(object $job, string $status): array
+    {
+        $state = (string) ($job->status ?? $status);
+        $queue = (string) ($job->queue ?? 'default');
+
+        return [
+            'status' => $status,
+            'state' => $state,
+            'connection' => (string) ($job->connection ?? 'redis'),
+            'queue' => $queue,
+            'job' => (string) ($job->name ?? 'Queued job'),
+            'result' => match ($state) {
+                'completed' => 'completed',
+                'failed' => 'failed',
+                'reserved' => 'workers',
+                default => 'queue',
+            },
+            'label' => sprintf('%s on %s:%s is %s',
+                $job->name ?? 'Queued job',
+                $job->connection ?? $this->connectionName($queue),
+                $queue,
+                $state
+            ),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
     protected function queue(array $queue): array
     {
         return [
@@ -237,6 +268,7 @@ class RedisQueueFlowRepository implements QueueFlowRepository
             'reserved' => (int) $queue['reserved'],
             'throughput_per_minute' => (int) $queue['throughput'],
             'current_throughput_per_minute' => (int) $queue['current_throughput'],
+            'recent_activity_per_minute' => (int) $queue['recent_activity'],
             'oldest_pending_seconds' => (int) $queue['wait'],
             'estimated_drain_seconds' => $this->estimatedDrainSeconds((int) $queue['length'], (int) $queue['current_throughput']),
             'attempts' => (int) $queue['attempts'],
@@ -316,6 +348,22 @@ class RedisQueueFlowRepository implements QueueFlowRepository
             ->all();
     }
 
+    /**
+     * @return array<int, string>
+     */
+    protected function measuredRedisQueues(): array
+    {
+        try {
+            return collect($this->metrics->measuredQueues())
+                ->filter(fn (string $queue): bool => $queue !== '')
+                ->map(fn (string $queue): string => $this->redisQueueKey($queue))
+                ->values()
+                ->all();
+        } catch (Throwable) {
+            return [];
+        }
+    }
+
     protected function redisConnection(): mixed
     {
         try {
@@ -393,7 +441,7 @@ class RedisQueueFlowRepository implements QueueFlowRepository
     }
 
     /**
-     * @return array<string, array{pending: int, wait: int, failed: int, completed: int, attempts: int, latest_error: string|null}>
+     * @return array<string, array{pending: int, wait: int, failed: int, completed: int, attempts: int, recent_activity: int, latest_error: string|null}>
      */
     protected function queueObservations(): array
     {
@@ -412,7 +460,7 @@ class RedisQueueFlowRepository implements QueueFlowRepository
                         continue;
                     }
 
-                    $observations[$name] ??= ['pending' => 0, 'wait' => 0, 'failed' => 0, 'completed' => 0, 'attempts' => 0, 'latest_error' => null];
+                    $observations[$name] ??= ['pending' => 0, 'wait' => 0, 'failed' => 0, 'completed' => 0, 'attempts' => 0, 'recent_activity' => 0, 'latest_error' => null];
 
                     if ($status === 'pending') {
                         $observations[$name]['pending']++;
@@ -424,10 +472,18 @@ class RedisQueueFlowRepository implements QueueFlowRepository
                             $observations[$name]['attempts'],
                             $this->jobAttempts($job)
                         );
+
+                        if (($job->status ?? null) === 'reserved' || $this->isRecentJobActivity($job)) {
+                            $observations[$name]['recent_activity']++;
+                        }
                     }
 
                     if ($status === 'completed') {
                         $observations[$name]['completed']++;
+
+                        if ($this->isRecentJobActivity($job)) {
+                            $observations[$name]['recent_activity']++;
+                        }
                     }
 
                     if ($status === 'failed') {
@@ -437,6 +493,10 @@ class RedisQueueFlowRepository implements QueueFlowRepository
                             $this->jobAttempts($job)
                         );
                         $observations[$name]['latest_error'] ??= $this->jobExceptionSummary($job);
+
+                        if ($this->isRecentJobActivity($job)) {
+                            $observations[$name]['recent_activity']++;
+                        }
                     }
                 }
             } catch (Throwable) {
@@ -448,7 +508,7 @@ class RedisQueueFlowRepository implements QueueFlowRepository
     }
 
     /**
-     * @return array{key: string, storage_connection: string, name: string, length: int, wait: int, processes: int, delayed: int, reserved: int, throughput: int, current_throughput: int, completed: int, failed: int, attempts: int, latest_error: string|null}
+     * @return array{key: string, storage_connection: string, name: string, length: int, wait: int, processes: int, delayed: int, reserved: int, throughput: int, current_throughput: int, recent_activity: int, completed: int, failed: int, attempts: int, latest_error: string|null}
      */
     protected function normalizeQueue(array $queue): array
     {
@@ -469,6 +529,7 @@ class RedisQueueFlowRepository implements QueueFlowRepository
             'reserved' => (int) ($queue['reserved'] ?? 0),
             'throughput' => $throughput,
             'current_throughput' => $this->currentThroughput($processes, (int) ($queue['reserved'] ?? 0), $throughput),
+            'recent_activity' => 0,
             'completed' => (int) ($queue['completed'] ?? 0),
             'failed' => (int) ($queue['failed'] ?? 0),
             'attempts' => (int) ($queue['attempts'] ?? 0),
@@ -477,7 +538,7 @@ class RedisQueueFlowRepository implements QueueFlowRepository
     }
 
     /**
-     * @return array{key: string, storage_connection: string, name: string, length: int, wait: int, processes: int, delayed: int, reserved: int, throughput: int, current_throughput: int, completed: int, failed: int, attempts: int, latest_error: string|null}
+     * @return array{key: string, storage_connection: string, name: string, length: int, wait: int, processes: int, delayed: int, reserved: int, throughput: int, current_throughput: int, recent_activity: int, completed: int, failed: int, attempts: int, latest_error: string|null}
      */
     protected function emptyQueue(string $name): array
     {
@@ -495,6 +556,7 @@ class RedisQueueFlowRepository implements QueueFlowRepository
             'reserved' => 0,
             'throughput' => $throughput,
             'current_throughput' => 0,
+            'recent_activity' => 0,
             'completed' => 0,
             'failed' => 0,
             'attempts' => 0,
@@ -553,6 +615,35 @@ class RedisQueueFlowRepository implements QueueFlowRepository
         return (int) ($payload->attempts ?? 0);
     }
 
+    protected function isRecentJobActivity(object $job): bool
+    {
+        $timestamp = $this->jobActivityTimestamp($job);
+
+        return $timestamp !== null && Carbon::now()->timestamp - $timestamp <= 60;
+    }
+
+    protected function jobActivityTimestamp(object $job): ?int
+    {
+        foreach (['completed_at', 'failed_at', 'updated_at', 'reserved_at', 'created_at'] as $field) {
+            $timestamp = (float) ($job->{$field} ?? 0);
+
+            if ($timestamp > 0) {
+                return (int) floor($timestamp);
+            }
+        }
+
+        if (is_string($job->payload ?? null)) {
+            $payload = json_decode($job->payload);
+            $timestamp = (float) ($payload->pushedAt ?? 0);
+
+            if ($timestamp > 0) {
+                return (int) floor($timestamp);
+            }
+        }
+
+        return null;
+    }
+
     protected function throughputForQueue(string $name): int
     {
         return max(
@@ -568,7 +659,7 @@ class RedisQueueFlowRepository implements QueueFlowRepository
 
     protected function currentThroughput(int $processes, int $reserved, int $throughput): int
     {
-        return $processes > 0 || $reserved > 0 ? $throughput : 0;
+        return $processes > 0 || $reserved > 0 ? max($throughput, 1) : 0;
     }
 
     protected function estimatedDrainSeconds(int $pending, int $throughput): ?int

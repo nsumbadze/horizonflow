@@ -187,23 +187,74 @@ class RedisQueueFlowRepositoryTest extends UnitTest
         $this->assertSame(0, $queue['length']);
     }
 
+    public function test_it_includes_measured_redis_queues(): void
+    {
+        $repository = $this->repository(
+            [],
+            collect(),
+            null,
+            0,
+            [],
+            [],
+            collect(),
+            ['imports']
+        );
+
+        $queue = $repository->exposedQueues()[0];
+
+        $this->assertSame('imports', $queue['name']);
+        $this->assertSame(0, $queue['length']);
+    }
+
+    public function test_recent_completed_jobs_drive_current_activity_before_metric_snapshots(): void
+    {
+        Carbon::setTestNow(Carbon::createFromTimestamp(1000));
+
+        try {
+            $repository = $this->repository(
+                [],
+                collect(),
+                null,
+                0,
+                [],
+                [],
+                collect([
+                    (object) [
+                        'connection' => 'redis',
+                        'queue' => 'orders-sync',
+                        'completed_at' => 995,
+                    ],
+                ])
+            );
+
+            $queue = $repository->exposedQueues()[0];
+
+            $this->assertSame('orders-sync', $queue['name']);
+            $this->assertSame(1, $queue['recent_activity']);
+            $this->assertSame(1, $queue['current_throughput']);
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
     /**
      * @param  array<int, array<string, mixed>>  $workloadQueues
      * @param  array<string, array{length: int, delayed: int, reserved: int}>  $discoveredQueues
      * @param  array<int, string>  $configuredQueues
      */
-    protected function repository(array $workloadQueues, Collection $pendingJobs, ?Collection $failedJobs = null, int $throughput = 0, array $discoveredQueues = [], array $configuredQueues = []): RedisQueueFlowRepository
+    protected function repository(array $workloadQueues, Collection $pendingJobs, ?Collection $failedJobs = null, int $throughput = 0, array $discoveredQueues = [], array $configuredQueues = [], ?Collection $completedJobs = null, array $measuredQueues = []): RedisQueueFlowRepository
     {
         $workload = Mockery::mock(WorkloadRepository::class);
         $workload->shouldReceive('get')->once()->andReturn($workloadQueues);
 
         $jobs = Mockery::mock(JobRepository::class);
         $jobs->shouldReceive('getPending')->once()->with(-1)->andReturn($pendingJobs);
-        $jobs->shouldReceive('getCompleted')->once()->with(-1)->andReturn(collect());
+        $jobs->shouldReceive('getCompleted')->once()->with(-1)->andReturn($completedJobs ?? collect());
         $jobs->shouldReceive('getFailed')->once()->with(-1)->andReturn($failedJobs ?? collect());
 
         $metrics = Mockery::mock(MetricsRepository::class);
         $metrics->shouldReceive('throughputForQueue')->byDefault()->andReturn($throughput);
+        $metrics->shouldReceive('measuredQueues')->byDefault()->andReturn($measuredQueues);
 
         $repository = new class(
             $workload,

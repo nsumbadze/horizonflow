@@ -178,29 +178,10 @@
 
             particles() {
                 if (!this.live) return [];
-                return this.graphEdges.filter(edge => {
-                    if (Number(edge.rate_per_minute ?? 0) <= 0) return false;
-                    const src = this.graphNodeLookup[edge.source];
-                    const tgt = this.graphNodeLookup[edge.target];
-                    const queueNode = src?.type === 'queue' ? src : tgt?.type === 'queue' ? tgt : null;
-                    if (queueNode) {
-                        const m = queueNode.metrics ?? {};
-                        return Number(m.pending ?? 0) > 0 || Number(m.processes ?? 0) > 0;
-                    }
-                    if (tgt?.type === 'result' && tgt.label === 'failed') {
-                        return Number(this.summary.failed ?? 0) > 0;
-                    }
-                    return true;
-                }).flatMap((edge, ei) => {
-                    const count = edge.status === 'critical' || edge.status === 'warning' ? 2 : Math.min(3, Math.max(1, Math.ceil((edge.rate_per_minute ?? 20) / 120)));
-                    return Array.from({ length: count }).map((_, i) => ({
-                        id: `${edge.id}-${i}`,
-                        edgeId: this.svgId(edge.id),
-                        status: edge.status,
-                        delay: `${(i / count) * this.particleDuration(edge.status) + (ei % 3) * 0.15}s`,
-                        duration: `${this.particleDuration(edge.status)}s`,
-                    }));
-                }).slice(0, 28);
+
+                return (this.flow?.events ?? [])
+                    .flatMap((event, index) => this.jobEventParticle(event, index))
+                    .slice(0, 28);
             },
 
             kpiMetrics() {
@@ -352,6 +333,41 @@
                 return { id: `${source}-${target}`, source, target, status, label, rate_per_minute: rate };
             },
 
+            jobEventParticle(event, index) {
+                const edge = this.jobEventEdge(event);
+
+                if (!edge) return [];
+
+                return [{
+                    id: `${index}-${this.svgId(event.job ?? event.label ?? edge.id)}`,
+                    edgeId: this.svgId(edge.id),
+                    status: event.status ?? edge.status,
+                    delay: `${(index % 8) * 0.18}s`,
+                    duration: `${this.particleDuration(event.status ?? edge.status)}s`,
+                }];
+            },
+
+            jobEventEdge(event) {
+                const worker = this.graphNodes.find(n => n.type === 'worker');
+                const queue = this.graphNodes.find(n => n.type === 'queue' && n.label === event.queue);
+                const completed = this.graphNodes.find(n => n.type === 'result' && n.label === 'completed');
+                const failed = this.graphNodes.find(n => n.type === 'result' && n.label === 'failed');
+
+                const target = event.result === 'completed' && worker && completed
+                    ? [worker.id, completed.id]
+                    : event.result === 'failed' && worker && failed
+                        ? [worker.id, failed.id]
+                        : event.result === 'workers' && queue && worker
+                            ? [queue.id, worker.id]
+                            : event.result === 'queue' && queue
+                                ? ['producer-app', queue.id]
+                                : null;
+
+                if (!target) return null;
+
+                return this.graphEdges.find(edge => edge.source === target[0] && edge.target === target[1]) ?? null;
+            },
+
             edgePath(edge) {
                 const s = this.graphNodeLookup[edge.source];
                 const t = this.graphNodeLookup[edge.target];
@@ -472,6 +488,7 @@
                     ['wait',           this.metricValue(queue.wait_seconds, 's')],
                     ['processes',      this.formatNumber(queue.processes)],
                     ['current rate',   this.formatRate(queue.current_throughput_per_minute)],
+                    ['recent activity', this.formatRate(queue.recent_activity_per_minute)],
                     ['last measured',  this.formatRate(queue.throughput_per_minute)],
                     ['drain ETA',      this.formatDuration(queue.estimated_drain_seconds)],
                     ['attempts',       this.formatNumber(queue.attempts ?? 0)],
