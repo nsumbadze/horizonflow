@@ -237,6 +237,67 @@ class RedisQueueFlowRepositoryTest extends UnitTest
         }
     }
 
+    public function test_it_exposes_recent_jobs_and_job_classes_for_queue_inspection(): void
+    {
+        Carbon::setTestNow(Carbon::createFromTimestamp(1000));
+
+        try {
+            $repository = $this->repository(
+                [],
+                collect([
+                    (object) [
+                        'id' => 'pending-1',
+                        'name' => 'App\\Jobs\\SyncCustomer',
+                        'connection' => 'redis',
+                        'queue' => 'default',
+                        'payload' => json_encode(['attempts' => 1, 'pushedAt' => 980]),
+                        'created_at' => 980,
+                    ],
+                ]),
+                collect([
+                    (object) [
+                        'id' => 'failed-1',
+                        'name' => 'App\\Jobs\\SyncCustomer',
+                        'connection' => 'redis',
+                        'queue' => 'default',
+                        'payload' => json_encode(['attempts' => 3, 'pushedAt' => 970]),
+                        'failed_at' => 995,
+                        'exception' => "RuntimeException: Upstream service unavailable\nStack trace...",
+                    ],
+                ]),
+                0,
+                [],
+                [],
+                collect([
+                    (object) [
+                        'id' => 'completed-1',
+                        'name' => 'App\\Jobs\\SendWelcomeEmail',
+                        'connection' => 'redis',
+                        'queue' => 'default',
+                        'payload' => json_encode(['attempts' => 1, 'pushedAt' => 960]),
+                        'reserved_at' => 990,
+                        'completed_at' => 996,
+                    ],
+                ])
+            );
+
+            $payload = $repository->exposedQueuePayload($repository->exposedQueues()[0]);
+
+            $this->assertCount(3, $payload['jobs']);
+            $this->assertSame('failed-1', $payload['jobs'][1]['id']);
+            $this->assertTrue($payload['jobs'][1]['retryable']);
+            $this->assertSame('RuntimeException: Upstream service unavailable', $payload['jobs'][1]['exception']);
+
+            $this->assertCount(2, $payload['job_classes']);
+            $this->assertSame('App\\Jobs\\SyncCustomer', $payload['job_classes'][0]['name']);
+            $this->assertSame(1, $payload['job_classes'][0]['pending']);
+            $this->assertSame(1, $payload['job_classes'][0]['failed']);
+            $this->assertSame(3, $payload['job_classes'][0]['attempts']);
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
     /**
      * @param  array<int, array<string, mixed>>  $workloadQueues
      * @param  array<string, array{length: int, delayed: int, reserved: int}>  $discoveredQueues
@@ -268,6 +329,11 @@ class RedisQueueFlowRepositoryTest extends UnitTest
             public function exposedQueues(): Collection
             {
                 return $this->queues();
+            }
+
+            public function exposedQueuePayload(array $queue): array
+            {
+                return $this->queue($queue);
             }
 
             protected function configuredRedisQueues(): array

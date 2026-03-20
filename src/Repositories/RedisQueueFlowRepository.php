@@ -108,6 +108,8 @@ class RedisQueueFlowRepository implements QueueFlowRepository
             $queue['attempts'] = max((int) $queue['attempts'], $observation['attempts']);
             $queue['recent_activity'] = max((int) $queue['recent_activity'], $observation['recent_activity']);
             $queue['latest_error'] ??= $observation['latest_error'];
+            $queue['jobs'] = $this->mergeRecentJobs($queue['jobs'], $observation['jobs']);
+            $queue['job_classes'] = $this->mergeJobClasses($queue['job_classes'], $observation['job_classes']);
 
             $queues[$name] = $queue;
         }
@@ -277,6 +279,8 @@ class RedisQueueFlowRepository implements QueueFlowRepository
             'failed' => (int) $queue['failed'],
             'failure_rate' => $this->failureRate((int) $queue['failed'], (int) $queue['completed']),
             'latest_error' => $queue['latest_error'],
+            'jobs' => array_values($queue['jobs']),
+            'job_classes' => array_values($queue['job_classes']),
             'driver' => 'redis',
             'source' => 'redis',
         ];
@@ -441,7 +445,7 @@ class RedisQueueFlowRepository implements QueueFlowRepository
     }
 
     /**
-     * @return array<string, array{pending: int, wait: int, failed: int, completed: int, attempts: int, recent_activity: int, latest_error: string|null}>
+     * @return array<string, array{pending: int, wait: int, failed: int, completed: int, attempts: int, recent_activity: int, latest_error: string|null, jobs: array<string, array<string, mixed>>, job_classes: array<string, array<string, mixed>>}>
      */
     protected function queueObservations(): array
     {
@@ -460,7 +464,8 @@ class RedisQueueFlowRepository implements QueueFlowRepository
                         continue;
                     }
 
-                    $observations[$name] ??= ['pending' => 0, 'wait' => 0, 'failed' => 0, 'completed' => 0, 'attempts' => 0, 'recent_activity' => 0, 'latest_error' => null];
+                    $observations[$name] ??= $this->emptyObservation();
+                    $observations[$name] = $this->observeJob($observations[$name], $job, $status);
 
                     if ($status === 'pending') {
                         $observations[$name]['pending']++;
@@ -508,7 +513,7 @@ class RedisQueueFlowRepository implements QueueFlowRepository
     }
 
     /**
-     * @return array{key: string, storage_connection: string, name: string, length: int, wait: int, processes: int, delayed: int, reserved: int, throughput: int, current_throughput: int, recent_activity: int, completed: int, failed: int, attempts: int, latest_error: string|null}
+     * @return array{key: string, storage_connection: string, name: string, length: int, wait: int, processes: int, delayed: int, reserved: int, throughput: int, current_throughput: int, recent_activity: int, completed: int, failed: int, attempts: int, latest_error: string|null, jobs: array<int, array<string, mixed>>, job_classes: array<int, array<string, mixed>>}
      */
     protected function normalizeQueue(array $queue): array
     {
@@ -534,11 +539,13 @@ class RedisQueueFlowRepository implements QueueFlowRepository
             'failed' => (int) ($queue['failed'] ?? 0),
             'attempts' => (int) ($queue['attempts'] ?? 0),
             'latest_error' => $queue['latest_error'] ?? null,
+            'jobs' => $queue['jobs'] ?? [],
+            'job_classes' => $queue['job_classes'] ?? [],
         ];
     }
 
     /**
-     * @return array{key: string, storage_connection: string, name: string, length: int, wait: int, processes: int, delayed: int, reserved: int, throughput: int, current_throughput: int, recent_activity: int, completed: int, failed: int, attempts: int, latest_error: string|null}
+     * @return array{key: string, storage_connection: string, name: string, length: int, wait: int, processes: int, delayed: int, reserved: int, throughput: int, current_throughput: int, recent_activity: int, completed: int, failed: int, attempts: int, latest_error: string|null, jobs: array<int, array<string, mixed>>, job_classes: array<int, array<string, mixed>>}
      */
     protected function emptyQueue(string $name): array
     {
@@ -561,7 +568,162 @@ class RedisQueueFlowRepository implements QueueFlowRepository
             'failed' => 0,
             'attempts' => 0,
             'latest_error' => null,
+            'jobs' => [],
+            'job_classes' => [],
         ];
+    }
+
+    /**
+     * @return array{pending: int, wait: int, failed: int, completed: int, attempts: int, recent_activity: int, latest_error: string|null, jobs: array<string, array<string, mixed>>, job_classes: array<string, array<string, mixed>>}
+     */
+    protected function emptyObservation(): array
+    {
+        return [
+            'pending' => 0,
+            'wait' => 0,
+            'failed' => 0,
+            'completed' => 0,
+            'attempts' => 0,
+            'recent_activity' => 0,
+            'latest_error' => null,
+            'jobs' => [],
+            'job_classes' => [],
+        ];
+    }
+
+    /**
+     * @param  array{pending: int, wait: int, failed: int, completed: int, attempts: int, recent_activity: int, latest_error: string|null, jobs: array<string, array<string, mixed>>, job_classes: array<string, array<string, mixed>>}  $observation
+     * @return array{pending: int, wait: int, failed: int, completed: int, attempts: int, recent_activity: int, latest_error: string|null, jobs: array<string, array<string, mixed>>, job_classes: array<string, array<string, mixed>>}
+     */
+    protected function observeJob(array $observation, object $job, string $bucket): array
+    {
+        $summary = $this->jobSummary($job, $bucket);
+        $observation['jobs'][(string) $summary['id']] = $summary;
+
+        $class = (string) $summary['name'];
+        $observation['job_classes'][$class] ??= [
+            'name' => $class,
+            'pending' => 0,
+            'reserved' => 0,
+            'completed' => 0,
+            'failed' => 0,
+            'attempts' => 0,
+            'latest_error' => null,
+        ];
+
+        $state = (string) $summary['status'];
+        $state = in_array($state, ['reserved', 'completed', 'failed'], true) ? $state : 'pending';
+        $observation['job_classes'][$class][$state]++;
+        $observation['job_classes'][$class]['attempts'] = max(
+            (int) $observation['job_classes'][$class]['attempts'],
+            (int) $summary['attempts']
+        );
+
+        if ($summary['exception'] !== null) {
+            $observation['job_classes'][$class]['latest_error'] ??= $summary['exception'];
+        }
+
+        return $observation;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    protected function jobSummary(object $job, string $bucket): array
+    {
+        $status = (string) ($job->status ?? $bucket);
+        $status = match ($status) {
+            'completed', 'failed', 'reserved' => $status,
+            default => $bucket === 'completed' || $bucket === 'failed' ? $bucket : 'pending',
+        };
+
+        $id = (string) ($job->id ?? sha1(implode('|', [
+            (string) ($job->connection ?? 'redis'),
+            (string) ($job->queue ?? 'default'),
+            (string) ($job->name ?? 'Queued job'),
+            (string) ($job->payload ?? ''),
+            (string) ($job->created_at ?? ''),
+        ])));
+
+        return [
+            'id' => $id,
+            'name' => (string) ($job->name ?? 'Queued job'),
+            'status' => $status,
+            'connection' => (string) ($job->connection ?? 'redis'),
+            'queue' => (string) ($job->queue ?? 'default'),
+            'attempts' => $this->jobAttempts($job),
+            'runtime_seconds' => $this->jobRuntimeSeconds($job),
+            'age_seconds' => $this->jobWaitSeconds($job),
+            'timestamp' => $this->jobActivityTimestamp($job),
+            'exception' => $this->jobExceptionSummary($job),
+            'retryable' => $status === 'failed',
+        ];
+    }
+
+    protected function jobRuntimeSeconds(object $job): ?int
+    {
+        $reservedAt = (float) ($job->reserved_at ?? 0);
+        $finishedAt = (float) ($job->completed_at ?? $job->failed_at ?? 0);
+
+        if ($reservedAt <= 0 || $finishedAt <= 0 || $finishedAt < $reservedAt) {
+            return null;
+        }
+
+        return (int) ceil($finishedAt - $reservedAt);
+    }
+
+    /**
+     * @param  array<int|string, array<string, mixed>>  $existing
+     * @param  array<int|string, array<string, mixed>>  $incoming
+     * @return array<int, array<string, mixed>>
+     */
+    protected function mergeRecentJobs(array $existing, array $incoming): array
+    {
+        return collect($existing)
+            ->merge($incoming)
+            ->unique(fn (array $job): string => (string) $job['id'])
+            ->sortByDesc(fn (array $job): int => (int) ($job['timestamp'] ?? 0))
+            ->take(12)
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @param  array<int|string, array<string, mixed>>  $existing
+     * @param  array<int|string, array<string, mixed>>  $incoming
+     * @return array<int, array<string, mixed>>
+     */
+    protected function mergeJobClasses(array $existing, array $incoming): array
+    {
+        $classes = [];
+
+        foreach ([$existing, $incoming] as $group) {
+            foreach ($group as $class) {
+                $name = (string) ($class['name'] ?? 'Queued job');
+                $classes[$name] ??= [
+                    'name' => $name,
+                    'pending' => 0,
+                    'reserved' => 0,
+                    'completed' => 0,
+                    'failed' => 0,
+                    'attempts' => 0,
+                    'latest_error' => null,
+                ];
+
+                foreach (['pending', 'reserved', 'completed', 'failed'] as $state) {
+                    $classes[$name][$state] += (int) ($class[$state] ?? 0);
+                }
+
+                $classes[$name]['attempts'] = max((int) $classes[$name]['attempts'], (int) ($class['attempts'] ?? 0));
+                $classes[$name]['latest_error'] ??= $class['latest_error'] ?? null;
+            }
+        }
+
+        return collect($classes)
+            ->sortByDesc(fn (array $class): int => (int) $class['failed'] + (int) $class['pending'] + (int) $class['reserved'] + (int) $class['completed'])
+            ->take(8)
+            ->values()
+            ->all();
     }
 
     protected function jobQueueKey(object $job): ?string

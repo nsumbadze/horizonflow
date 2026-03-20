@@ -11,6 +11,7 @@
                 selectedId: null,
                 isDark: this.sniffDark(),
                 panX: 0, panY: 0, zoom: 1, isPanning: false,
+                retryingJobs: [],
             };
         },
 
@@ -209,6 +210,8 @@
                 return {
                     node, queue,
                     metrics: this.inspectorMetrics(node, queue),
+                    jobClasses: this.queueJobClasses(queue),
+                    jobs: this.queueJobs(queue),
                     incoming: this.graphEdges.filter(e => e.target === node.id),
                     outgoing: this.graphEdges.filter(e => e.source === node.id),
                     action: this.suggestedAction(node, queue),
@@ -323,6 +326,64 @@
             formatPercent(value) {
                 if (value === null || value === undefined) return '—';
                 return `${this.formatNumber(value)}%`;
+            },
+
+            shortJobName(name) {
+                const value = String(name ?? 'Queued job');
+                return value.split('\\').pop();
+            },
+
+            queueJobClasses(queue) {
+                return (queue?.job_classes ?? []).slice(0, 8);
+            },
+
+            queueJobs(queue) {
+                return (queue?.jobs ?? []).slice(0, 12);
+            },
+
+            jobCounts(jobClass) {
+                const parts = [
+                    ['pending', jobClass.pending],
+                    ['reserved', jobClass.reserved],
+                    ['ok', jobClass.completed],
+                    ['failed', jobClass.failed],
+                ].filter(([, value]) => Number(value ?? 0) > 0);
+
+                return parts.length
+                    ? parts.map(([label, value]) => `${this.formatNumber(value)} ${label}`).join(' · ')
+                    : 'no recent jobs';
+            },
+
+            jobStatusClass(status) {
+                return {
+                    failed: 'critical',
+                    reserved: 'warning',
+                    pending: 'warning',
+                    completed: 'healthy',
+                }[status] ?? 'healthy';
+            },
+
+            jobHref(job) {
+                if (!job?.id) return null;
+                if (job.status === 'failed') return `${Horizon.basePath}/failed/${job.id}`;
+                if (job.status === 'completed') return `${Horizon.basePath}/jobs/completed/${job.id}`;
+                return `${Horizon.basePath}/jobs/pending/${job.id}`;
+            },
+
+            isRetryingJob(job) {
+                return this.retryingJobs.includes(job?.id);
+            },
+
+            retryJob(job) {
+                if (!job?.id || this.isRetryingJob(job)) return;
+
+                this.retryingJobs = [...this.retryingJobs, job.id];
+
+                return this.$http.post(Horizon.basePath + '/api/jobs/retry/' + job.id)
+                    .then(() => this.refreshFlowPeriodically())
+                    .finally(() => {
+                        this.retryingJobs = this.retryingJobs.filter(id => id !== job.id);
+                    });
             },
 
             statusLabel(status) {
@@ -860,6 +921,43 @@
                         </div>
                     </div>
 
+                    <div class="lf-insp-sec" v-if="selectedInspector.queue">
+                        <div class="lf-insp-sec-title">Job Classes</div>
+                        <div class="lf-job-class" v-for="jobClass in selectedInspector.jobClasses" :key="jobClass.name">
+                            <div>
+                                <div class="lf-job-name">{{ shortJobName(jobClass.name) }}</div>
+                                <div class="lf-job-sub">{{ jobCounts(jobClass) }}</div>
+                            </div>
+                            <span class="lf-job-fail" v-if="Number(jobClass.failed ?? 0) > 0">{{ formatNumber(jobClass.failed) }} failed</span>
+                        </div>
+                        <div class="lf-empty-sm" v-if="selectedInspector.jobClasses.length === 0">No recent job classes for this queue.</div>
+                    </div>
+
+                    <div class="lf-insp-sec" v-if="selectedInspector.queue">
+                        <div class="lf-insp-sec-title">Recent Jobs</div>
+                        <div class="lf-job-row" v-for="job in selectedInspector.jobs" :key="job.id">
+                            <span class="lf-dot" :class="'lf-dot-' + jobStatusClass(job.status)"></span>
+                            <div class="lf-job-main">
+                                <a class="lf-job-name lf-job-link" :href="jobHref(job)" v-if="jobHref(job)">{{ shortJobName(job.name) }}</a>
+                                <div class="lf-job-name" v-else>{{ shortJobName(job.name) }}</div>
+                                <div class="lf-job-sub">
+                                    {{ job.status }} · attempts {{ formatNumber(job.attempts ?? 0) }} · age {{ formatDuration(job.age_seconds) }}
+                                </div>
+                                <div class="lf-job-error" v-if="job.exception">{{ job.exception }}</div>
+                            </div>
+                            <button
+                                class="lf-mini-btn"
+                                type="button"
+                                v-if="job.retryable"
+                                :disabled="isRetryingJob(job)"
+                                @click="retryJob(job)"
+                            >
+                                {{ isRetryingJob(job) ? 'retrying' : 'retry' }}
+                            </button>
+                        </div>
+                        <div class="lf-empty-sm" v-if="selectedInspector.jobs.length === 0">No recent jobs captured for this queue.</div>
+                    </div>
+
                     <div class="lf-insp-sec">
                         <div class="lf-insp-sec-title">Incoming</div>
                         <div class="lf-edge-row" v-for="edge in selectedInspector.incoming" :key="edge.id">
@@ -1353,6 +1451,67 @@
         text-align: right;
         flex-shrink: 0;
     }
+
+    .lf-job-class,
+    .lf-job-row {
+        display: flex;
+        align-items: flex-start;
+        gap: 7px;
+        padding: 6px 0;
+        border-top: 1px solid rgba(127,127,127,.10);
+    }
+    .lf-job-class:first-of-type,
+    .lf-job-row:first-of-type { border-top: none; padding-top: 0; }
+    .lf-job-main { flex: 1; min-width: 0; }
+    .lf-job-name {
+        color: var(--lf-text);
+        font-size: 11.5px;
+        font-weight: 600;
+        line-height: 1.25;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    .lf-job-link { text-decoration: none; }
+    .lf-job-link:hover { color: var(--lf-violet); text-decoration: underline; }
+    .lf-job-sub {
+        margin-top: 2px;
+        color: var(--lf-dim);
+        font-size: 10px;
+        font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+        line-height: 1.35;
+    }
+    .lf-job-error {
+        margin-top: 4px;
+        color: var(--lf-red);
+        font-size: 10px;
+        line-height: 1.35;
+    }
+    .lf-job-fail {
+        padding: 1px 5px;
+        border-radius: 3px;
+        background: rgba(220,38,38,.09);
+        color: var(--lf-red);
+        font-size: 9px;
+        font-weight: 700;
+        white-space: nowrap;
+        text-transform: uppercase;
+        letter-spacing: .05em;
+    }
+    .lf-mini-btn {
+        border: 1px solid var(--lf-border);
+        border-radius: 3px;
+        background: var(--lf-hover);
+        color: var(--lf-text);
+        font-size: 9px;
+        font-weight: 700;
+        letter-spacing: .08em;
+        text-transform: uppercase;
+        padding: 3px 6px;
+        line-height: 1.1;
+    }
+    .lf-mini-btn:hover:not(:disabled) { border-color: var(--lf-violet); color: var(--lf-violet); }
+    .lf-mini-btn:disabled { opacity: .55; cursor: not-allowed; }
 
     .lf-edge-row {
         display: flex;
