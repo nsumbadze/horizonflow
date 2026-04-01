@@ -1,6 +1,11 @@
 # Release Notes
 
-## [Unreleased](https://github.com/laravel/horizon/compare/v5.45.4...5.x)
+## [Unreleased](https://github.com/laravel/horizon/compare/v5.45.5...5.x)
+
+## [v5.45.5](https://github.com/laravel/horizon/compare/v5.45.4...v5.45.5) - 2026-04-01
+
+* Bump picomatch from 2.3.1 to 2.3.2 by [@dependabot](https://github.com/dependabot)[bot] in https://github.com/laravel/horizon/pull/1748
+* Add `.npmrc` file by [@crynobone](https://github.com/crynobone) in https://github.com/laravel/horizon/pull/1753
 
 ## [v5.45.4](https://github.com/laravel/horizon/compare/v5.45.3...v5.45.4) - 2026-03-18
 
