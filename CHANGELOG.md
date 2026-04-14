@@ -1,6 +1,11 @@
 # Release Notes
 
-## [Unreleased](https://github.com/laravel/horizon/compare/v5.45.5...5.x)
+## [Unreleased](https://github.com/laravel/horizon/compare/v5.45.6...5.x)
+
+## [v5.45.6](https://github.com/laravel/horizon/compare/v5.45.5...v5.45.6) - 2026-04-14
+
+* Bump axios from 1.8.2 to 1.15.0 by [@dependabot](https://github.com/dependabot)[bot] in https://github.com/laravel/horizon/pull/1758
+* [5.x] Pass `$later` in `RedisQueue@later()` by [@cosmastech](https://github.com/cosmastech) in https://github.com/laravel/horizon/pull/1759
 
 ## [v5.45.5](https://github.com/laravel/horizon/compare/v5.45.4...v5.45.5) - 2026-04-01
 
