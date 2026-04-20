@@ -21,11 +21,11 @@ abstract class IntegrationTest extends TestCase
     protected function setUp(): void
     {
         $this->afterApplicationCreated(function () {
-            Redis::flushall();
+            Redis::connection()->flushdb();
         });
 
         $this->beforeApplicationDestroyed(function () {
-            Redis::flushall();
+            Redis::connection()->flushdb();
             WorkerCommandString::reset();
             SupervisorCommandString::reset();
             Horizon::$authUsing = null;
@@ -134,5 +134,9 @@ abstract class IntegrationTest extends TestCase
     protected function getEnvironmentSetUp($app)
     {
         $app['config']->set('queue.default', 'redis');
+
+        RedisClusterHelper::configure($app);
+
+        Redis::clearResolvedInstances();
     }
 }
