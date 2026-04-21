@@ -1,6 +1,11 @@
 # Release Notes
 
-## [Unreleased](https://github.com/laravel/horizon/compare/v5.45.6...5.x)
+## [Unreleased](https://github.com/laravel/horizon/compare/v5.46.0...5.x)
+
+## [v5.46.0](https://github.com/laravel/horizon/compare/v5.45.6...v5.46.0) - 2026-04-20
+
+* Bump follow-redirects from 1.15.11 to 1.16.0 by [@dependabot](https://github.com/dependabot)[bot] in https://github.com/laravel/horizon/pull/1761
+* [5.x] Add first-class Redis Cluster support by [@timmylindh](https://github.com/timmylindh) in https://github.com/laravel/horizon/pull/1760
 
 ## [v5.45.6](https://github.com/laravel/horizon/compare/v5.45.5...v5.45.6) - 2026-04-14
 
