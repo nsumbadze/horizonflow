@@ -63,7 +63,7 @@ class UnifiedQueueFlowRepository implements QueueFlowRepository
      */
     protected function sources(): Collection
     {
-        return collect(config('horizonxbrain.flow.sources', ['redis', 'database']))
+        return collect(config('horizonxbrain.flow.sources', ['redis']))
             ->map(fn (string $source): ?array => $this->source($source))
             ->filter()
             ->values();

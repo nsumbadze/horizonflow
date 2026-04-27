@@ -33,7 +33,7 @@ class ConfiguredQueueFlowRepository implements QueueFlowRepository
      */
     protected function repositoryClass(): string
     {
-        return match (config('horizonxbrain.flow.source', 'auto')) {
+        return match (config('horizonxbrain.flow.source', 'redis')) {
             'auto' => UnifiedQueueFlowRepository::class,
             'redis' => RedisQueueFlowRepository::class,
             'database' => DatabaseQueueFlowRepository::class,
