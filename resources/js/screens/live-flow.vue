@@ -19,7 +19,6 @@
                 controllingHorizon: [],
                 nodeOffsets: {},
                 draggingNodeId: null,
-                seenEventIds: [],
                 particleEvents: [],
             };
         },
@@ -342,10 +341,9 @@
                 this.refreshing = true;
                 return this.$http.get(Horizon.basePath + '/api/flow')
                     .then(response => {
-                        const previousReady = this.ready;
                         const nextFlow = response.data;
 
-                        this.ingestParticleEvents(nextFlow.events ?? [], !previousReady);
+                        this.ingestParticleEvents(nextFlow.events ?? []);
                         this.flow = nextFlow;
                         this.ready = true;
                         if (!this.selectedId || !this.graphNodeLookup[this.selectedId]) {
@@ -436,33 +434,14 @@
 
             svgId(value) { return String(value).replace(/[^a-z0-9_-]+/gi, '-'); },
 
-            eventKey(event) {
-                return [
-                    event.id ?? event.job ?? event.label ?? 'event',
-                    event.state ?? event.status ?? 'state',
-                    event.queue ?? 'queue',
-                    event.timestamp ?? 'time',
-                ].join('|');
-            },
-
-            ingestParticleEvents(events, seedOnly = false) {
-                const incoming = events
+            ingestParticleEvents(events) {
+                this.particleEvents = events
                     .filter(event => event.queue && event.result)
-                    .map(event => ({ ...event, _key: this.eventKey(event) }));
-
-                const known = new Set(this.seenEventIds);
-                const fresh = incoming.filter(event => !known.has(event._key));
-
-                this.seenEventIds = [...new Set([...this.seenEventIds, ...incoming.map(event => event._key)])].slice(-250);
-
-                if (seedOnly || fresh.length === 0) {
-                    if (seedOnly) this.particleEvents = [];
-                    return;
-                }
-
-                this.particleEvents = fresh
                     .slice(0, 30)
-                    .map(event => ({ ...event, _renderId: `${event._key}|${Date.now()}` }));
+                    .map((event, index) => ({
+                        ...event,
+                        _renderId: `${event.id ?? event.job ?? event.label ?? 'event'}|${event.timestamp ?? 'time'}|${Date.now()}|${index}`,
+                    }));
             },
 
             metricValue(value, suffix = '') {

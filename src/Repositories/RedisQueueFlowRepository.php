@@ -218,6 +218,7 @@ class RedisQueueFlowRepository implements QueueFlowRepository
 
         if ($jobs->isNotEmpty()) {
             return $jobs
+                ->filter(fn (array $event): bool => $this->isRecentEvent($event))
                 ->sortByDesc(fn (array $event): int => (int) ($event['timestamp'] ?? 0))
                 ->take(30)
                 ->values()
@@ -228,6 +229,16 @@ class RedisQueueFlowRepository implements QueueFlowRepository
             'status' => $supervisor['status'] === 'paused' ? 'warning' : 'healthy',
             'label' => sprintf('%s supervisor is %s', $supervisor['name'] ?? 'Horizon', $supervisor['status'] ?? 'running'),
         ])->values()->all();
+    }
+
+    /**
+     * @param  array<string, mixed>  $event
+     */
+    protected function isRecentEvent(array $event): bool
+    {
+        $timestamp = (int) ($event['timestamp'] ?? 0);
+
+        return $timestamp > 0 && Carbon::now()->timestamp - $timestamp <= 30;
     }
 
     /**
