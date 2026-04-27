@@ -1081,8 +1081,8 @@
                                     :fill="particleColor(p.status)"
                                     :filter="particleFilter(p.status)"
                                 >
-                                    <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.08;0.84;1" :dur="p.duration" :begin="p.delay" repeatCount="indefinite"/>
-                                    <animateMotion :dur="p.duration" :begin="p.delay" repeatCount="indefinite" calcMode="linear">
+                                    <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.08;0.84;1" :dur="p.duration" :begin="p.delay" repeatCount="1" fill="freeze"/>
+                                    <animateMotion :dur="p.duration" :begin="p.delay" repeatCount="1" calcMode="linear" fill="freeze">
                                         <mpath :href="'#lf-path-' + p.edgeId"></mpath>
                                     </animateMotion>
                                 </circle>
