@@ -336,10 +336,20 @@
             zoomOut()   { this.zoom = Math.max(0.35, +(this.zoom / 1.2).toFixed(4)); },
             resetView() { this.panX = 0; this.panY = 0; this.zoom = 1; },
 
+            timeRangeSeconds() {
+                return {
+                    'Last 5m': 300,
+                    'Last 15m': 900,
+                    'Last 1h': 3600,
+                    'Last 6h': 21600,
+                    'Last 24h': 86400,
+                }[this.timeRange] ?? 900;
+            },
+
             refreshFlowPeriodically() {
                 if (!this.live && this.ready) return Promise.resolve();
                 this.refreshing = true;
-                return this.$http.get(Horizon.basePath + '/api/flow')
+                return this.$http.get(Horizon.basePath + '/api/flow', { params: { window: this.timeRangeSeconds() } })
                     .then(response => {
                         const nextFlow = response.data;
 
@@ -435,8 +445,11 @@
             svgId(value) { return String(value).replace(/[^a-z0-9_-]+/gi, '-'); },
 
             ingestParticleEvents(events) {
+                const now = Date.now() / 1000;
+
                 this.particleEvents = events
                     .filter(event => event.queue && event.result)
+                    .filter(event => Number(event.timestamp ?? 0) > 0 && now - Number(event.timestamp) <= 60)
                     .slice(0, 30)
                     .map((event, index) => ({
                         ...event,
@@ -830,7 +843,7 @@
             <span v-if="generatedAt" class="lf-ts">{{ generatedAt }}</span>
             <div class="lf-toolbar-gap"></div>
             <input v-model="filterText" type="text" class="lf-input" placeholder="filter queues…">
-            <select v-model="timeRange" class="lf-select">
+            <select v-model="timeRange" class="lf-select" @change="refreshFlowPeriodically">
                 <option>Last 5m</option><option>Last 15m</option>
                 <option>Last 1h</option><option>Last 6h</option><option>Last 24h</option>
             </select>
@@ -1068,8 +1081,8 @@
                                     :fill="particleColor(p.status)"
                                     :filter="particleFilter(p.status)"
                                 >
-                                    <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.08;0.84;1" :dur="p.duration" :begin="p.delay" fill="freeze"/>
-                                    <animateMotion :dur="p.duration" :begin="p.delay" repeatCount="1" calcMode="linear" fill="freeze">
+                                    <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.08;0.84;1" :dur="p.duration" :begin="p.delay" repeatCount="indefinite"/>
+                                    <animateMotion :dur="p.duration" :begin="p.delay" repeatCount="indefinite" calcMode="linear">
                                         <mpath :href="'#lf-path-' + p.edgeId"></mpath>
                                     </animateMotion>
                                 </circle>

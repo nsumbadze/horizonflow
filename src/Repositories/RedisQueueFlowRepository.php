@@ -238,7 +238,12 @@ class RedisQueueFlowRepository implements QueueFlowRepository
     {
         $timestamp = (int) ($event['timestamp'] ?? 0);
 
-        return $timestamp > 0 && Carbon::now()->timestamp - $timestamp <= 30;
+        return $timestamp > 0 && Carbon::now()->timestamp - $timestamp <= $this->windowSeconds();
+    }
+
+    protected function windowSeconds(): int
+    {
+        return min(86400, max(60, (int) request()->query('window', 900)));
     }
 
     /**
