@@ -82,7 +82,7 @@
                 const workerCount = Math.max(1, (this.flow?.nodes ?? []).filter(n => n.type === 'worker').slice(0, 4).length);
                 const resultCount = Math.max(1, (this.flow?.nodes ?? []).filter(n => n.type === 'result').slice(0, 4).length);
                 const maxCol = Math.max(queueCount, jobCount, workerCount, resultCount);
-                return Math.max(390, topPad + maxCol * (nodeH + gap) - gap + botPad);
+                return Math.max(620, topPad + maxCol * (nodeH + gap) - gap + botPad);
             },
 
             graphNodes() {
@@ -1624,7 +1624,7 @@
         background-size: 22px 22px;
         background-position: 11px 11px;
     }
-    .lf-svg { width: 100%; height: auto; min-height: 280px; max-height: 660px; display: block; }
+    .lf-svg { width: 100%; height: auto; min-height: max(500px, calc(100vh - 340px)); display: block; }
     .lf-svg-mono { font-family: ui-monospace, "Cascadia Code", "SF Mono", Consolas, monospace; }
     .lf-svg-node { cursor: pointer; }
     .lf-svg-node:hover > rect:first-child { filter: brightness(1.08); }
