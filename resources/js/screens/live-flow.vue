@@ -19,6 +19,8 @@
                 controllingHorizon: [],
                 nodeOffsets: {},
                 draggingNodeId: null,
+                seenEventIds: [],
+                particleEvents: [],
             };
         },
 
@@ -231,7 +233,7 @@
             particles() {
                 if (!this.live) return [];
 
-                return (this.flow?.events ?? [])
+                return this.particleEvents
                     .flatMap((event, index) => this.jobEventParticle(event, index))
                     .slice(0, 60);
             },
@@ -340,7 +342,11 @@
                 this.refreshing = true;
                 return this.$http.get(Horizon.basePath + '/api/flow')
                     .then(response => {
-                        this.flow = response.data;
+                        const previousReady = this.ready;
+                        const nextFlow = response.data;
+
+                        this.ingestParticleEvents(nextFlow.events ?? [], !previousReady);
+                        this.flow = nextFlow;
                         this.ready = true;
                         if (!this.selectedId || !this.graphNodeLookup[this.selectedId]) {
                             this.selectedId = this.graphNodes.find(n => n.type === 'queue')?.id ?? this.graphNodes[0]?.id;
@@ -429,6 +435,35 @@
             toggleLive()   { this.live = !this.live; },
 
             svgId(value) { return String(value).replace(/[^a-z0-9_-]+/gi, '-'); },
+
+            eventKey(event) {
+                return [
+                    event.id ?? event.job ?? event.label ?? 'event',
+                    event.state ?? event.status ?? 'state',
+                    event.queue ?? 'queue',
+                    event.timestamp ?? 'time',
+                ].join('|');
+            },
+
+            ingestParticleEvents(events, seedOnly = false) {
+                const incoming = events
+                    .filter(event => event.queue && event.result)
+                    .map(event => ({ ...event, _key: this.eventKey(event) }));
+
+                const known = new Set(this.seenEventIds);
+                const fresh = incoming.filter(event => !known.has(event._key));
+
+                this.seenEventIds = [...new Set([...this.seenEventIds, ...incoming.map(event => event._key)])].slice(-250);
+
+                if (seedOnly || fresh.length === 0) {
+                    if (seedOnly) this.particleEvents = [];
+                    return;
+                }
+
+                this.particleEvents = fresh
+                    .slice(0, 30)
+                    .map(event => ({ ...event, _renderId: `${event._key}|${Date.now()}` }));
+            },
 
             metricValue(value, suffix = '') {
                 if (value === null || value === undefined) return '—';
@@ -622,7 +657,7 @@
                 if (!edge) return [];
 
                 return [{
-                    id: `${this.svgId(this.flow?.generated_at ?? 'flow')}-${index}-${this.svgId(event.id ?? event.job ?? event.label ?? edge.id)}`,
+                    id: `${index}-${this.svgId(event._renderId ?? event._key ?? event.id ?? event.job ?? event.label ?? edge.id)}`,
                     edgeId: this.svgId(edge.id),
                     status: event.status ?? edge.status,
                     delay: `${(index % 12) * 0.14}s`,

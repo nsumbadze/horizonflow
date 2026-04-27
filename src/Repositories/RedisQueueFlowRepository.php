@@ -210,7 +210,7 @@ class RedisQueueFlowRepository implements QueueFlowRepository
             'healthy' => fn () => $this->jobs->getCompleted(-1),
         ] as $status => $resolver) {
             try {
-                $jobs = $jobs->merge($resolver()->take(20)->map(fn (object $job): array => $this->event($job, $status)));
+                $jobs = $jobs->merge($resolver()->take(15)->map(fn (object $job): array => $this->event($job, $status)));
             } catch (\Throwable) {
                 //
             }
@@ -219,7 +219,7 @@ class RedisQueueFlowRepository implements QueueFlowRepository
         if ($jobs->isNotEmpty()) {
             return $jobs
                 ->sortByDesc(fn (array $event): int => (int) ($event['timestamp'] ?? 0))
-                ->take(40)
+                ->take(30)
                 ->values()
                 ->all();
         }
