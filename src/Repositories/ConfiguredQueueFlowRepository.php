@@ -3,10 +3,23 @@
 namespace Laravel\Horizon\Repositories;
 
 use Illuminate\Contracts\Container\Container;
+use InvalidArgumentException;
 use Laravel\Horizon\Contracts\QueueFlowRepository;
 
 class ConfiguredQueueFlowRepository implements QueueFlowRepository
 {
+    /**
+     * Repository classes keyed by their configuration value.
+     *
+     * @var array<string, class-string<\Laravel\Horizon\Contracts\QueueFlowRepository>>
+     */
+    protected const SOURCES = [
+        'auto' => UnifiedQueueFlowRepository::class,
+        'redis' => RedisQueueFlowRepository::class,
+        'database' => DatabaseQueueFlowRepository::class,
+        'mock' => MockQueueFlowRepository::class,
+    ];
+
     /**
      * Create a new configured queue flow repository.
      */
@@ -33,11 +46,16 @@ class ConfiguredQueueFlowRepository implements QueueFlowRepository
      */
     protected function repositoryClass(): string
     {
-        return match (config('horizonxbrain.flow.source', 'redis')) {
-            'auto' => UnifiedQueueFlowRepository::class,
-            'redis' => RedisQueueFlowRepository::class,
-            'database' => DatabaseQueueFlowRepository::class,
-            default => MockQueueFlowRepository::class,
-        };
+        $source = (string) config('horizonxbrain.flow.source', 'redis');
+
+        if (! isset(self::SOURCES[$source])) {
+            throw new InvalidArgumentException(sprintf(
+                'Unknown horizonxbrain.flow.source [%s]. Expected one of: %s.',
+                $source,
+                implode(', ', array_keys(self::SOURCES))
+            ));
+        }
+
+        return self::SOURCES[$source];
     }
 }
