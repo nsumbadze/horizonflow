@@ -18,6 +18,23 @@ class RedisQueueFlowRepository implements QueueFlowRepository
     use BuildsQueueFlowMetadata;
 
     /**
+     * Maximum number of jobs scanned from each Horizon index per refresh.
+     */
+    public const DEFAULT_RECENT_JOBS_LIMIT = 50;
+
+    /**
+     * Seconds the Redis `queues:*` SCAN result is reused across refreshes.
+     */
+    public const DEFAULT_QUEUE_KEYS_TTL = 10;
+
+    /**
+     * Process-wide cache of discovered Redis queue keys keyed by connection.
+     *
+     * @var array<int, array{expires_at: float, keys: array<int, string>}>
+     */
+    protected static array $queueKeyCache = [];
+
+    /**
      * Create a new Redis queue flow repository.
      */
     public function __construct(
@@ -28,6 +45,14 @@ class RedisQueueFlowRepository implements QueueFlowRepository
         protected ?RedisFactory $redis = null,
     ) {
         //
+    }
+
+    /**
+     * Clear the in-memory queue keys cache. Primarily intended for tests.
+     */
+    public static function flushQueueKeyCache(): void
+    {
+        self::$queueKeyCache = [];
     }
 
     /**
@@ -321,7 +346,7 @@ class RedisQueueFlowRepository implements QueueFlowRepository
 
         $queues = [];
 
-        foreach ($this->redisQueueKeys($connection) as $key) {
+        foreach ($this->cachedRedisQueueKeys($connection) as $key) {
             $queue = $this->queueNameFromRedisKey($key);
 
             if ($queue === null) {
@@ -410,6 +435,35 @@ class RedisQueueFlowRepository implements QueueFlowRepository
     /**
      * @return array<int, string>
      */
+    protected function cachedRedisQueueKeys(mixed $connection): array
+    {
+        $ttl = $this->queueKeysTtl();
+
+        if ($ttl <= 0) {
+            return $this->redisQueueKeys($connection);
+        }
+
+        $cacheKey = is_object($connection) ? spl_object_id($connection) : 0;
+        $entry = self::$queueKeyCache[$cacheKey] ?? null;
+        $now = microtime(true);
+
+        if ($entry !== null && $entry['expires_at'] > $now) {
+            return $entry['keys'];
+        }
+
+        $keys = $this->redisQueueKeys($connection);
+
+        self::$queueKeyCache[$cacheKey] = [
+            'expires_at' => $now + $ttl,
+            'keys' => $keys,
+        ];
+
+        return $keys;
+    }
+
+    /**
+     * @return array<int, string>
+     */
     protected function redisQueueKeys(mixed $connection): array
     {
         try {
@@ -472,6 +526,7 @@ class RedisQueueFlowRepository implements QueueFlowRepository
     protected function queueObservations(): array
     {
         $observations = [];
+        $limit = $this->recentJobsLimit();
 
         foreach ([
             'pending' => fn (): Collection => $this->jobs->getPending(-1),
@@ -479,7 +534,7 @@ class RedisQueueFlowRepository implements QueueFlowRepository
             'failed' => fn (): Collection => $this->jobs->getFailed(-1),
         ] as $status => $resolver) {
             try {
-                foreach ($resolver() as $job) {
+                foreach ($resolver()->take($limit) as $job) {
                     $name = $this->jobQueueKey($job);
 
                     if ($name === null) {
@@ -839,6 +894,24 @@ class RedisQueueFlowRepository implements QueueFlowRepository
     protected function redisQueueKey(string $name): string
     {
         return 'redis:'.$this->queueName($name);
+    }
+
+    protected function recentJobsLimit(): int
+    {
+        if (! app()->bound('config')) {
+            return self::DEFAULT_RECENT_JOBS_LIMIT;
+        }
+
+        return max(1, (int) config('horizonxbrain.flow.recent_jobs.max', self::DEFAULT_RECENT_JOBS_LIMIT));
+    }
+
+    protected function queueKeysTtl(): int
+    {
+        if (! app()->bound('config')) {
+            return self::DEFAULT_QUEUE_KEYS_TTL;
+        }
+
+        return max(0, (int) config('horizonxbrain.flow.cache.queue_keys_ttl', self::DEFAULT_QUEUE_KEYS_TTL));
     }
 
     protected function currentThroughput(int $processes, int $reserved, int $throughput): int

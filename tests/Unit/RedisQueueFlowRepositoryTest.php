@@ -14,6 +14,13 @@ use Mockery;
 
 class RedisQueueFlowRepositoryTest extends UnitTest
 {
+    protected function tearDown(): void
+    {
+        RedisQueueFlowRepository::flushQueueKeyCache();
+
+        parent::tearDown();
+    }
+
     public function test_it_uses_pending_jobs_when_workload_is_empty(): void
     {
         Carbon::setTestNow(Carbon::createFromTimestamp(1000));
@@ -298,6 +305,51 @@ class RedisQueueFlowRepositoryTest extends UnitTest
         }
     }
 
+    public function test_it_caps_observations_at_the_configured_recent_jobs_limit(): void
+    {
+        $pending = collect(range(1, 5))->map(fn (int $i): object => (object) [
+            'id' => "pending-{$i}",
+            'name' => 'App\\Jobs\\SyncCustomer',
+            'connection' => 'redis',
+            'queue' => 'default',
+            'payload' => json_encode(['attempts' => 1, 'pushedAt' => 980]),
+            'created_at' => 980,
+        ]);
+
+        $repository = $this->repository([], $pending);
+        $repository->recentJobsLimitOverride = 2;
+
+        $payload = $repository->exposedQueuePayload($repository->exposedQueues()[0]);
+
+        $this->assertCount(2, $payload['jobs']);
+    }
+
+    public function test_it_caches_discovered_redis_queue_keys_within_ttl(): void
+    {
+        $repository = $this->repository([], collect());
+        $repository->queueKeysTtlOverride = 60;
+
+        $connection = new \stdClass();
+
+        $this->assertSame(['queues:alpha'], $repository->callCachedRedisQueueKeys($connection));
+        $this->assertSame(['queues:alpha'], $repository->callCachedRedisQueueKeys($connection));
+
+        $this->assertSame(1, $repository->fetchCount);
+    }
+
+    public function test_it_refetches_redis_queue_keys_when_cache_is_disabled(): void
+    {
+        $repository = $this->repository([], collect());
+        $repository->queueKeysTtlOverride = 0;
+
+        $connection = new \stdClass();
+
+        $repository->callCachedRedisQueueKeys($connection);
+        $repository->callCachedRedisQueueKeys($connection);
+
+        $this->assertSame(2, $repository->fetchCount);
+    }
+
     /**
      * @param  array<int, array<string, mixed>>  $workloadQueues
      * @param  array<string, array{length: int, delayed: int, reserved: int}>  $discoveredQueues
@@ -306,12 +358,12 @@ class RedisQueueFlowRepositoryTest extends UnitTest
     protected function repository(array $workloadQueues, Collection $pendingJobs, ?Collection $failedJobs = null, int $throughput = 0, array $discoveredQueues = [], array $configuredQueues = [], ?Collection $completedJobs = null, array $measuredQueues = []): RedisQueueFlowRepository
     {
         $workload = Mockery::mock(WorkloadRepository::class);
-        $workload->shouldReceive('get')->once()->andReturn($workloadQueues);
+        $workload->shouldReceive('get')->byDefault()->andReturn($workloadQueues);
 
         $jobs = Mockery::mock(JobRepository::class);
-        $jobs->shouldReceive('getPending')->once()->with(-1)->andReturn($pendingJobs);
-        $jobs->shouldReceive('getCompleted')->once()->with(-1)->andReturn($completedJobs ?? collect());
-        $jobs->shouldReceive('getFailed')->once()->with(-1)->andReturn($failedJobs ?? collect());
+        $jobs->shouldReceive('getPending')->byDefault()->with(-1)->andReturn($pendingJobs);
+        $jobs->shouldReceive('getCompleted')->byDefault()->with(-1)->andReturn($completedJobs ?? collect());
+        $jobs->shouldReceive('getFailed')->byDefault()->with(-1)->andReturn($failedJobs ?? collect());
 
         $metrics = Mockery::mock(MetricsRepository::class);
         $metrics->shouldReceive('throughputForQueue')->byDefault()->andReturn($throughput);
@@ -325,6 +377,9 @@ class RedisQueueFlowRepositoryTest extends UnitTest
         ) extends RedisQueueFlowRepository {
             public array $discoveredQueues = [];
             public array $configuredQueues = [];
+            public ?int $recentJobsLimitOverride = null;
+            public ?int $queueKeysTtlOverride = null;
+            public int $fetchCount = 0;
 
             public function exposedQueues(): Collection
             {
@@ -336,6 +391,11 @@ class RedisQueueFlowRepositoryTest extends UnitTest
                 return $this->queue($queue);
             }
 
+            public function callCachedRedisQueueKeys(mixed $connection): array
+            {
+                return $this->cachedRedisQueueKeys($connection);
+            }
+
             protected function configuredRedisQueues(): array
             {
                 return $this->configuredQueues;
@@ -344,6 +404,23 @@ class RedisQueueFlowRepositoryTest extends UnitTest
             protected function discoveredRedisQueues(): array
             {
                 return $this->discoveredQueues;
+            }
+
+            protected function recentJobsLimit(): int
+            {
+                return $this->recentJobsLimitOverride ?? parent::recentJobsLimit();
+            }
+
+            protected function queueKeysTtl(): int
+            {
+                return $this->queueKeysTtlOverride ?? parent::queueKeysTtl();
+            }
+
+            protected function redisQueueKeys(mixed $connection): array
+            {
+                $this->fetchCount++;
+
+                return ['queues:alpha'];
             }
         };
 
