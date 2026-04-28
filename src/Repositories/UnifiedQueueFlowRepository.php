@@ -28,7 +28,7 @@ class UnifiedQueueFlowRepository implements QueueFlowRepository
      */
     public function get(): array
     {
-        $sources = $this->sources();
+        [$sources, $errors] = $this->collectSources();
         $queues = $this->queues($sources);
         $failed = max($queues->sum('failed'), $sources->sum(fn (array $source): int => (int) ($source['summary']['failed'] ?? 0)));
         $completed = $this->nullableSum($sources, 'completed');
@@ -38,6 +38,7 @@ class UnifiedQueueFlowRepository implements QueueFlowRepository
         return [
             'source' => 'auto',
             'sources' => $sources->pluck('source')->unique()->values()->all(),
+            'errors' => $errors,
             'meta' => $this->metadata(),
             'generated_at' => Carbon::now()->toJSON(),
             'summary' => [
@@ -59,14 +60,32 @@ class UnifiedQueueFlowRepository implements QueueFlowRepository
     }
 
     /**
-     * @return \Illuminate\Support\Collection<int, array<string, mixed>>
+     * @return array{0: \Illuminate\Support\Collection<int, array<string, mixed>>, 1: array<int, array{source: string, message: string, exception: class-string<\Throwable>}>}
      */
-    protected function sources(): Collection
+    protected function collectSources(): array
     {
-        return collect(config('horizonxbrain.flow.sources', ['redis']))
-            ->map(fn (string $source): ?array => $this->source($source))
-            ->filter()
-            ->values();
+        $sources = collect();
+        $errors = [];
+
+        foreach ((array) config('horizonxbrain.flow.sources', ['redis']) as $source) {
+            try {
+                $payload = $this->source($source);
+            } catch (Throwable $exception) {
+                $errors[] = [
+                    'source' => (string) $source,
+                    'message' => $exception->getMessage() !== '' ? $exception->getMessage() : $exception::class,
+                    'exception' => $exception::class,
+                ];
+
+                continue;
+            }
+
+            if ($payload !== null) {
+                $sources->push($payload);
+            }
+        }
+
+        return [$sources->values(), $errors];
     }
 
     /**
@@ -74,15 +93,11 @@ class UnifiedQueueFlowRepository implements QueueFlowRepository
      */
     protected function source(string $source): ?array
     {
-        try {
-            return match ($source) {
-                'redis' => $this->redis->get(),
-                'database' => $this->database->get(),
-                default => null,
-            };
-        } catch (Throwable) {
-            return null;
-        }
+        return match ($source) {
+            'redis' => $this->redis->get(),
+            'database' => $this->database->get(),
+            default => null,
+        };
     }
 
     /**
