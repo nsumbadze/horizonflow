@@ -20,18 +20,21 @@
                 nodeOffsets: {},
                 draggingNodeId: null,
                 particleEvents: [],
+                lastEventTimestamp: 0,
             };
         },
 
         mounted() {
             document.title = "HorizonXBrain - Live Flow";
-            this.refreshFlowPeriodically();
+            this.refreshAll().then(() => { this.ready = true; });
             this.loadSupervisorControls();
+            this.startPolling();
             this.isDark = this.sniffDark();
             this.initDarkWatcher();
         },
 
         beforeUnmount() {
+            this.stopPolling();
             this._darkObserver?.disconnect();
             this._mq?.removeEventListener('change', this._mqUpdate);
         },
@@ -346,21 +349,94 @@
                 }[this.timeRange] ?? 900;
             },
 
-            refreshFlowPeriodically() {
-                if (!this.live && this.ready) return Promise.resolve();
-                this.refreshing = true;
-                return this.$http.get(Horizon.basePath + '/api/flow', { params: { window: this.timeRangeSeconds() } })
-                    .then(response => {
-                        const nextFlow = response.data;
+            startPolling() {
+                this._intervals = [
+                    setInterval(() => this.live && this.refreshSummary(),  5000),
+                    setInterval(() => this.live && this.refreshGraph(),   10000),
+                    setInterval(() => this.live && this.refreshQueues(),  10000),
+                    setInterval(() => this.live && this.refreshEvents(),   2000),
+                ];
+            },
 
-                        this.ingestParticleEvents(nextFlow.events ?? []);
-                        this.flow = nextFlow;
-                        this.ready = true;
-                        if (!this.selectedId || !this.graphNodeLookup[this.selectedId]) {
-                            this.selectedId = this.graphNodes.find(n => n.type === 'queue')?.id ?? this.graphNodes[0]?.id;
-                        }
-                    })
-                    .finally(() => { this.refreshing = false; });
+            stopPolling() {
+                (this._intervals ?? []).forEach(clearInterval);
+                this._intervals = [];
+            },
+
+            refreshAll() {
+                this.refreshing = true;
+                return Promise.all([
+                    this.refreshSummary(),
+                    this.refreshGraph(),
+                    this.refreshQueues(),
+                    this.refreshEvents(),
+                ]).finally(() => { this.refreshing = false; });
+            },
+
+            refreshFlowPeriodically() {
+                return this.refreshAll();
+            },
+
+            mergeFlow(slice) {
+                this.flow = { ...(this.flow ?? {}), ...slice };
+                if (!this.selectedId || !this.graphNodeLookup[this.selectedId]) {
+                    this.selectedId = this.graphNodes.find(n => n.type === 'queue')?.id ?? this.graphNodes[0]?.id;
+                }
+            },
+
+            refreshSummary() {
+                return this.$http.get(Horizon.basePath + '/api/flow/summary')
+                    .then(response => this.mergeFlow({
+                        source: response.data.source,
+                        sources: response.data.sources,
+                        errors: response.data.errors ?? [],
+                        meta: response.data.meta ?? {},
+                        generated_at: response.data.generated_at,
+                        summary: response.data.summary ?? {},
+                    }))
+                    .catch(() => {});
+            },
+
+            refreshGraph() {
+                return this.$http.get(Horizon.basePath + '/api/flow/graph')
+                    .then(response => this.mergeFlow({
+                        nodes: response.data.nodes ?? [],
+                        edges: response.data.edges ?? [],
+                    }))
+                    .catch(() => {});
+            },
+
+            refreshQueues() {
+                return this.$http.get(Horizon.basePath + '/api/flow/queues')
+                    .then(response => this.mergeFlow({ queues: response.data.queues ?? [] }))
+                    .catch(() => {});
+            },
+
+            refreshEvents() {
+                return this.$http.get(Horizon.basePath + '/api/flow/events', {
+                    params: this.lastEventTimestamp > 0 ? { since: this.lastEventTimestamp } : {},
+                }).then(response => {
+                    const fresh = response.data.events ?? [];
+                    if (fresh.length === 0) return;
+
+                    const existing = this.flow?.events ?? [];
+                    const seen = new Set();
+                    const merged = [...fresh, ...existing]
+                        .filter(event => {
+                            const key = event.id ?? event.label ?? `${event.timestamp}-${event.queue}`;
+                            if (seen.has(key)) return false;
+                            seen.add(key);
+                            return true;
+                        })
+                        .slice(0, 60);
+
+                    this.mergeFlow({ events: merged });
+                    this.lastEventTimestamp = fresh.reduce(
+                        (max, event) => Math.max(max, Number(event.timestamp ?? 0)),
+                        this.lastEventTimestamp
+                    );
+                    this.ingestParticleEvents(fresh);
+                }).catch(() => {});
             },
 
             loadSupervisorControls() {
@@ -842,8 +918,6 @@
 
 <template>
     <div class="lf" :class="{ 'lf-dark': isDark }">
-        <poll @poll="refreshFlowPeriodically" :interval="5" />
-
         <!-- toolbar -->
         <div class="lf-toolbar">
             <span v-if="flow" class="lf-chip" :class="'lf-chip-' + sourceClass">
