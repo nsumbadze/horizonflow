@@ -479,6 +479,15 @@
                 return `${(s / 86400).toFixed(1)}d`;
             },
 
+            eventRelativeTime(event) {
+                const ts = Number(event?.timestamp ?? 0);
+                if (!ts) return '—';
+
+                const delta = Math.max(0, Math.floor(Date.now() / 1000) - ts);
+                if (delta < 5) return 'now';
+                return this.formatDuration(delta);
+            },
+
             formatPercent(value) {
                 if (value === null || value === undefined) return '—';
                 return `${this.formatNumber(value)}%`;
@@ -1195,7 +1204,7 @@
                             :key="i"
                             class="lf-event"
                         >
-                            <span class="lf-event-time">{{ i === 0 ? 'now' : i * 9 + 's' }}</span>
+                            <span class="lf-event-time">{{ eventRelativeTime(event) }}</span>
                             <span class="lf-dot" :class="'lf-dot-' + event.status" style="flex-shrink:0"></span>
                             <span class="lf-event-label">{{ event.label }}</span>
                         </div>
