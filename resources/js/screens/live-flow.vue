@@ -21,7 +21,17 @@
                 draggingNodeId: null,
                 particleEvents: [],
                 lastEventTimestamp: 0,
+                queueJobDetails: {},
             };
+        },
+
+        watch: {
+            selectedId(id) {
+                const node = this.graphNodeLookup[id];
+                if (!node || node.type !== 'queue') return;
+                const queue = this.queues.find(q => this.queueNodeId(q) === node.id || this.findQueueNode(q)?.id === node.id);
+                if (queue) this.fetchQueueJobs(queue);
+            },
         },
 
         mounted() {
@@ -408,7 +418,11 @@
 
             refreshQueues() {
                 return this.$http.get(Horizon.basePath + '/api/flow/queues')
-                    .then(response => this.mergeFlow({ queues: response.data.queues ?? [] }))
+                    .then(response => {
+                        this.mergeFlow({ queues: response.data.queues ?? [] });
+                        const selected = this.selectedQueue();
+                        if (selected) this.fetchQueueJobs(selected);
+                    })
                     .catch(() => {});
             },
 
@@ -574,12 +588,49 @@
                 return value.split('\\').pop();
             },
 
+            queueJobsKey(queue) {
+                if (!queue) return null;
+                return `${queue.driver}:${queue.connection}:${queue.name}`;
+            },
+
+            queueJobDetail(queue) {
+                const key = this.queueJobsKey(queue);
+                return key ? this.queueJobDetails[key] : null;
+            },
+
             queueJobClasses(queue) {
-                return (queue?.job_classes ?? []).slice(0, 8);
+                const detail = this.queueJobDetail(queue);
+                const classes = detail?.job_classes ?? queue?.job_classes ?? [];
+                return classes.slice(0, 8);
             },
 
             queueJobs(queue) {
-                return (queue?.jobs ?? []).slice(0, 12);
+                const detail = this.queueJobDetail(queue);
+                const jobs = detail?.jobs ?? queue?.jobs ?? [];
+                return jobs.slice(0, 12);
+            },
+
+            fetchQueueJobs(queue) {
+                const key = this.queueJobsKey(queue);
+                if (!key) return Promise.resolve();
+
+                return this.$http.get(Horizon.basePath + '/api/flow/queue-jobs', { params: { key } })
+                    .then(response => {
+                        this.queueJobDetails = {
+                            ...this.queueJobDetails,
+                            [key]: {
+                                jobs: response.data.jobs ?? [],
+                                job_classes: response.data.job_classes ?? [],
+                            },
+                        };
+                    })
+                    .catch(() => {});
+            },
+
+            selectedQueue() {
+                const node = this.selectedNode;
+                if (!node || node.type !== 'queue') return null;
+                return this.queues.find(q => this.queueNodeId(q) === node.id || this.findQueueNode(q)?.id === node.id) ?? null;
             },
 
             queueJobNodes() {
