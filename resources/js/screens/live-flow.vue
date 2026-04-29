@@ -590,6 +590,7 @@
 
             queueJobsKey(queue) {
                 if (!queue) return null;
+                if (Array.isArray(queue.drivers) && queue.drivers.length > 1) return queue.name;
                 return `${queue.driver}:${queue.connection}:${queue.name}`;
             },
 

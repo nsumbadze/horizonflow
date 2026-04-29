@@ -160,21 +160,36 @@ class UnifiedQueueFlowRepository implements QueueFlowRepository
     {
         $first = $queues->first();
 
+        $drivers = $queues->pluck('driver')->filter()->unique()->values()->all();
+        $connections = $queues->pluck('connection')->filter()->unique()->values()->all();
+        $sources = $queues->pluck('source')->filter()->unique()->values()->all();
+        $totalFailed = (int) $queues->sum('failed');
+        $totalCompleted = $this->nullableQueueSum($queues, 'completed');
+        $totalPending = (int) $queues->sum('pending');
+        $totalThroughput = $this->nullableQueueSum($queues, 'throughput_per_minute');
+
         return [
             ...$first,
-            'pending' => $queues->sum('pending'),
-            'wait_seconds' => $queues->max('wait_seconds'),
-            'oldest_pending_seconds' => $queues->max('oldest_pending_seconds'),
+            'name' => (string) ($first['name'] ?? 'default'),
+            'connection' => $connections[0] ?? ($first['connection'] ?? 'unknown'),
+            'driver' => $drivers[0] ?? ($first['driver'] ?? 'unknown'),
+            'source' => $sources[0] ?? ($first['source'] ?? 'unknown'),
+            'drivers' => $drivers,
+            'connections' => $connections,
+            'sources' => $sources,
+            'pending' => $totalPending,
+            'wait_seconds' => (int) $queues->max('wait_seconds'),
+            'oldest_pending_seconds' => (int) $queues->max('oldest_pending_seconds'),
             'processes' => $this->nullableQueueSum($queues, 'processes'),
-            'throughput_per_minute' => $queues->sum('throughput_per_minute'),
-            'current_throughput_per_minute' => $queues->sum('current_throughput_per_minute'),
-            'recent_activity_per_minute' => $queues->sum('recent_activity_per_minute'),
-            'estimated_drain_seconds' => $this->estimatedDrainSeconds($queues->sum('pending'), $queues->sum('throughput_per_minute')),
-            'attempts' => $queues->max('attempts'),
-            'completed' => $this->nullableQueueSum($queues, 'completed'),
+            'throughput_per_minute' => $totalThroughput,
+            'current_throughput_per_minute' => (int) $queues->sum('current_throughput_per_minute'),
+            'recent_activity_per_minute' => (int) $queues->sum('recent_activity_per_minute'),
+            'estimated_drain_seconds' => $this->estimatedDrainSeconds($totalPending, (int) ($totalThroughput ?? 0)),
+            'attempts' => (int) $queues->max('attempts'),
+            'completed' => $totalCompleted,
             'delayed' => $this->nullableQueueSum($queues, 'delayed'),
-            'failed' => $queues->sum('failed'),
-            'failure_rate' => $this->failureRate($queues->sum('failed'), (int) $queues->sum('completed')),
+            'failed' => $totalFailed,
+            'failure_rate' => $this->failureRate($totalFailed, (int) ($totalCompleted ?? 0)),
             'latest_error' => $queues->pluck('latest_error')->filter()->first(),
             'last_failed_at' => $queues->pluck('last_failed_at')->filter()->sortDesc()->first(),
             'jobs' => $queues->pluck('jobs')->flatten(1)->sortByDesc(fn (array $job): int => (int) ($job['timestamp'] ?? 0))->take(12)->values()->all(),
@@ -281,12 +296,12 @@ class UnifiedQueueFlowRepository implements QueueFlowRepository
 
     protected function queueKey(array $queue): string
     {
-        return implode(':', [$queue['driver'], $queue['connection'], $queue['name']]);
+        return strtolower((string) ($queue['name'] ?? 'default'));
     }
 
     protected function queueId(array $queue): string
     {
-        return 'queue-'.preg_replace('/[^a-z0-9]+/i', '-', strtolower($this->queueKey($queue)));
+        return 'queue-'.preg_replace('/[^a-z0-9]+/i', '-', $this->queueKey($queue));
     }
 
     protected function status(array $queue): string
