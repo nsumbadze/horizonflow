@@ -11,6 +11,11 @@ Route::prefix('api')->group(function () {
 
     // Queue Flow Routes...
     Route::get('/flow', 'QueueFlowController@index')->name('horizonxbrain.flow.index');
+    Route::get('/flow/summary', 'QueueFlowController@summary')->name('horizonxbrain.flow.summary');
+    Route::get('/flow/graph', 'QueueFlowController@graph')->name('horizonxbrain.flow.graph');
+    Route::get('/flow/queues', 'QueueFlowController@queues')->name('horizonxbrain.flow.queues');
+    Route::get('/flow/queue-jobs', 'QueueFlowController@queueJobs')->name('horizonxbrain.flow.queue-jobs');
+    Route::get('/flow/events', 'QueueFlowController@events')->name('horizonxbrain.flow.events');
 
     // Master Supervisor Routes...
     Route::get('/masters', 'MasterSupervisorController@index')->name('horizon.masters.index');

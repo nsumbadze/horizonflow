@@ -206,6 +206,13 @@ class HorizonServiceProvider extends ServiceProvider
                 ? $this->app->singleton($value)
                 : $this->app->singleton($key, $value);
         }
+
+        $this->app->singleton(Contracts\QueueFlowRepository::class, function ($app) {
+            return new Repositories\CachedQueueFlowRepository(
+                new Repositories\ConfiguredQueueFlowRepository($app),
+                $app['cache.store'],
+            );
+        });
     }
 
     /**
