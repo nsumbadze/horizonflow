@@ -72,6 +72,15 @@
 
             isMock()  { return this.flow?.source === 'mock'; },
             queues()  { return this.flow?.queues ?? []; },
+            health()  { return this.flow?.health ?? []; },
+
+            healthBanner() {
+                const failed = this.health.filter(h => h.status === 'failed');
+                if (failed.length === 0) return null;
+                const names = failed.map(h => h.source).join(', ');
+                const detail = failed.map(h => h.message).filter(Boolean).join(' · ');
+                return detail ? `${names}: ${detail}` : `${names} unreachable`;
+            },
 
             supervisors() {
                 return (this.masters ?? []).flatMap(master => (master.supervisors ?? []).map(supervisor => ({
@@ -992,6 +1001,14 @@
             <button class="lf-btn" :class="{ 'lf-btn-live': live }" type="button" @click="toggleLive">
                 <span class="lf-blink lf-blink-inline"></span>live
             </button>
+        </div>
+
+        <!-- source health -->
+        <div class="lf-notice lf-notice-warn" v-if="ready && healthBanner">
+            <svg width="12" height="12" viewBox="0 0 20 20" fill="currentColor" style="flex-shrink:0;opacity:.8">
+                <path fill-rule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd"/>
+            </svg>
+            {{ healthBanner }}
         </div>
 
         <!-- demo notice -->

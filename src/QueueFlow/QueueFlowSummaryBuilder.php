@@ -23,6 +23,7 @@ class QueueFlowSummaryBuilder
             'source' => $payload['source'] ?? null,
             'sources' => $payload['sources'] ?? [],
             'errors' => $payload['errors'] ?? [],
+            'health' => $payload['health'] ?? [],
             'meta' => $payload['meta'] ?? [],
             'generated_at' => $payload['generated_at'] ?? null,
             'summary' => $payload['summary'] ?? [],

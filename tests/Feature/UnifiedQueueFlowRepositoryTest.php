@@ -63,6 +63,42 @@ class UnifiedQueueFlowRepositoryTest extends TestCase
         $this->assertSame([], $payload['errors']);
     }
 
+    public function test_health_block_marks_failing_sources(): void
+    {
+        config(['horizonxbrain.flow.sources' => ['redis', 'database']]);
+
+        $redis = Mockery::mock(RedisQueueFlowRepository::class);
+        $redis->shouldReceive('get')->andThrow(new RuntimeException('redis unreachable'));
+
+        $database = Mockery::mock(DatabaseQueueFlowRepository::class);
+        $database->shouldReceive('get')->andReturn($this->databasePayload());
+
+        $payload = (new UnifiedQueueFlowRepository($redis, $database))->get();
+
+        $health = collect($payload['health'])->keyBy('source')->all();
+
+        $this->assertSame('failed', $health['redis']['status']);
+        $this->assertSame('redis unreachable', $health['redis']['message']);
+        $this->assertSame('live', $health['database']['status']);
+        $this->assertNull($health['database']['message']);
+    }
+
+    public function test_health_block_marks_disabled_sources_when_not_configured(): void
+    {
+        config(['horizonxbrain.flow.sources' => ['redis']]);
+
+        $redis = Mockery::mock(RedisQueueFlowRepository::class);
+        $redis->shouldReceive('get')->andReturn($this->databasePayload('redis'));
+
+        $database = Mockery::mock(DatabaseQueueFlowRepository::class);
+
+        $payload = (new UnifiedQueueFlowRepository($redis, $database))->get();
+
+        $this->assertCount(1, $payload['health']);
+        $this->assertSame('redis', $payload['health'][0]['source']);
+        $this->assertSame('live', $payload['health'][0]['status']);
+    }
+
     public function test_it_merges_same_named_queue_across_drivers_into_one_row(): void
     {
         config(['horizonxbrain.flow.sources' => ['redis', 'database']]);

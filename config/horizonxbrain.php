@@ -16,7 +16,10 @@ return [
     'flow' => [
         'source' => env('HORIZONXBRAIN_FLOW_SOURCE', 'redis'),
 
-        'sources' => ['redis'],
+        'sources' => array_values(array_filter(array_map(
+            'trim',
+            explode(',', (string) env('HORIZONXBRAIN_FLOW_SOURCES', 'redis'))
+        ))),
 
         'database' => [
             'connections' => [],

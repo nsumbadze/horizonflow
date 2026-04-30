@@ -39,6 +39,7 @@ class UnifiedQueueFlowRepository implements QueueFlowRepository
             'source' => 'auto',
             'sources' => $sources->pluck('source')->unique()->values()->all(),
             'errors' => $errors,
+            'health' => $this->health($sources, $errors),
             'meta' => $this->metadata(),
             'generated_at' => Carbon::now()->toJSON(),
             'summary' => [
@@ -292,6 +293,36 @@ class UnifiedQueueFlowRepository implements QueueFlowRepository
             ->take(60)
             ->values()
             ->all();
+    }
+
+    /**
+     * @param  \Illuminate\Support\Collection<int, array<string, mixed>>  $sources
+     * @param  array<int, array{source: string, message: string, exception: class-string<\Throwable>}>  $errors
+     * @return array<int, array{source: string, status: string, message: ?string}>
+     */
+    protected function health(Collection $sources, array $errors): array
+    {
+        $configured = collect((array) config('horizonxbrain.flow.sources', ['redis']))
+            ->filter(fn ($name): bool => is_string($name) && $name !== '')
+            ->map(fn (string $name): string => $name)
+            ->values();
+
+        $live = $sources->pluck('source')->filter()->map(fn (string $name): string => $name)->all();
+        $failedBySource = collect($errors)->keyBy('source');
+
+        return $configured->map(function (string $source) use ($live, $failedBySource): array {
+            if (in_array($source, $live, true)) {
+                return ['source' => $source, 'status' => 'live', 'message' => null];
+            }
+
+            $error = $failedBySource->get($source);
+
+            return [
+                'source' => $source,
+                'status' => $error !== null ? 'failed' : 'disabled',
+                'message' => $error !== null ? (string) $error['message'] : null,
+            ];
+        })->values()->all();
     }
 
     protected function queueKey(array $queue): string
