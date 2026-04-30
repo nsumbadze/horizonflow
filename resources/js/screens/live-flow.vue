@@ -1,9 +1,12 @@
 <script type="text/ecmascript-6">
     import FailedJobModal from './live-flow/FailedJobModal.vue';
+    import FlowActivity from './live-flow/FlowActivity.vue';
+    import FlowKpis from './live-flow/FlowKpis.vue';
+    import FlowToolbar from './live-flow/FlowToolbar.vue';
     import SupervisorControls from './live-flow/SupervisorControls.vue';
 
     export default {
-        components: { FailedJobModal, SupervisorControls },
+        components: { FailedJobModal, FlowActivity, FlowKpis, FlowToolbar, SupervisorControls },
 
         data() {
             return {
@@ -984,29 +987,18 @@
 
 <template>
     <div class="lf" :class="{ 'lf-dark': isDark }">
-        <!-- toolbar -->
-        <div class="lf-toolbar">
-            <span v-if="flow" class="lf-chip" :class="'lf-chip-' + sourceClass">
-                <span class="lf-blink"></span>{{ sourceLabel }}
-            </span>
-            <span v-if="generatedAt" class="lf-ts">{{ generatedAt }}</span>
-            <div class="lf-toolbar-gap"></div>
-            <input v-model="filterText" type="text" class="lf-input" placeholder="filter queues…">
-            <select v-model="timeRange" class="lf-select" @change="refreshFlowPeriodically">
-                <option>Last 5m</option><option>Last 15m</option>
-                <option>Last 1h</option><option>Last 6h</option><option>Last 24h</option>
-            </select>
-            <button class="lf-btn" type="button" @click="refreshFlowPeriodically">
-                <svg :class="{ 'lf-spin': refreshing }" width="11" height="11" viewBox="0 0 12 12" fill="none">
-                    <path d="M10.5 2A5 5 0 1 0 11 6.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-                    <path d="M10.5 2V5H7.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
-                refresh
-            </button>
-            <button class="lf-btn" :class="{ 'lf-btn-live': live }" type="button" @click="toggleLive">
-                <span class="lf-blink lf-blink-inline"></span>live
-            </button>
-        </div>
+        <FlowToolbar
+            :flow="flow"
+            :source-class="sourceClass"
+            :source-label="sourceLabel"
+            :generated-at="generatedAt"
+            :refreshing="refreshing"
+            :live="live"
+            v-model:filterText="filterText"
+            v-model:timeRange="timeRange"
+            @refresh="refreshFlowPeriodically"
+            @toggle-live="toggleLive"
+        />
 
         <!-- source health -->
         <div class="lf-notice lf-notice-warn" v-if="ready && healthBanner">
@@ -1024,18 +1016,7 @@
             Demo data — configure a Redis or database connection to see live telemetry.
         </div>
 
-        <!-- metrics strip -->
-        <div class="lf-metrics">
-            <div
-                v-for="m in kpiMetrics"
-                :key="m.key"
-                class="lf-metric"
-            >
-                <span class="lf-metric-label">{{ m.label }}</span>
-                <span class="lf-metric-value" :class="m.cls ? 'lf-val-' + m.cls : ''">{{ m.value }}</span>
-                <span class="lf-metric-sub">{{ m.sub }}</span>
-            </div>
-        </div>
+        <FlowKpis :metrics="kpiMetrics" />
 
         <!-- loading -->
         <div class="lf-loading" v-if="!ready">
@@ -1320,25 +1301,7 @@
                     @supervisor-action="({ supervisor, action }) => controlSupervisor(supervisor, action)"
                 />
 
-                <!-- activity -->
-                <div class="lf-pane lf-pane-gap">
-                    <div class="lf-pane-head">
-                        <span class="lf-pane-title">Activity</span>
-                        <span class="lf-tag">recent</span>
-                    </div>
-                    <div class="lf-activity">
-                        <div
-                            v-for="(event, i) in flow?.events ?? []"
-                            :key="i"
-                            class="lf-event"
-                        >
-                            <span class="lf-event-time">{{ eventRelativeTime(event) }}</span>
-                            <span class="lf-dot" :class="'lf-dot-' + event.status" style="flex-shrink:0"></span>
-                            <span class="lf-event-label">{{ event.label }}</span>
-                        </div>
-                        <div class="lf-empty" v-if="(flow?.events ?? []).length === 0">No recent flow events.</div>
-                    </div>
-                </div>
+                <FlowActivity :events="flow?.events ?? []" />
 
             </div>
 
