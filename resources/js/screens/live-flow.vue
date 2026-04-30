@@ -55,6 +55,7 @@
             this.stopPolling();
             this._darkObserver?.disconnect();
             this._mq?.removeEventListener('change', this._mqUpdate);
+            if (this._storageHandler) window.removeEventListener('storage', this._storageHandler);
         },
 
         computed: {
@@ -281,20 +282,33 @@
         },
 
         methods: {
+            // The dark-mode signal is the same one Horizon's SchemeToggler controls:
+            // the `media` attribute on the `style[data-scheme="dark"]` stylesheet is
+            // empty when dark is active. We mirror its localStorage key so a manual
+            // theme choice is respected immediately.
             sniffDark() {
                 try {
-                    const el = document.querySelector('style[data-scheme="dark"]');
-                    if (el) return el.media === '' || el.media === 'all';
+                    const stored = localStorage.getItem('horizonColorScheme');
+                    if (stored === 'dark') return true;
+                    if (stored === 'light') return false;
                     return window.matchMedia('(prefers-color-scheme: dark)').matches;
                 } catch { return false; }
             },
 
             initDarkWatcher() {
+                // Same-tab toggle: SchemeToggler mutates the stylesheet directly,
+                // so observe its `media` attribute for instant updates.
                 const el = document.querySelector('style[data-scheme="dark"]');
                 if (el) {
                     this._darkObserver = new MutationObserver(() => { this.isDark = this.sniffDark(); });
                     this._darkObserver.observe(el, { attributes: true, attributeFilter: ['media'] });
                 }
+                // Cross-tab toggle: storage event fires only in OTHER tabs.
+                this._storageHandler = (event) => {
+                    if (event.key === 'horizonColorScheme') this.isDark = this.sniffDark();
+                };
+                window.addEventListener('storage', this._storageHandler);
+                // System preference change when scheme is 'system'.
                 this._mq = window.matchMedia('(prefers-color-scheme: dark)');
                 this._mqUpdate = () => { this.isDark = this.sniffDark(); };
                 this._mq.addEventListener('change', this._mqUpdate);
