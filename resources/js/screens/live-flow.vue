@@ -1,5 +1,10 @@
 <script type="text/ecmascript-6">
+    import FailedJobModal from './live-flow/FailedJobModal.vue';
+    import SupervisorControls from './live-flow/SupervisorControls.vue';
+
     export default {
+        components: { FailedJobModal, SupervisorControls },
+
         data() {
             return {
                 flow: null,
@@ -1308,32 +1313,12 @@
                     </div>
                 </div>
 
-                <!-- horizon controls -->
-                <div class="lf-pane lf-pane-gap">
-                    <div class="lf-pane-head">
-                        <span class="lf-pane-title">Horizon Controls</span>
-                        <span class="lf-pane-meta">{{ supervisors.length }} supervisor{{ supervisors.length === 1 ? '' : 's' }}</span>
-                        <div class="lf-head-actions">
-                            <button class="lf-mini-btn lf-mini-btn-danger" type="button" :disabled="isControllingHorizon('masters:pause')" @click="controlMasters('pause')">pause all</button>
-                            <button class="lf-mini-btn lf-mini-btn-safe" type="button" :disabled="isControllingHorizon('masters:continue')" @click="controlMasters('continue')">continue all</button>
-                        </div>
-                    </div>
-                    <div class="lf-supervisors" v-if="supervisors.length">
-                        <div class="lf-supervisor" v-for="supervisor in supervisors" :key="supervisor.name">
-                            <span class="lf-dot" :class="'lf-dot-' + (supervisor.status === 'paused' ? 'warning' : supervisor.status === 'inactive' ? 'critical' : 'healthy')"></span>
-                            <div class="lf-supervisor-main">
-                                <div class="lf-supervisor-name">{{ supervisor.name }}</div>
-                                <div class="lf-supervisor-sub">
-                                    {{ supervisor.options?.connection ?? 'connection' }} · {{ supervisor.options?.queue ?? 'queues' }} · {{ formatNumber(Object.values(supervisor.processes ?? {}).reduce((sum, value) => sum + Number(value ?? 0), 0)) }} procs
-                                </div>
-                            </div>
-                            <span class="lf-status" :class="'lf-status-' + (supervisor.status === 'paused' ? 'warning' : supervisor.status === 'inactive' ? 'critical' : 'healthy')">{{ supervisor.status }}</span>
-                            <button class="lf-mini-btn lf-mini-btn-danger" type="button" :disabled="isControllingHorizon(supervisor.name + ':pause') || supervisor.status === 'inactive'" @click="controlSupervisor(supervisor, 'pause')">pause</button>
-                            <button class="lf-mini-btn lf-mini-btn-safe" type="button" :disabled="isControllingHorizon(supervisor.name + ':continue') || supervisor.status === 'inactive'" @click="controlSupervisor(supervisor, 'continue')">continue</button>
-                        </div>
-                    </div>
-                    <div class="lf-empty-sm" v-else>No Horizon supervisors detected.</div>
-                </div>
+                <SupervisorControls
+                    :supervisors="supervisors"
+                    :controlling="controllingHorizon"
+                    @masters-action="controlMasters"
+                    @supervisor-action="({ supervisor, action }) => controlSupervisor(supervisor, action)"
+                />
 
                 <!-- activity -->
                 <div class="lf-pane lf-pane-gap">
@@ -1451,43 +1436,18 @@
             </aside>
         </div>
 
-        <div class="lf-modal-backdrop" v-if="selectedJob" @click.self="closeJobModal" @keydown.esc="closeJobModal" tabindex="-1">
-            <div class="lf-modal">
-                <div class="lf-modal-head">
-                    <div>
-                        <div class="lf-modal-kicker">Failed Job</div>
-                        <div class="lf-modal-title">{{ shortJobName(modalJobName()) }}</div>
-                    </div>
-                    <button class="lf-modal-close" type="button" @click="closeJobModal">×</button>
-                </div>
-
-                <div class="lf-modal-meta">
-                    <span>{{ selectedJob.connection }} · {{ selectedJob.queue }}</span>
-                    <span>attempts {{ formatNumber(selectedJob.attempts ?? 0) }}</span>
-                    <span>age {{ formatDuration(selectedJob.age_seconds) }}</span>
-                </div>
-
-                <div class="lf-modal-loading" v-if="loadingJobDetails">Loading full Horizon failure payload…</div>
-                <pre class="lf-modal-error" v-else>{{ modalJobError() }}</pre>
-
-                <div class="lf-modal-actions">
-                    <a class="lf-btn" :href="jobHref(selectedJob)" v-if="jobHref(selectedJob)">open in Horizon</a>
-                    <button
-                        class="lf-btn lf-btn-live"
-                        type="button"
-                        v-if="selectedJob.retryable"
-                        :disabled="isRetryingJob(selectedJob)"
-                        @click="retryJob(selectedJob)"
-                    >
-                        {{ isRetryingJob(selectedJob) ? 'retrying…' : 'retry failed job' }}
-                    </button>
-                </div>
-            </div>
-        </div>
+        <FailedJobModal
+            :job="selectedJob"
+            :details="selectedJobDetails"
+            :loading="loadingJobDetails"
+            :retrying="selectedJob ? isRetryingJob(selectedJob) : false"
+            @close="closeJobModal"
+            @retry="retryJob"
+        />
     </div>
 </template>
 
-<style scoped>
+<style>
     /* ══ DESIGN TOKENS — light ═════════════════════════════════════════════ */
     .lf {
         --lf-bg:      var(--bs-body-bg, #f8f9fa);
