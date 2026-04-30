@@ -1,12 +1,14 @@
 <script type="text/ecmascript-6">
     import FailedJobModal from './live-flow/FailedJobModal.vue';
     import FlowActivity from './live-flow/FlowActivity.vue';
+    import FlowInspector from './live-flow/FlowInspector.vue';
     import FlowKpis from './live-flow/FlowKpis.vue';
+    import FlowQueueTable from './live-flow/FlowQueueTable.vue';
     import FlowToolbar from './live-flow/FlowToolbar.vue';
     import SupervisorControls from './live-flow/SupervisorControls.vue';
 
     export default {
-        components: { FailedJobModal, FlowActivity, FlowKpis, FlowToolbar, SupervisorControls },
+        components: { FailedJobModal, FlowActivity, FlowInspector, FlowKpis, FlowQueueTable, FlowToolbar, SupervisorControls },
 
         data() {
             return {
@@ -1244,55 +1246,14 @@
                     </div>
                 </div>
 
-                <!-- queue table -->
-                <div class="lf-pane lf-pane-gap">
-                    <div class="lf-pane-head">
-                        <span class="lf-pane-title">Queues</span>
-                        <span class="lf-pane-meta">{{ filteredQueues.length }} queue{{ filteredQueues.length === 1 ? '' : 's' }}</span>
-                    </div>
-                    <div class="lf-tbl-wrap">
-                        <table class="lf-tbl">
-                            <thead>
-                                <tr>
-                                    <th>Queue</th><th>Src</th><th>Connection</th><th>Driver</th>
-                                    <th class="r">Pending</th><th class="r">Delayed</th><th class="r">Oldest</th><th class="r">Wait</th>
-                                    <th class="r">Procs</th><th class="r">Current</th><th class="r">Last</th><th class="r">ETA</th>
-                                    <th class="r">Attempts</th><th class="r">Failed</th><th class="r">Fail %</th><th class="r">Status</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr
-                                    v-for="queue in filteredQueues"
-                                    :key="queue.driver + ':' + queue.connection + ':' + queue.name"
-                                    :class="{ 'lf-tbl-sel': selectedId === (findQueueNode(queue)?.id ?? queueNodeId(queue)) }"
-                                    @click="selectNode(findQueueNode(queue)?.id ?? queueNodeId(queue))"
-                                >
-                                    <td><span class="lf-qname"><span class="lf-dot" :class="'lf-dot-' + queueStatus(queue)"></span>{{ queue.name }}</span></td>
-                                    <td class="muted">{{ queue.source ?? queue.driver }}</td>
-                                    <td class="muted">{{ queue.connection }}</td>
-                                    <td><span class="lf-drv" :class="'lf-drv-' + queue.driver">{{ queue.driver }}</span></td>
-                                    <td class="r num" :class="{ warn: queue.pending > 100, crit: queue.pending > 500 }">{{ formatNumber(queue.pending) }}</td>
-                                    <td class="r num muted">{{ formatNumber(queue.delayed) }}</td>
-                                    <td class="r num" :class="{ warn: (queue.oldest_pending_seconds ?? 0) >= 10, crit: (queue.oldest_pending_seconds ?? 0) >= 30 }">{{ formatDuration(queue.oldest_pending_seconds ?? queue.wait_seconds) }}</td>
-                                    <td class="r num" :class="{ warn: queue.wait_seconds >= 10, crit: queue.wait_seconds >= 30 }">{{ metricValue(queue.wait_seconds, 's') }}</td>
-                                    <td class="r num muted">{{ formatNumber(queue.processes) }}</td>
-                                    <td class="r num ok">{{ formatRate(queue.current_throughput_per_minute) }}</td>
-                                    <td class="r num muted">{{ formatRate(queue.throughput_per_minute) }}</td>
-                                    <td class="r num muted">{{ formatDuration(queue.estimated_drain_seconds) }}</td>
-                                    <td class="r num muted">{{ formatNumber(queue.attempts ?? 0) }}</td>
-                                    <td class="r num" :class="{ crit: (queue.failed ?? 0) > 0 }">{{ formatNumber(queue.failed ?? 0) }}</td>
-                                    <td class="r num" :class="{ warn: (queue.failure_rate ?? 0) > 0 }">{{ formatPercent(queue.failure_rate) }}</td>
-                                    <td class="r">
-                                        <span class="lf-status" :class="'lf-status-' + queueStatus(queue)">{{ statusLabel(queueStatus(queue)) }}</span>
-                                    </td>
-                                </tr>
-                                <tr v-if="filteredQueues.length === 0">
-                                    <td colspan="16" class="lf-empty">{{ filterText ? 'No queues match the filter.' : 'No queues found.' }}</td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
+                <FlowQueueTable
+                    :queues="filteredQueues"
+                    :selected-id="selectedId"
+                    :filter-text="filterText"
+                    :queue-node-id="queueNodeId"
+                    :find-queue-node="findQueueNode"
+                    @select="selectNode"
+                />
 
                 <SupervisorControls
                     :supervisors="supervisors"
@@ -1305,98 +1266,13 @@
 
             </div>
 
-            <!-- inspector -->
-            <aside class="lf-inspector">
-                <div class="lf-pane lf-pane-sticky">
-                    <div class="lf-pane-head">
-                        <span class="lf-pane-title">Inspector</span>
-                        <span class="lf-status ms-auto" :class="'lf-status-' + selectedInspector.node.status">{{ statusLabel(selectedInspector.node.status) }}</span>
-                    </div>
-
-                    <div class="lf-insp-top">
-                        <div class="lf-insp-name">{{ selectedInspector.node.label }}</div>
-                        <div class="lf-insp-meta">
-                            <span class="lf-insp-kind">{{ nodeKind(selectedInspector.node) }}</span>
-                            <span class="lf-insp-conn">{{ selectedInspector.queue ? selectedInspector.queue.connection + ' · ' + selectedInspector.queue.name : selectedInspector.node.id }}</span>
-                        </div>
-                    </div>
-
-                    <div class="lf-insp-sec">
-                        <div class="lf-insp-sec-title">Metrics</div>
-                        <div class="lf-kv" v-for="m in selectedInspector.metrics" :key="m[0]">
-                            <span class="lf-kv-k">{{ m[0] }}</span>
-                            <span class="lf-kv-v">{{ m[1] }}</span>
-                        </div>
-                    </div>
-
-                    <div class="lf-insp-sec" v-if="selectedInspector.queue">
-                        <div class="lf-insp-sec-title">Job Classes</div>
-                        <div class="lf-job-class" v-for="jobClass in selectedInspector.jobClasses" :key="jobClass.name">
-                            <div>
-                                <div class="lf-job-name">{{ shortJobName(jobClass.name) }}</div>
-                                <div class="lf-job-sub">{{ jobCounts(jobClass) }}</div>
-                            </div>
-                            <span class="lf-job-fail" v-if="Number(jobClass.failed ?? 0) > 0">{{ formatNumber(jobClass.failed) }} failed</span>
-                        </div>
-                        <div class="lf-empty-sm" v-if="selectedInspector.jobClasses.length === 0">No recent job classes for this queue.</div>
-                    </div>
-
-                    <div class="lf-insp-sec" v-if="selectedInspector.queue">
-                        <div class="lf-insp-sec-title">Recent Jobs</div>
-                        <div
-                            class="lf-job-row"
-                            v-for="job in selectedInspector.jobs"
-                            :key="job.id"
-                            :class="{ 'lf-job-row-clickable': job.status === 'failed' }"
-                            @click="openJobModal(job)"
-                        >
-                            <span class="lf-dot" :class="'lf-dot-' + jobStatusClass(job.status)"></span>
-                            <div class="lf-job-main">
-                                <div class="lf-job-name">{{ shortJobName(job.name) }}</div>
-                                <div class="lf-job-sub">
-                                    {{ job.status }} · attempts {{ formatNumber(job.attempts ?? 0) }} · age {{ formatDuration(job.age_seconds) }}
-                                </div>
-                                <div class="lf-job-error" v-if="job.exception">{{ job.exception }}</div>
-                            </div>
-                            <button
-                                class="lf-mini-btn"
-                                type="button"
-                                v-if="job.retryable"
-                                :disabled="isRetryingJob(job)"
-                                @click.stop="retryJob(job)"
-                            >
-                                {{ isRetryingJob(job) ? 'retrying' : 'retry' }}
-                            </button>
-                        </div>
-                        <div class="lf-empty-sm" v-if="selectedInspector.jobs.length === 0">No recent jobs captured for this queue.</div>
-                    </div>
-
-                    <div class="lf-insp-sec">
-                        <div class="lf-insp-sec-title">Incoming</div>
-                        <div class="lf-edge-row" v-for="edge in selectedInspector.incoming" :key="edge.id">
-                            <span class="lf-dot" :class="'lf-dot-' + edge.status"></span>
-                            <span class="lf-edge-lbl">{{ graphNodeLookup[edge.source]?.label ?? edge.source }}</span>
-                            <span class="lf-edge-rate">{{ edgeDisplayLabel(edge) }}</span>
-                        </div>
-                        <div class="lf-empty-sm" v-if="selectedInspector.incoming.length === 0">—</div>
-                    </div>
-
-                    <div class="lf-insp-sec">
-                        <div class="lf-insp-sec-title">Outgoing</div>
-                        <div class="lf-edge-row" v-for="edge in selectedInspector.outgoing" :key="edge.id">
-                            <span class="lf-dot" :class="'lf-dot-' + edge.status"></span>
-                            <span class="lf-edge-lbl">{{ graphNodeLookup[edge.target]?.label ?? edge.target }}</span>
-                            <span class="lf-edge-rate">{{ edgeDisplayLabel(edge) }}</span>
-                        </div>
-                        <div class="lf-empty-sm" v-if="selectedInspector.outgoing.length === 0">—</div>
-                    </div>
-
-                    <div class="lf-action" :class="'lf-action-' + selectedInspector.action.type">
-                        <div class="lf-action-title">{{ selectedInspector.action.title }}</div>
-                        <div class="lf-action-text">{{ selectedInspector.action.text }}</div>
-                    </div>
-                </div>
-            </aside>
+            <FlowInspector
+                :inspector="selectedInspector"
+                :graph-node-lookup="graphNodeLookup"
+                :retrying-ids="retryingJobs"
+                @retry="retryJob"
+                @open-failed="openJobModal"
+            />
         </div>
 
         <FailedJobModal
