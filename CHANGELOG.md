@@ -1,6 +1,11 @@
 # Release Notes
 
-## [Unreleased](https://github.com/laravel/horizon/compare/v5.46.0...5.x)
+## [Unreleased](https://github.com/laravel/horizon/compare/v5.47.0...5.x)
+
+## [v5.47.0](https://github.com/laravel/horizon/compare/v5.46.0...v5.47.0) - 2026-05-19
+
+* Bump postcss from 8.4.45 to 8.5.13 by [@dependabot](https://github.com/dependabot)[bot] in https://github.com/laravel/horizon/pull/1763
+* Bump axios from 1.15.0 to 1.15.2 by [@dependabot](https://github.com/dependabot)[bot] in https://github.com/laravel/horizon/pull/1764
 
 ## [v5.46.0](https://github.com/laravel/horizon/compare/v5.45.6...v5.46.0) - 2026-04-20
 
