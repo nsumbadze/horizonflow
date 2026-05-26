@@ -101,7 +101,18 @@
                 </div>
             </div>
 
-            <div class="lf-insp-sec" v-if="inspector.queue">
+            <div class="lf-insp-sec" v-if="inspector.jobClass">
+                <div class="lf-insp-sec-title">Class Breakdown</div>
+                <div class="lf-job-class">
+                    <div>
+                        <div class="lf-job-name">{{ shortJobName(inspector.jobClass.name) }}</div>
+                        <div class="lf-job-sub">{{ jobCounts(inspector.jobClass) }}</div>
+                    </div>
+                    <span class="lf-job-fail" v-if="Number(inspector.jobClass.failed ?? 0) > 0">{{ formatNumber(inspector.jobClass.failed) }} failed</span>
+                </div>
+            </div>
+
+            <div class="lf-insp-sec" v-if="inspector.queue && !inspector.jobClass">
                 <div class="lf-insp-sec-title">Job Classes</div>
                 <div class="lf-job-class" v-for="jobClass in inspector.jobClasses" :key="jobClass.name">
                     <div>

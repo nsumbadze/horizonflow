@@ -282,16 +282,30 @@
 
             selectedInspector() {
                 const node = this.selectedNode;
-                if (!node) return { node: { status: 'healthy' }, queue: null, metrics: [], incoming: [], outgoing: [], action: { type: 'ok', title: 'Status', text: 'Loading…' } };
-                const queue = this.queues.find(q => this.queueNodeId(q) === node.id || this.findQueueNode(q)?.id === node.id);
+                if (!node) return { node: { status: 'healthy' }, queue: null, jobClass: null, metrics: [], jobClasses: [], jobs: [], incoming: [], outgoing: [], action: { type: 'ok', title: 'Status', text: 'Loading…' } };
+
+                let queue = null;
+                let jobClass = null;
+
+                if (node.type === 'job') {
+                    queue = this.queues.find(q => this.queueNodeId(q) === node.queueId) ?? null;
+                    if (queue) {
+                        jobClass = this.queueJobClasses(queue).find(c => c.name === node.name) ?? null;
+                    }
+                } else {
+                    queue = this.queues.find(q => this.queueNodeId(q) === node.id || this.findQueueNode(q)?.id === node.id) ?? null;
+                }
+
                 return {
-                    node, queue,
-                    metrics: this.inspectorMetrics(node, queue),
-                    jobClasses: this.queueJobClasses(queue),
-                    jobs: this.queueJobs(queue),
+                    node,
+                    queue,
+                    jobClass,
+                    metrics: this.inspectorMetrics(node, queue, jobClass),
+                    jobClasses: queue && !jobClass ? this.queueJobClasses(queue) : [],
+                    jobs: queue ? this.queueJobs(queue).filter(job => !jobClass || job.name === jobClass.name) : [],
                     incoming: this.graphEdges.filter(e => e.target === node.id),
                     outgoing: this.graphEdges.filter(e => e.source === node.id),
-                    action: this.suggestedAction(node, queue),
+                    action: this.suggestedAction(node, queue, jobClass),
                 };
             },
         },
@@ -811,7 +825,18 @@
                 return { healthy: 1.7, warning: 2.6, critical: 3.2 }[status] ?? 2;
             },
 
-            inspectorMetrics(node, queue) {
+            inspectorMetrics(node, queue, jobClass) {
+                if (jobClass) return [
+                    ['queue',         queue?.name ?? '—'],
+                    ['class',         this.shortJobName(jobClass.name)],
+                    ['full name',     jobClass.name],
+                    ['pending',       this.formatNumber(jobClass.pending ?? 0)],
+                    ['reserved',      this.formatNumber(jobClass.reserved ?? 0)],
+                    ['completed',     this.formatNumber(jobClass.completed ?? 0)],
+                    ['failed',        this.formatNumber(jobClass.failed ?? 0)],
+                    ['attempts',      this.formatNumber(jobClass.attempts ?? 0)],
+                    ['latest error',  jobClass.latest_error ?? 'none'],
+                ];
                 if (queue) return [
                     ['source',         queue.source ?? queue.driver],
                     ['connection',     queue.connection],
@@ -834,7 +859,18 @@
                 return Object.entries(node.metrics ?? {}).map(([k, v]) => [k.replace(/_/g, ' '), this.formatNumber(v)]);
             },
 
-            suggestedAction(node, queue) {
+            suggestedAction(node, queue, jobClass) {
+                if (jobClass) {
+                    if (Number(jobClass.failed ?? 0) > 0) {
+                        return { type: 'critical', title: 'Immediate Action', text: jobClass.latest_error
+                            ? `${this.shortJobName(jobClass.name)} is failing. Latest error: ${jobClass.latest_error}`
+                            : `${this.shortJobName(jobClass.name)} has ${this.formatNumber(jobClass.failed)} failed instance${jobClass.failed === 1 ? '' : 's'}. Inspect the failed jobs.` };
+                    }
+                    if (Number(jobClass.pending ?? 0) > 0 || Number(jobClass.reserved ?? 0) > 0) {
+                        return { type: 'warn', title: 'In Flight', text: `${this.shortJobName(jobClass.name)} has ${this.formatNumber((jobClass.pending ?? 0) + (jobClass.reserved ?? 0))} job${(jobClass.pending ?? 0) + (jobClass.reserved ?? 0) === 1 ? '' : 's'} working through the queue.` };
+                    }
+                    return { type: 'ok', title: 'Status', text: `${this.shortJobName(jobClass.name)} is idle.` };
+                }
                 if (node.status === 'critical') return { type: 'critical', title: 'Immediate Action', text: queue ? (queue.latest_error ? `${queue.name} has failed jobs. Latest error: ${queue.latest_error}` : `Backlog is critical on ${queue.name}. Scale workers or reduce dispatch rate.`) : 'Failures above normal. Inspect failed job payloads.' };
                 if (node.status === 'warning')  return { type: 'warn', title: 'Suggested Action', text: queue ? `${queue.name} is showing backpressure. Consider increasing process capacity.` : 'This node is under pressure. Monitor incoming rates.' };
                 return { type: 'ok', title: 'Status', text: 'Node is operating normally. No action required.' };
