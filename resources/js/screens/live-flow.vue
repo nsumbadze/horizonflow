@@ -27,7 +27,7 @@
                 loadingJobDetails: false,
                 masters: [],
                 controllingHorizon: [],
-                particleEvents: [],
+                particleQueue: [],
                 lastEventTimestamp: 0,
                 queueJobDetails: {},
             };
@@ -56,12 +56,14 @@
             this.refreshAll().then(() => { this.ready = true; });
             this.loadSupervisorControls();
             this.startPolling();
+            this.startParticleEmitter();
             this.isDark = this.sniffDark();
             this.initDarkWatcher();
         },
 
         beforeUnmount() {
             this.stopPolling();
+            this.stopParticleEmitter();
             this._darkObserver?.disconnect();
             this._mq?.removeEventListener('change', this._mqUpdate);
             if (this._storageHandler) window.removeEventListener('storage', this._storageHandler);
@@ -252,11 +254,7 @@
             },
 
             particles() {
-                if (!this.live) return [];
-
-                return this.particleEvents
-                    .flatMap((event, index) => this.jobEventParticle(event, index))
-                    .slice(0, 60);
+                return this.live ? this.particleQueue : [];
             },
 
             kpiMetrics() {
@@ -365,6 +363,61 @@
             stopPolling() {
                 (this._intervals ?? []).forEach(clearInterval);
                 this._intervals = [];
+            },
+
+            startParticleEmitter() {
+                this._particleTickSeconds = 0.3;
+                this._particleTimer = setInterval(() => this.tickParticles(), this._particleTickSeconds * 1000);
+            },
+
+            stopParticleEmitter() {
+                if (this._particleTimer) clearInterval(this._particleTimer);
+                this._particleTimer = null;
+            },
+
+            tickParticles() {
+                const now = Date.now();
+                const survivors = this.particleQueue.filter(p => p._expires > now);
+
+                if (!this.live) {
+                    if (survivors.length !== this.particleQueue.length) this.particleQueue = survivors;
+                    return;
+                }
+
+                const fresh = this.ambientParticles(now);
+                if (fresh.length === 0) {
+                    if (survivors.length !== this.particleQueue.length) this.particleQueue = survivors;
+                    return;
+                }
+
+                const merged = [...survivors, ...fresh];
+                this.particleQueue = merged.length > 60 ? merged.slice(-60) : merged;
+            },
+
+            ambientParticles(now) {
+                const tickSeconds = this._particleTickSeconds ?? 0.3;
+                const fresh = [];
+                for (const edge of this.graphEdges) {
+                    const rate = Number(edge.rate_per_minute ?? 0);
+                    if (rate <= 0) continue;
+                    const expected = Math.min((rate / 60) * tickSeconds, 3);
+                    const whole = Math.floor(expected);
+                    const count = whole + (Math.random() < (expected - whole) ? 1 : 0);
+                    if (count === 0) continue;
+
+                    const duration = this.particleDuration(edge.status);
+                    for (let i = 0; i < count; i++) {
+                        fresh.push({
+                            id: `amb-${this.svgId(edge.id)}-${now}-${i}-${Math.random().toString(36).slice(2, 8)}`,
+                            edgeId: this.svgId(edge.id),
+                            status: edge.status,
+                            delay: '0s',
+                            duration: `${duration}s`,
+                            _expires: now + duration * 1000 + 250,
+                        });
+                    }
+                }
+                return fresh;
             },
 
             refreshAll() {
@@ -492,16 +545,32 @@
             svgId(value) { return String(value).replace(/[^a-z0-9_-]+/gi, '-'); },
 
             ingestParticleEvents(events) {
-                const now = Date.now() / 1000;
+                const now = Date.now();
+                const nowSeconds = now / 1000;
 
-                this.particleEvents = events
+                const bursts = events
                     .filter(event => event.queue && event.result)
-                    .filter(event => Number(event.timestamp ?? 0) > 0 && now - Number(event.timestamp) <= 60)
-                    .slice(0, 30)
-                    .map((event, index) => ({
-                        ...event,
-                        _renderId: `${event.id ?? event.job ?? event.label ?? 'event'}|${event.timestamp ?? 'time'}|${Date.now()}|${index}`,
-                    }));
+                    .filter(event => Number(event.timestamp ?? 0) > 0 && nowSeconds - Number(event.timestamp) <= 60)
+                    .slice(0, 20)
+                    .flatMap((event, index) => {
+                        const edge = this.jobEventEdge(event);
+                        if (!edge) return [];
+                        const status = event.status ?? edge.status;
+                        const duration = this.particleDuration(status);
+                        const delaySeconds = (index % 8) * 0.1;
+                        return [{
+                            id: `evt-${this.svgId(edge.id)}-${now}-${index}-${Math.random().toString(36).slice(2, 8)}`,
+                            edgeId: this.svgId(edge.id),
+                            status,
+                            delay: `${delaySeconds}s`,
+                            duration: `${duration}s`,
+                            _expires: now + (delaySeconds + duration) * 1000 + 250,
+                        }];
+                    });
+
+                if (bursts.length === 0) return;
+                const merged = [...this.particleQueue, ...bursts];
+                this.particleQueue = merged.length > 60 ? merged.slice(-60) : merged;
             },
 
             metricValue(value, suffix = '') {
@@ -735,20 +804,6 @@
 
             edge(source, target, status, label, rate) {
                 return { id: `${source}-${target}`, source, target, status, label, rate_per_minute: rate };
-            },
-
-            jobEventParticle(event, index) {
-                const edge = this.jobEventEdge(event);
-
-                if (!edge) return [];
-
-                return [{
-                    id: `${index}-${this.svgId(event._renderId ?? event._key ?? event.id ?? event.job ?? event.label ?? edge.id)}`,
-                    edgeId: this.svgId(edge.id),
-                    status: event.status ?? edge.status,
-                    delay: `${(index % 12) * 0.14}s`,
-                    duration: `${this.particleDuration(event.status ?? edge.status)}s`,
-                }];
             },
 
             jobEventEdge(event) {
