@@ -48,6 +48,7 @@ class DatabaseQueueFlowRepository implements QueueFlowRepository
             ->values();
 
         $failedCount = $queues->sum('failed');
+        $window = $this->windowSeconds();
 
         return [
             'source' => 'database',
@@ -58,6 +59,8 @@ class DatabaseQueueFlowRepository implements QueueFlowRepository
                 'processing' => null,
                 'completed' => null,
                 'failed' => $failedCount,
+                'failed_in_window' => $this->failedInWindow($connections, $window),
+                'window_seconds' => $window,
                 'delayed' => $queues->sum('delayed'),
                 'throughput_per_minute' => null,
                 'current_throughput_per_minute' => 0,
@@ -256,6 +259,43 @@ class DatabaseQueueFlowRepository implements QueueFlowRepository
         } catch (Throwable) {
             return collect();
         }
+    }
+
+    /**
+     * Count failed jobs whose `failed_at` falls within the request window.
+     *
+     * Aggregates across all configured database connections, dedup-ing by
+     * `database` so the same `failed_jobs` table isn't counted twice when
+     * multiple queue connections share a storage connection.
+     *
+     * @param  array<int, array{connection: string, queue_connection: string, database: string|null, table: string, queue: string|null}>  $connections
+     */
+    protected function failedInWindow(array $connections, int $window): ?int
+    {
+        $since = Carbon::now()->subSeconds($window);
+        $table = config('horizonxbrain.flow.database.failed_table', 'failed_jobs');
+        $total = 0;
+        $any = false;
+
+        foreach (collect($connections)->unique(fn (array $c): string => (string) ($c['database'] ?? '')) as $connection) {
+            try {
+                $total += (int) DB::connection($connection['database'])
+                    ->table($table)
+                    ->where('failed_at', '>=', $since)
+                    ->when($connection['queue'], fn ($query, string $queue) => $query->where('queue', $queue))
+                    ->count();
+                $any = true;
+            } catch (Throwable) {
+                continue;
+            }
+        }
+
+        return $any ? $total : null;
+    }
+
+    protected function windowSeconds(): int
+    {
+        return min(86400, max(60, (int) request()->query('window', 900)));
     }
 
     /**
