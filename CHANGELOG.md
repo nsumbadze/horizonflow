@@ -1,6 +1,10 @@
 # Release Notes
 
-## [Unreleased](https://github.com/laravel/horizon/compare/v5.47.0...5.x)
+## [Unreleased](https://github.com/laravel/horizon/compare/v5.47.1...5.x)
+
+## [v5.47.1](https://github.com/laravel/horizon/compare/v5.47.0...v5.47.1) - 2026-05-20
+
+* Fix null hmget response in baseSnapshotData by [@briskbase-projects](https://github.com/briskbase-projects) in https://github.com/laravel/horizon/pull/1768
 
 ## [v5.47.0](https://github.com/laravel/horizon/compare/v5.46.0...v5.47.0) - 2026-05-19
 
