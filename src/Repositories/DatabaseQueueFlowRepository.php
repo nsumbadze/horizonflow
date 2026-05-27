@@ -126,7 +126,7 @@ class DatabaseQueueFlowRepository implements QueueFlowRepository
     protected function queuesForConnection(array $connection): array
     {
         try {
-            $pendingJobs = $this->pendingJobsForConnection($connection)->groupBy('name');
+            $pendingJobs = $this->pendingJobsForConnection($connection)->groupBy('queue');
 
             $rows = DB::connection($connection['database'])
                 ->table($connection['table'])
@@ -138,7 +138,7 @@ class DatabaseQueueFlowRepository implements QueueFlowRepository
             return [];
         }
 
-        $queues = $rows->map(function (object $row) use ($connection): array {
+        $queues = $rows->map(function (object $row) use ($connection, $pendingJobs): array {
             $oldestAvailableAt = $row->oldest_available_at ? (int) $row->oldest_available_at : Carbon::now()->timestamp;
             $pending = (int) $row->pending;
             $jobs = $pendingJobs->get($row->queue, collect())->values()->all();
