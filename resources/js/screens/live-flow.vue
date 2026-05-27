@@ -40,6 +40,15 @@
                 const queue = this.queues.find(q => this.queueNodeId(q) === node.id || this.findQueueNode(q)?.id === node.id);
                 if (queue) this.fetchQueueJobs(queue);
             },
+
+            timeRange() {
+                // Reset the events cursor so the next /events poll fetches the
+                // freshly-scoped window. Drop the rendered events too — they were
+                // tied to the prior window.
+                this.lastEventTimestamp = Math.max(0, Math.floor(Date.now() / 1000) - this.timeRangeSeconds());
+                this.mergeFlow({ events: [] });
+                this.refreshSummary();
+            },
         },
 
         mounted() {
@@ -251,11 +260,17 @@
             },
 
             kpiMetrics() {
+                const windowed = this.summary.failed_in_window;
+                const failedValue = windowed !== null && windowed !== undefined ? windowed : this.summary.failed;
+                const failedSub = windowed !== null && windowed !== undefined
+                    ? `in ${this.timeRange.replace(/^Last /i, '').toLowerCase()}`
+                    : 'all-time';
+
                 return [
                     { key: 'pending',    label: 'PENDING',  value: this.metricValue(this.summary.pending),   sub: this.formatNumber(this.queues.length) + ' queues', cls: 'primary' },
                     { key: 'processing', label: 'PROCS',    value: this.metricValue(this.summary.processing), sub: 'active',   cls: '' },
                     { key: 'delayed',    label: 'DELAYED',  value: this.metricValue(this.summary.delayed),    sub: 'scheduled', cls: (this.summary.delayed ?? 0) > 0 ? 'warn' : '' },
-                    { key: 'failed',     label: 'FAILED',   value: this.metricValue(this.summary.failed),     sub: this.timeRange.toLowerCase(), cls: (this.summary.failed ?? 0) > 0 ? 'danger' : '' },
+                    { key: 'failed',     label: 'FAILED',   value: this.metricValue(failedValue),             sub: failedSub, cls: (failedValue ?? 0) > 0 ? 'danger' : '' },
                     { key: 'flow',       label: 'FLOW',     value: this.metricValue(this.summary.current_throughput_per_minute ?? this.summary.throughput_per_minute), sub: 'jobs / min', cls: 'ok' },
                     { key: 'wait',       label: 'AVG WAIT', value: this.metricValue(this.summary.average_wait_seconds, 's'), sub: 'latency', cls: '' },
                 ];
@@ -360,11 +375,14 @@
             },
 
             refreshSummary() {
-                return this.$http.get(Horizon.basePath + '/api/flow/summary')
+                return this.$http.get(Horizon.basePath + '/api/flow/summary', {
+                    params: { window: this.timeRangeSeconds() },
+                })
                     .then(response => this.mergeFlow({
                         source: response.data.source,
                         sources: response.data.sources,
                         errors: response.data.errors ?? [],
+                        health: response.data.health ?? [],
                         meta: response.data.meta ?? {},
                         generated_at: response.data.generated_at,
                         summary: response.data.summary ?? {},

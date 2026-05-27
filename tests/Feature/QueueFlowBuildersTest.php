@@ -38,6 +38,14 @@ class QueueFlowBuildersTest extends TestCase
         $this->assertSame(180, $payload['summary']['pending']);
     }
 
+    public function test_summary_builder_forwards_windowed_failed_count(): void
+    {
+        $payload = (new QueueFlowSummaryBuilder($this->repository()))->build();
+
+        $this->assertSame(3, $payload['summary']['failed_in_window']);
+        $this->assertSame(900, $payload['summary']['window_seconds']);
+    }
+
     public function test_graph_builder_returns_nodes_and_edges(): void
     {
         $payload = (new QueueFlowGraphBuilder($this->repository()))->build();
@@ -127,7 +135,9 @@ class QueueFlowBuildersTest extends TestCase
             'generated_at' => '2024-01-01T00:00:00+00:00',
             'summary' => [
                 'pending' => 180,
-                'failed' => 0,
+                'failed' => 12,
+                'failed_in_window' => 3,
+                'window_seconds' => 900,
                 'throughput_per_minute' => 740,
             ],
             'nodes' => [

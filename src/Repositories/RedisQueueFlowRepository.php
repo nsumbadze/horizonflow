@@ -75,6 +75,8 @@ class RedisQueueFlowRepository implements QueueFlowRepository
                 'processing' => $processes,
                 'completed' => $this->jobs->countCompleted(),
                 'failed' => $failed,
+                'failed_in_window' => $this->failedInWindow($this->windowSeconds()),
+                'window_seconds' => $this->windowSeconds(),
                 'delayed' => null,
                 'throughput_per_minute' => $this->metrics->jobsProcessedPerMinute(),
                 'current_throughput_per_minute' => $queues->sum('current_throughput'),
@@ -269,6 +271,28 @@ class RedisQueueFlowRepository implements QueueFlowRepository
     protected function windowSeconds(): int
     {
         return min(86400, max(60, (int) request()->query('window', 900)));
+    }
+
+    /**
+     * Count failed jobs whose `failed_at` falls within the request window. The
+     * `failed_jobs` index stores entries with a negative timestamp score, so we
+     * narrow the zcount range to [-now, -(now - window)].
+     */
+    protected function failedInWindow(int $window): ?int
+    {
+        try {
+            $connection = $this->redisConnection();
+
+            if ($connection === null) {
+                return null;
+            }
+
+            $now = Carbon::now()->timestamp;
+
+            return (int) $connection->zcount('failed_jobs', -$now, -($now - $window));
+        } catch (Throwable) {
+            return null;
+        }
     }
 
     /**

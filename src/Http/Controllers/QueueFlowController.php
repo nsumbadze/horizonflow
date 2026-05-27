@@ -36,6 +36,10 @@ class QueueFlowController extends Controller
     /**
      * Get the high-level summary block plus errors and source metadata.
      *
+     * The `window` query parameter (in seconds) is forwarded to the underlying
+     * repository so windowed counts like `summary.failed_in_window` reflect the
+     * time-range the dashboard is currently scoped to.
+     *
      * @return array<string, mixed>
      */
     public function summary(QueueFlowSummaryBuilder $builder): array
