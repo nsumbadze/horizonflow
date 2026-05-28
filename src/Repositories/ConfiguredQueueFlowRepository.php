@@ -56,6 +56,12 @@ class ConfiguredQueueFlowRepository implements QueueFlowRepository
             ));
         }
 
+        if ($source === 'mock' && ! $this->container->make('app')->environment('local', 'testing')) {
+            throw new InvalidArgumentException(
+                'The mock queue flow source is only available in local or testing environments.'
+            );
+        }
+
         return self::SOURCES[$source];
     }
 }

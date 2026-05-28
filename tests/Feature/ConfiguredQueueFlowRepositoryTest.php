@@ -59,6 +59,17 @@ class ConfiguredQueueFlowRepositoryTest extends TestCase
         $this->resolveRepositoryClass();
     }
 
+    public function test_it_refuses_mock_source_in_production_environment(): void
+    {
+        config(['horizonxbrain.flow.source' => 'mock']);
+        $this->app->detectEnvironment(fn (): string => 'production');
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('only available in local or testing');
+
+        $this->resolveRepositoryClass();
+    }
+
     protected function resolveRepositoryClass(): string
     {
         $repository = new class($this->app) extends ConfiguredQueueFlowRepository {
