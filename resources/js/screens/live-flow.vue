@@ -27,7 +27,6 @@
                 loadingJobDetails: false,
                 masters: [],
                 controllingHorizon: [],
-                particleQueue: [],
                 lastEventTimestamp: 0,
                 queueJobDetails: {},
             };
@@ -56,14 +55,12 @@
             this.refreshAll().then(() => { this.ready = true; });
             this.loadSupervisorControls();
             this.startPolling();
-            this.startParticleEmitter();
             this.isDark = this.sniffDark();
             this.initDarkWatcher();
         },
 
         beforeUnmount() {
             this.stopPolling();
-            this.stopParticleEmitter();
             this._darkObserver?.disconnect();
             this._mq?.removeEventListener('change', this._mqUpdate);
             if (this._storageHandler) window.removeEventListener('storage', this._storageHandler);
@@ -253,8 +250,41 @@
                 return generated;
             },
 
+            // Particles are derived directly from the graph edges with stable
+            // keys. Each healthy edge gets 1-3 looping dots whose duration
+                // tracks throughput (faster for busier edges, baseline for idle).
+            // Looping + stable keys means the same SVG <circle> stays mounted
+            // across summary polls, so SMIL keeps animating without restart.
             particles() {
-                return this.live ? this.particleQueue : [];
+                if (!this.live) return [];
+
+                const list = [];
+                for (const edge of this.graphEdges) {
+                    const rate = Number(edge.rate_per_minute ?? 0);
+                    const isFailureLane = edge.status === 'critical'
+                        || edge.label === 'failed'
+                        || edge.label === 'exception';
+
+                    // Failure lanes only show particles when there's real traffic
+                    // so a calm graph doesn't visually imply failures are flowing.
+                    if (isFailureLane && rate <= 0) continue;
+
+                    const effective = isFailureLane ? rate : Math.max(rate, 12);
+                    const count = Math.min(3, Math.max(1, Math.ceil(effective / 60)));
+                    const duration = Math.max(2.2, Math.min(7, 60 / Math.max(effective, 8)));
+                    const edgeId = this.svgId(edge.id);
+
+                    for (let i = 0; i < count; i++) {
+                        list.push({
+                            id: `loop-${edgeId}-${i}`,
+                            edgeId,
+                            status: edge.status,
+                            delay: `${(duration / count) * i}s`,
+                            duration: `${duration}s`,
+                        });
+                    }
+                }
+                return list;
             },
 
             kpiMetrics() {
@@ -365,74 +395,6 @@
                 this._intervals = [];
             },
 
-            startParticleEmitter() {
-                this._particleTickSeconds = 0.3;
-                this._particleTimer = setInterval(() => this.tickParticles(), this._particleTickSeconds * 1000);
-            },
-
-            stopParticleEmitter() {
-                if (this._particleTimer) clearInterval(this._particleTimer);
-                this._particleTimer = null;
-            },
-
-            tickParticles() {
-                const now = Date.now();
-                const survivors = this.particleQueue.filter(p => p._expires > now);
-
-                if (!this.live) {
-                    if (survivors.length !== this.particleQueue.length) this.particleQueue = survivors;
-                    return;
-                }
-
-                const fresh = this.ambientParticles(now);
-                if (fresh.length === 0) {
-                    if (survivors.length !== this.particleQueue.length) this.particleQueue = survivors;
-                    return;
-                }
-
-                const merged = [...survivors, ...fresh];
-                this.particleQueue = merged.length > 60 ? merged.slice(-60) : merged;
-            },
-
-            ambientParticles(now) {
-                const tickSeconds = this._particleTickSeconds ?? 0.3;
-                const fresh = [];
-                for (const edge of this.graphEdges) {
-                    const rate = this.effectiveEdgeRate(edge);
-                    if (rate <= 0) continue;
-                    const expected = Math.min((rate / 60) * tickSeconds, 3);
-                    const whole = Math.floor(expected);
-                    const count = whole + (Math.random() < (expected - whole) ? 1 : 0);
-                    if (count === 0) continue;
-
-                    const duration = this.particleDuration(edge.status);
-                    for (let i = 0; i < count; i++) {
-                        fresh.push({
-                            id: `amb-${this.svgId(edge.id)}-${now}-${i}-${Math.random().toString(36).slice(2, 8)}`,
-                            edgeId: this.svgId(edge.id),
-                            status: edge.status,
-                            delay: '0s',
-                            duration: `${duration}s`,
-                            _expires: now + duration * 1000 + 250,
-                        });
-                    }
-                }
-                return fresh;
-            },
-
-            // Idle queues report rate=0 (or null), which would mean zero ambient
-            // particles and a graph that looks dead. Lift non-failure edges to a
-            // baseline heartbeat so the dashboard always shows live traffic.
-            // Failure edges (status critical, label failed/exception) stay tied
-            // to real rate so a calm graph doesn't imply failures are happening.
-            effectiveEdgeRate(edge) {
-                const rate = Number(edge.rate_per_minute ?? 0);
-                if (rate > 0) return rate;
-                if (edge.status === 'critical') return 0;
-                if (edge.label === 'failed' || edge.label === 'exception') return 0;
-                return 12;
-            },
-
             refreshAll() {
                 this.refreshing = true;
                 return Promise.all([
@@ -512,7 +474,6 @@
                         (max, event) => Math.max(max, Number(event.timestamp ?? 0)),
                         this.lastEventTimestamp
                     );
-                    this.ingestParticleEvents(fresh);
                 }).catch(() => {});
             },
 
@@ -556,35 +517,6 @@
             toggleLive()   { this.live = !this.live; },
 
             svgId(value) { return String(value).replace(/[^a-z0-9_-]+/gi, '-'); },
-
-            ingestParticleEvents(events) {
-                const now = Date.now();
-                const nowSeconds = now / 1000;
-
-                const bursts = events
-                    .filter(event => event.queue && event.result)
-                    .filter(event => Number(event.timestamp ?? 0) > 0 && nowSeconds - Number(event.timestamp) <= 60)
-                    .slice(0, 20)
-                    .flatMap((event, index) => {
-                        const edge = this.jobEventEdge(event);
-                        if (!edge) return [];
-                        const status = event.status ?? edge.status;
-                        const duration = this.particleDuration(status);
-                        const delaySeconds = (index % 8) * 0.1;
-                        return [{
-                            id: `evt-${this.svgId(edge.id)}-${now}-${index}-${Math.random().toString(36).slice(2, 8)}`,
-                            edgeId: this.svgId(edge.id),
-                            status,
-                            delay: `${delaySeconds}s`,
-                            duration: `${duration}s`,
-                            _expires: now + (delaySeconds + duration) * 1000 + 250,
-                        }];
-                    });
-
-                if (bursts.length === 0) return;
-                const merged = [...this.particleQueue, ...bursts];
-                this.particleQueue = merged.length > 60 ? merged.slice(-60) : merged;
-            },
 
             metricValue(value, suffix = '') {
                 if (value === null || value === undefined) return '—';
@@ -819,40 +751,6 @@
                 return { id: `${source}-${target}`, source, target, status, label, rate_per_minute: rate };
             },
 
-            jobEventEdge(event) {
-                const worker = this.graphNodes.find(n => n.type === 'worker');
-                const queue = this.graphNodes.find(n => n.type === 'queue' && n.label === event.queue);
-                const job = this.graphNodes.find(n => n.type === 'job' && n.queueId === queue?.id && (
-                    n.name === event.job || n.label === this.shortJobName(event.job)
-                ));
-                const completed = this.graphNodes.find(n => n.type === 'result' && n.label === 'completed');
-                const failed = this.graphNodes.find(n => n.type === 'result' && n.label === 'failed');
-
-                const target = event.result === 'completed' && job && completed
-                    ? [job.id, completed.id]
-                    : event.result === 'completed' && worker && completed
-                        ? [worker.id, completed.id]
-                        : event.result === 'failed' && job && failed
-                            ? [job.id, failed.id]
-                            : event.result === 'failed' && worker && failed
-                                ? [worker.id, failed.id]
-                                : event.result === 'workers' && job && worker
-                                    ? [job.id, worker.id]
-                                    : event.result === 'workers' && queue && worker
-                                        ? [queue.id, worker.id]
-                                        : event.result === 'queue' && queue && job
-                                            ? [queue.id, job.id]
-                                            : event.result === 'queue' && queue
-                                                ? ['producer-app', queue.id]
-                                                : null;
-
-                if (!target) return null;
-
-                return this.graphEdges.find(edge => edge.source === target[0] && edge.target === target[1])
-                    ?? (event.result === 'queue' && queue ? this.graphEdges.find(edge => edge.target === queue.id) : null)
-                    ?? null;
-            },
-
             distributedY(index, total, min, max) {
                 return total <= 1 ? (min + max) / 2 : min + ((max - min) / (total - 1)) * index;
             },
@@ -887,10 +785,6 @@
 
             nodeKind(node) {
                 return { producer: 'PRODUCER', queue: 'QUEUE', job: 'JOB', worker: 'WORKER', result: node.label?.toUpperCase?.() ?? 'RESULT' }[node.type] ?? node.type?.toUpperCase?.();
-            },
-
-            particleDuration(status) {
-                return { healthy: 1.7, warning: 2.6, critical: 3.2 }[status] ?? 2;
             },
 
             inspectorMetrics(node, queue, jobClass) {
