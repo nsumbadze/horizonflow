@@ -3,7 +3,9 @@
         props: {
             nodes: { type: Array, default: () => [] },
             edges: { type: Array, default: () => [] },
-            particles: { type: Array, default: () => [] },
+            eventSpawns: { type: Array, default: () => [] },
+            flowCounts: { type: Object, default: () => ({ dispatched: 0, reserved: 0, completed: 0, failed: 0 }) },
+            live: { type: Boolean, default: true },
             svgHeight: { type: Number, default: 620 },
             selectedId: { type: String, default: null },
             isDark: { type: Boolean, default: false },
@@ -20,7 +22,36 @@
                 isPanning: false,
                 nodeOffsets: {},
                 draggingNodeId: null,
+                activeParticles: [],
             };
+        },
+
+        watch: {
+            eventSpawns: {
+                handler() { this.processSpawnRequests(); },
+                immediate: false,
+            },
+            live(value) {
+                if (!value) this.activeParticles = [];
+            },
+        },
+
+        mounted() {
+            this._lastSpawnId = 0;
+            this._particlePaths = Object.create(null);
+            this._rafId = null;
+            this._visibilityHandler = () => {
+                if (document.hidden) this.stopAnimationLoop();
+                else this.startAnimationLoop();
+            };
+            document.addEventListener('visibilitychange', this._visibilityHandler);
+            this.startAnimationLoop();
+        },
+
+        beforeUnmount() {
+            this.stopAnimationLoop();
+            document.removeEventListener('visibilitychange', this._visibilityHandler);
+            this._particlePaths = Object.create(null);
         },
 
         computed: {
@@ -58,6 +89,137 @@
 
         methods: {
             svgId(value) { return String(value).replace(/[^a-z0-9_-]+/gi, '-'); },
+
+            startAnimationLoop() {
+                if (this._rafId !== null) return;
+                const tick = (now) => {
+                    this._rafId = requestAnimationFrame(tick);
+                    this.advanceParticles(now);
+                };
+                this._rafId = requestAnimationFrame(tick);
+            },
+
+            stopAnimationLoop() {
+                if (this._rafId !== null) {
+                    cancelAnimationFrame(this._rafId);
+                    this._rafId = null;
+                }
+            },
+
+            processSpawnRequests() {
+                if (!this.live) return;
+                const fresh = this.eventSpawns.filter(s => s._spawnId > this._lastSpawnId);
+                if (fresh.length === 0) return;
+                this._lastSpawnId = fresh[fresh.length - 1]._spawnId;
+
+                const baseTime = performance.now();
+                const stagger = 120;
+                for (let i = 0; i < fresh.length; i++) {
+                    const particle = this.buildParticle(fresh[i], baseTime + i * stagger);
+                    if (particle) this.activeParticles.push(particle);
+                }
+                if (this.activeParticles.length > 80) {
+                    const overflow = this.activeParticles.length - 80;
+                    this.activeParticles.splice(0, overflow);
+                }
+            },
+
+            buildParticle(event, startedAt) {
+                const edge = this.resolveEventEdge(event);
+                if (!edge) return null;
+                const edgeId = this.svgId(edge.id);
+                const path = this.$refs.flowSvg?.querySelector(`#lf-path-${edgeId}`);
+                if (!path) return null;
+                let totalLength;
+                try { totalLength = path.getTotalLength(); }
+                catch { return null; }
+                if (!totalLength || totalLength <= 0) return null;
+
+                const status = event.status ?? edge.status;
+                const id = `evt-${event._spawnId}`;
+                this._particlePaths[id] = { path, totalLength };
+                return {
+                    id,
+                    edgeId,
+                    status,
+                    startedAt,
+                    duration: this.eventParticleDuration(status) * 1000,
+                    cx: 0,
+                    cy: 0,
+                    opacity: 0,
+                };
+            },
+
+            eventParticleDuration(status) {
+                return { healthy: 1.5, warning: 2.2, critical: 2.8 }[status] ?? 1.8;
+            },
+
+            resolveEventEdge(event) {
+                const nodes = this.effectiveNodes;
+                const short = (name) => String(name ?? 'Queued job').split('\\').pop();
+
+                const queue = nodes.find(n => n.type === 'queue' && n.label === event.queue);
+                const job = nodes.find(n => n.type === 'job' && n.queueId === queue?.id && (
+                    n.name === event.job || n.label === short(event.job)
+                ));
+                const worker = nodes.find(n => n.type === 'worker');
+                const completed = nodes.find(n => n.type === 'result' && n.label === 'completed');
+                const failed = nodes.find(n => n.type === 'result' && n.label === 'failed');
+
+                const lookup = (s, t) => this.edges.find(e => e.source === s && e.target === t);
+
+                if (event.result === 'completed') {
+                    if (job && completed)  return lookup(job.id, completed.id);
+                    if (worker && completed) return lookup(worker.id, completed.id);
+                }
+                if (event.result === 'failed') {
+                    if (job && failed)  return lookup(job.id, failed.id);
+                    if (worker && failed) return lookup(worker.id, failed.id);
+                }
+                if (event.result === 'workers') {
+                    if (job && worker)   return lookup(job.id, worker.id);
+                    if (queue && worker) return lookup(queue.id, worker.id);
+                }
+                if (event.result === 'queue') {
+                    if (queue && job)    return lookup(queue.id, job.id);
+                    if (queue)           return lookup('producer-app', queue.id) ?? lookup('producer-scheduler', queue.id);
+                }
+                return null;
+            },
+
+            advanceParticles(now) {
+                if (this.activeParticles.length === 0) return;
+                let expired = false;
+                for (const p of this.activeParticles) {
+                    const elapsed = now - p.startedAt;
+                    if (elapsed < 0) { p.opacity = 0; continue; }
+                    const t = elapsed / p.duration;
+                    if (t >= 1) { p._expired = true; expired = true; continue; }
+
+                    const info = this._particlePaths[p.id];
+                    if (!info) { p._expired = true; expired = true; continue; }
+
+                    const point = info.path.getPointAtLength(info.totalLength * t);
+                    p.cx = point.x;
+                    p.cy = point.y;
+                    p.opacity = t < 0.08 ? t / 0.08
+                              : t > 0.84 ? Math.max(0, (1 - t) / 0.16)
+                              : 1;
+                }
+                if (expired) {
+                    this.activeParticles = this.activeParticles.filter(p => {
+                        if (p._expired) { delete this._particlePaths[p.id]; return false; }
+                        return true;
+                    });
+                }
+            },
+
+            formatCount(value) {
+                const n = Number(value ?? 0);
+                if (n >= 100000) return `${(n / 1000).toFixed(0)}k`;
+                if (n >= 10000) return `${(n / 1000).toFixed(1)}k`;
+                return n.toLocaleString();
+            },
 
             getSVGCoords(e) {
                 const svg = this.$refs.flowSvg;
@@ -386,20 +548,41 @@
                     </g>
 
                     <circle
-                        v-for="p in particles"
+                        v-for="p in activeParticles"
                         :key="p.id"
-                        opacity="0"
+                        :cx="p.cx"
+                        :cy="p.cy"
                         :r="p.status === 'critical' ? 2.8 : 2.2"
                         :fill="particleColor(p.status)"
                         :filter="particleFilter(p.status)"
-                    >
-                        <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.08;0.84;1" :dur="p.duration" :begin="p.delay" repeatCount="indefinite"/>
-                        <animateMotion :dur="p.duration" :begin="p.delay" repeatCount="indefinite" calcMode="linear">
-                            <mpath :href="'#lf-path-' + p.edgeId"></mpath>
-                        </animateMotion>
-                    </circle>
+                        :opacity="p.opacity"
+                    />
                 </g>
             </svg>
+        </div>
+
+        <div class="lf-flowstats" v-if="flowCounts">
+            <span class="lf-fs-label">flowed this session</span>
+            <span class="lf-fs-pill lf-fs-dispatched" :title="`${flowCounts.dispatched} jobs dispatched`">
+                <span class="lf-fs-dot"></span>{{ formatCount(flowCounts.dispatched) }}<em>dispatched</em>
+            </span>
+            <span class="lf-fs-pill lf-fs-reserved" :title="`${flowCounts.reserved} jobs reserved`">
+                <span class="lf-fs-dot"></span>{{ formatCount(flowCounts.reserved) }}<em>reserved</em>
+            </span>
+            <span class="lf-fs-pill lf-fs-completed" :title="`${flowCounts.completed} jobs completed`">
+                <span class="lf-fs-dot"></span>{{ formatCount(flowCounts.completed) }}<em>completed</em>
+            </span>
+            <span
+                class="lf-fs-pill lf-fs-failed"
+                :class="{ 'lf-fs-dim': flowCounts.failed === 0 }"
+                :title="`${flowCounts.failed} jobs failed`"
+            >
+                <span class="lf-fs-dot"></span>{{ formatCount(flowCounts.failed) }}<em>failed</em>
+            </span>
+            <span class="lf-fs-spacer"></span>
+            <span class="lf-fs-inflight" :class="{ 'lf-fs-quiet': activeParticles.length === 0 }">
+                {{ activeParticles.length }} in flight
+            </span>
         </div>
 
         <div class="lf-legend">

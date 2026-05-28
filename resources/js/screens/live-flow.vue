@@ -29,6 +29,8 @@
                 controllingHorizon: [],
                 lastEventTimestamp: 0,
                 queueJobDetails: {},
+                eventSpawns: [],
+                flowCounts: { dispatched: 0, reserved: 0, completed: 0, failed: 0 },
             };
         },
 
@@ -250,43 +252,6 @@
                 return generated;
             },
 
-            // Particles are derived directly from the graph edges with stable
-            // keys. Each healthy edge gets 1-3 looping dots whose duration
-                // tracks throughput (faster for busier edges, baseline for idle).
-            // Looping + stable keys means the same SVG <circle> stays mounted
-            // across summary polls, so SMIL keeps animating without restart.
-            particles() {
-                if (!this.live) return [];
-
-                const list = [];
-                for (const edge of this.graphEdges) {
-                    const rate = Number(edge.rate_per_minute ?? 0);
-                    const isFailureLane = edge.status === 'critical'
-                        || edge.label === 'failed'
-                        || edge.label === 'exception';
-
-                    // Failure lanes only show particles when there's real traffic
-                    // so a calm graph doesn't visually imply failures are flowing.
-                    if (isFailureLane && rate <= 0) continue;
-
-                    const effective = isFailureLane ? rate : Math.max(rate, 12);
-                    const count = Math.min(3, Math.max(1, Math.ceil(effective / 60)));
-                    const duration = Math.max(2.2, Math.min(7, 60 / Math.max(effective, 8)));
-                    const edgeId = this.svgId(edge.id);
-
-                    for (let i = 0; i < count; i++) {
-                        list.push({
-                            id: `loop-${edgeId}-${i}`,
-                            edgeId,
-                            status: edge.status,
-                            delay: `${(duration / count) * i}s`,
-                            duration: `${duration}s`,
-                        });
-                    }
-                }
-                return list;
-            },
-
             kpiMetrics() {
                 const windowed = this.summary.failed_in_window;
                 const failedValue = windowed !== null && windowed !== undefined ? windowed : this.summary.failed;
@@ -474,7 +439,41 @@
                         (max, event) => Math.max(max, Number(event.timestamp ?? 0)),
                         this.lastEventTimestamp
                     );
+
+                    // First poll returns historical events — skip them so the
+                    // graph doesn't burst with N stale particles on page load.
+                    // Subsequent polls are real-time deltas; each event maps to
+                    // one dot traveling its edge plus a flow-count bump.
+                    if (this._eventsBootstrapped) {
+                        this.dispatchEventSpawns(fresh);
+                    }
+                    this._eventsBootstrapped = true;
                 }).catch(() => {});
+            },
+
+            dispatchEventSpawns(events) {
+                const ordered = [...events].sort((a, b) =>
+                    Number(a.timestamp ?? 0) - Number(b.timestamp ?? 0)
+                );
+                const additions = ordered.map(event => {
+                    this._spawnSequence = (this._spawnSequence ?? 0) + 1;
+                    this.bumpFlowCount(event);
+                    return { ...event, _spawnId: this._spawnSequence };
+                });
+                if (additions.length === 0) return;
+                const next = [...this.eventSpawns, ...additions];
+                this.eventSpawns = next.length > 200 ? next.slice(-200) : next;
+            },
+
+            bumpFlowCount(event) {
+                const map = {
+                    completed: 'completed',
+                    failed: 'failed',
+                    workers: 'reserved',
+                    queue: 'dispatched',
+                };
+                const key = map[event.result];
+                if (key) this.flowCounts[key]++;
             },
 
             loadSupervisorControls() {
@@ -890,7 +889,9 @@
                 <FlowGraph
                     :nodes="graphNodes"
                     :edges="graphEdges"
-                    :particles="particles"
+                    :event-spawns="eventSpawns"
+                    :flow-counts="flowCounts"
+                    :live="live"
                     :svg-height="svgHeight"
                     :selected-id="selectedId"
                     :is-dark="isDark"
@@ -1246,6 +1247,60 @@
     .lf-svg-node:hover > rect:first-child { filter: brightness(1.08); }
     .lf-svg-grid line { stroke: var(--lf-grid); stroke-width: 1; }
     .lf-stage { fill: var(--lf-stage); font-size: 8px; letter-spacing: 1.8px; font-family: ui-monospace, Consolas, monospace; }
+
+    /* ── FLOW STATS STRIP ────────────────────────────────────────────────── */
+    .lf-flowstats {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 12px;
+        border-top: 1px solid var(--lf-border);
+        background: var(--lf-bg);
+        font-family: ui-monospace, Consolas, monospace;
+        font-size: 10px;
+        flex-wrap: wrap;
+    }
+    .lf-flowstats .lf-fs-label {
+        color: var(--lf-muted);
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        font-size: 9px;
+    }
+    .lf-flowstats .lf-fs-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        padding: 3px 8px 3px 6px;
+        border: 1px solid var(--lf-border);
+        border-radius: 11px;
+        background: var(--lf-hover);
+        color: var(--lf-text);
+        line-height: 1;
+        transition: opacity 0.12s ease;
+    }
+    .lf-flowstats .lf-fs-pill em {
+        font-style: normal;
+        color: var(--lf-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.8px;
+        font-size: 9px;
+        margin-left: 2px;
+    }
+    .lf-flowstats .lf-fs-dot {
+        width: 6px; height: 6px; border-radius: 50%;
+    }
+    .lf-flowstats .lf-fs-dispatched .lf-fs-dot { background: var(--lf-blue); }
+    .lf-flowstats .lf-fs-reserved   .lf-fs-dot { background: var(--lf-violet); }
+    .lf-flowstats .lf-fs-completed  .lf-fs-dot { background: var(--lf-green); }
+    .lf-flowstats .lf-fs-failed     .lf-fs-dot { background: var(--lf-red); }
+    .lf-flowstats .lf-fs-dim { opacity: 0.55; }
+    .lf-flowstats .lf-fs-spacer { flex: 1 1 auto; }
+    .lf-flowstats .lf-fs-inflight {
+        color: var(--lf-cyan);
+        font-weight: 600;
+        letter-spacing: 0.6px;
+    }
+    .lf-flowstats .lf-fs-inflight.lf-fs-quiet { color: var(--lf-muted); font-weight: 400; }
 
     /* ── LEGEND ──────────────────────────────────────────────────────────── */
     .lf-legend {
