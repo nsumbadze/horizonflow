@@ -45,6 +45,16 @@ class HorizonApplicationServiceProvider extends ServiceProvider
                 //
             ]);
         });
+
+        // Optional: restrict mutating endpoints (retry, pause/continue supervisors)
+        // to a subset of viewers. When undefined, anyone who passes viewHorizon
+        // may also mutate, preserving the upstream Horizon behavior.
+        //
+        // Gate::define('controlHorizon', function ($user) {
+        //     return in_array($user->email, [
+        //         //
+        //     ]);
+        // });
     }
 
     /**

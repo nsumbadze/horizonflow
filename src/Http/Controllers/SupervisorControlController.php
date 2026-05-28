@@ -3,9 +3,17 @@
 namespace Laravel\Horizon\Http\Controllers;
 
 use Illuminate\Contracts\Console\Kernel as ConsoleKernel;
+use Laravel\Horizon\Http\Middleware\AuthenticateControl;
 
 class SupervisorControlController extends Controller
 {
+    public function __construct()
+    {
+        parent::__construct();
+
+        $this->middleware(AuthenticateControl::class);
+    }
+
     /**
      * Pause all Horizon master supervisors for this application.
      *
