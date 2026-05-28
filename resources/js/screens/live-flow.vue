@@ -398,7 +398,7 @@
                 const tickSeconds = this._particleTickSeconds ?? 0.3;
                 const fresh = [];
                 for (const edge of this.graphEdges) {
-                    const rate = Number(edge.rate_per_minute ?? 0);
+                    const rate = this.effectiveEdgeRate(edge);
                     if (rate <= 0) continue;
                     const expected = Math.min((rate / 60) * tickSeconds, 3);
                     const whole = Math.floor(expected);
@@ -418,6 +418,19 @@
                     }
                 }
                 return fresh;
+            },
+
+            // Idle queues report rate=0 (or null), which would mean zero ambient
+            // particles and a graph that looks dead. Lift non-failure edges to a
+            // baseline heartbeat so the dashboard always shows live traffic.
+            // Failure edges (status critical, label failed/exception) stay tied
+            // to real rate so a calm graph doesn't imply failures are happening.
+            effectiveEdgeRate(edge) {
+                const rate = Number(edge.rate_per_minute ?? 0);
+                if (rate > 0) return rate;
+                if (edge.status === 'critical') return 0;
+                if (edge.label === 'failed' || edge.label === 'exception') return 0;
+                return 12;
             },
 
             refreshAll() {
