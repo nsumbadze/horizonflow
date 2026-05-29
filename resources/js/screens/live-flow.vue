@@ -141,7 +141,7 @@
                     return {
                         id: node?.id ?? this.queueNodeId(queue),
                         type: 'queue', label: queue.name, sub: this.queueSubLabel(queue),
-                        status: node?.status ?? this.queueStatus(queue),
+                        status: this.queueStatus(queue),
                         x: 205, y: this.distributedY(i, this.filteredQueues.length, qYMin, qYMax),
                         width: 128, height: qH,
                         metrics: {
@@ -765,19 +765,45 @@
             },
 
             queueStatus(queue) {
-                if ((queue.failed ?? 0) > 0) return 'critical';
+                if (this.queueFailedInWindow(queue) > 0) return 'critical';
                 if (queue.wait_seconds >= 30 || queue.pending >= 500) return 'critical';
                 if (queue.wait_seconds >= 10 || queue.pending >= 100 || queue.delayed > 0) return 'warning';
                 return 'healthy';
             },
 
             queueSubLabel(queue) {
-                if ((queue.failed ?? 0) > 0) return `${queue.connection} · ${this.formatNumber(queue.failed)} failed`;
+                const failed = this.queueFailedInWindow(queue);
+                if (failed > 0) return `${queue.connection} · ${this.formatNumber(failed)} failed`;
                 return `${queue.driver} · ${queue.connection} · ${this.formatNumber(queue.pending)} pending`;
             },
 
+            // Treat failures as 'in-window' when the queue's most recent failure
+            // sits inside the selected time range. Without a timestamp, the only
+            // signal we have is the all-time `failed` count, so we trust it.
+            queueFailedInWindow(queue) {
+                const failed = Number(queue?.failed ?? 0);
+                if (failed === 0) return 0;
+
+                const lastFailedAt = this.parseTimestamp(queue.last_failed_at);
+                if (lastFailedAt === null) return failed;
+
+                const cutoff = Math.floor(Date.now() / 1000) - this.timeRangeSeconds();
+                return lastFailedAt >= cutoff ? failed : 0;
+            },
+
+            parseTimestamp(value) {
+                if (value === null || value === undefined || value === '') return null;
+                if (typeof value === 'number') return value;
+                const parsed = Date.parse(String(value));
+                return Number.isFinite(parsed) ? Math.floor(parsed / 1000) : null;
+            },
+
             resultSubLabel(node) {
-                if (node.label === 'failed')  return `${this.formatNumber(this.summary.failed)} failed`;
+                if (node.label === 'failed') {
+                    const windowed = this.summary.failed_in_window;
+                    const value = (windowed !== null && windowed !== undefined) ? windowed : this.summary.failed;
+                    return `${this.formatNumber(value)} failed`;
+                }
                 if (node.label === 'delayed') return `${this.formatNumber(this.summary.delayed)} delayed`;
                 return `${this.formatNumber(this.summary.completed)} completed`;
             },
@@ -798,25 +824,33 @@
                     ['attempts',      this.formatNumber(jobClass.attempts ?? 0)],
                     ['latest error',  jobClass.latest_error ?? 'none'],
                 ];
-                if (queue) return [
-                    ['source',         queue.source ?? queue.driver],
-                    ['connection',     queue.connection],
-                    ['storage',        queue.storage_connection ?? '—'],
-                    ['driver',         queue.driver],
-                    ['pending',        this.formatNumber(queue.pending)],
-                    ['delayed',        this.formatNumber(queue.delayed)],
-                    ['oldest pending', this.formatDuration(queue.oldest_pending_seconds ?? queue.wait_seconds)],
-                    ['wait',           this.metricValue(queue.wait_seconds, 's')],
-                    ['processes',      this.formatNumber(queue.processes)],
-                    ['current rate',   this.formatRate(queue.current_throughput_per_minute)],
-                    ['recent activity', this.formatRate(queue.recent_activity_per_minute)],
-                    ['last measured',  this.formatRate(queue.throughput_per_minute)],
-                    ['drain ETA',      this.formatDuration(queue.estimated_drain_seconds)],
-                    ['attempts',       this.formatNumber(queue.attempts ?? 0)],
-                    ['failed',         this.formatNumber(queue.failed ?? 0)],
-                    ['failure rate',   this.formatPercent(queue.failure_rate)],
-                    ['latest error',   queue.latest_error ?? 'none'],
-                ];
+                if (queue) {
+                    const failedInWindow = this.queueFailedInWindow(queue);
+                    const allTimeFailed = Number(queue.failed ?? 0);
+                    const windowLabel = this.timeRange.replace(/^Last /i, '').toLowerCase();
+                    const failedDisplay = failedInWindow === allTimeFailed
+                        ? this.formatNumber(allTimeFailed)
+                        : `${this.formatNumber(failedInWindow)} in ${windowLabel} · ${this.formatNumber(allTimeFailed)} all-time`;
+                    return [
+                        ['source',         queue.source ?? queue.driver],
+                        ['connection',     queue.connection],
+                        ['storage',        queue.storage_connection ?? '—'],
+                        ['driver',         queue.driver],
+                        ['pending',        this.formatNumber(queue.pending)],
+                        ['delayed',        this.formatNumber(queue.delayed)],
+                        ['oldest pending', this.formatDuration(queue.oldest_pending_seconds ?? queue.wait_seconds)],
+                        ['wait',           this.metricValue(queue.wait_seconds, 's')],
+                        ['processes',      this.formatNumber(queue.processes)],
+                        ['current rate',   this.formatRate(queue.current_throughput_per_minute)],
+                        ['recent activity', this.formatRate(queue.recent_activity_per_minute)],
+                        ['last measured',  this.formatRate(queue.throughput_per_minute)],
+                        ['drain ETA',      this.formatDuration(queue.estimated_drain_seconds)],
+                        ['attempts',       this.formatNumber(queue.attempts ?? 0)],
+                        ['failed',         failedDisplay],
+                        ['failure rate',   this.formatPercent(queue.failure_rate)],
+                        ['latest error',   failedInWindow > 0 ? (queue.latest_error ?? 'none') : 'none in window'],
+                    ];
+                }
                 return Object.entries(node.metrics ?? {}).map(([k, v]) => [k.replace(/_/g, ' '), this.formatNumber(v)]);
             },
 
@@ -832,7 +866,17 @@
                     }
                     return { type: 'ok', title: 'Status', text: `${this.shortJobName(jobClass.name)} is idle.` };
                 }
-                if (node.status === 'critical') return { type: 'critical', title: 'Immediate Action', text: queue ? (queue.latest_error ? `${queue.name} has failed jobs. Latest error: ${queue.latest_error}` : `Backlog is critical on ${queue.name}. Scale workers or reduce dispatch rate.`) : 'Failures above normal. Inspect failed job payloads.' };
+                if (node.status === 'critical') {
+                    const failedInWindow = queue ? this.queueFailedInWindow(queue) : 0;
+                    if (queue && failedInWindow > 0) {
+                        return { type: 'critical', title: 'Immediate Action', text: queue.latest_error
+                            ? `${queue.name} has ${this.formatNumber(failedInWindow)} failed jobs in window. Latest error: ${queue.latest_error}`
+                            : `${queue.name} has ${this.formatNumber(failedInWindow)} failed jobs in window. Inspect the failures.` };
+                    }
+                    return { type: 'critical', title: 'Immediate Action', text: queue
+                        ? `Backlog is critical on ${queue.name}. Scale workers or reduce dispatch rate.`
+                        : 'Backpressure above normal. Inspect the workload.' };
+                }
                 if (node.status === 'warning')  return { type: 'warn', title: 'Suggested Action', text: queue ? `${queue.name} is showing backpressure. Consider increasing process capacity.` : 'This node is under pressure. Monitor incoming rates.' };
                 return { type: 'ok', title: 'Status', text: 'Node is operating normally. No action required.' };
             },
