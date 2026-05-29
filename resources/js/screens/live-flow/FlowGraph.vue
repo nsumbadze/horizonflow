@@ -562,25 +562,34 @@
         </div>
 
         <div class="lf-flowstats" v-if="flowCounts">
-            <span class="lf-fs-label">flowed this session</span>
+            <span class="lf-fs-heading">Flowed this session</span>
             <span class="lf-fs-pill lf-fs-dispatched" :title="`${flowCounts.dispatched} jobs dispatched`">
-                <span class="lf-fs-dot"></span>{{ formatCount(flowCounts.dispatched) }}<em>dispatched</em>
+                <span class="lf-fs-dot"></span>
+                <span class="lf-fs-num">{{ formatCount(flowCounts.dispatched) }}</span>
+                <span class="lf-fs-lbl">dispatched</span>
             </span>
             <span class="lf-fs-pill lf-fs-reserved" :title="`${flowCounts.reserved} jobs reserved`">
-                <span class="lf-fs-dot"></span>{{ formatCount(flowCounts.reserved) }}<em>reserved</em>
+                <span class="lf-fs-dot"></span>
+                <span class="lf-fs-num">{{ formatCount(flowCounts.reserved) }}</span>
+                <span class="lf-fs-lbl">reserved</span>
             </span>
             <span class="lf-fs-pill lf-fs-completed" :title="`${flowCounts.completed} jobs completed`">
-                <span class="lf-fs-dot"></span>{{ formatCount(flowCounts.completed) }}<em>completed</em>
+                <span class="lf-fs-dot"></span>
+                <span class="lf-fs-num">{{ formatCount(flowCounts.completed) }}</span>
+                <span class="lf-fs-lbl">completed</span>
             </span>
             <span
                 class="lf-fs-pill lf-fs-failed"
                 :class="{ 'lf-fs-dim': flowCounts.failed === 0 }"
                 :title="`${flowCounts.failed} jobs failed`"
             >
-                <span class="lf-fs-dot"></span>{{ formatCount(flowCounts.failed) }}<em>failed</em>
+                <span class="lf-fs-dot"></span>
+                <span class="lf-fs-num">{{ formatCount(flowCounts.failed) }}</span>
+                <span class="lf-fs-lbl">failed</span>
             </span>
             <span class="lf-fs-spacer"></span>
             <span class="lf-fs-inflight" :class="{ 'lf-fs-quiet': activeParticles.length === 0 }">
+                <span class="lf-fs-inflight-dot" v-if="activeParticles.length"></span>
                 {{ activeParticles.length }} in flight
             </span>
         </div>

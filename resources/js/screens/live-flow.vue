@@ -49,6 +49,8 @@
                 this.lastEventTimestamp = Math.max(0, Math.floor(Date.now() / 1000) - this.timeRangeSeconds());
                 this.mergeFlow({ events: [] });
                 this.refreshSummary();
+                this.refreshGraph();
+                this.refreshQueues();
             },
         },
 
@@ -398,7 +400,9 @@
             },
 
             refreshGraph() {
-                return this.$http.get(Horizon.basePath + '/api/flow/graph')
+                return this.$http.get(Horizon.basePath + '/api/flow/graph', {
+                    params: { window: this.timeRangeSeconds() },
+                })
                     .then(response => this.mergeFlow({
                         nodes: response.data.nodes ?? [],
                         edges: response.data.edges ?? [],
@@ -407,7 +411,9 @@
             },
 
             refreshQueues() {
-                return this.$http.get(Horizon.basePath + '/api/flow/queues')
+                return this.$http.get(Horizon.basePath + '/api/flow/queues', {
+                    params: { window: this.timeRangeSeconds() },
+                })
                     .then(response => {
                         this.mergeFlow({ queues: response.data.queues ?? [] });
                         const selected = this.selectedQueue();
@@ -777,14 +783,18 @@
                 return `${queue.driver} · ${queue.connection} · ${this.formatNumber(queue.pending)} pending`;
             },
 
-            // Treat failures as 'in-window' when the queue's most recent failure
-            // sits inside the selected time range. Without a timestamp, the only
-            // signal we have is the all-time `failed` count, so we trust it.
+            // Prefer the server's windowed count — the repository computes it
+            // by filtering the failed_jobs index by failed_at against the
+            // ?window= parameter forwarded from the summary call.
             queueFailedInWindow(queue) {
+                if (queue?.failed_in_window !== undefined && queue?.failed_in_window !== null) {
+                    return Number(queue.failed_in_window);
+                }
+
                 const failed = Number(queue?.failed ?? 0);
                 if (failed === 0) return 0;
 
-                const lastFailedAt = this.parseTimestamp(queue.last_failed_at);
+                const lastFailedAt = this.parseTimestamp(queue?.last_failed_at);
                 if (lastFailedAt === null) return failed;
 
                 const cutoff = Math.floor(Date.now() / 1000) - this.timeRangeSeconds();
@@ -1296,55 +1306,79 @@
     .lf-flowstats {
         display: flex;
         align-items: center;
-        gap: 8px;
-        padding: 6px 12px;
+        gap: 10px;
+        padding: 9px 14px;
         border-top: 1px solid var(--lf-border);
-        background: var(--lf-bg);
+        background: var(--lf-hover);
         font-family: ui-monospace, Consolas, monospace;
-        font-size: 10px;
         flex-wrap: wrap;
     }
-    .lf-flowstats .lf-fs-label {
+    .lf-flowstats .lf-fs-heading {
         color: var(--lf-muted);
         text-transform: uppercase;
-        letter-spacing: 1px;
+        letter-spacing: 1.4px;
         font-size: 9px;
+        font-weight: 600;
+        margin-right: 4px;
     }
     .lf-flowstats .lf-fs-pill {
         display: inline-flex;
         align-items: center;
-        gap: 5px;
-        padding: 3px 8px 3px 6px;
+        gap: 7px;
+        padding: 5px 11px 5px 9px;
         border: 1px solid var(--lf-border);
-        border-radius: 11px;
-        background: var(--lf-hover);
+        border-radius: 999px;
+        background: var(--lf-bg);
         color: var(--lf-text);
         line-height: 1;
-        transition: opacity 0.12s ease;
+        font-size: 11px;
+        transition: opacity 0.12s ease, transform 0.12s ease;
     }
-    .lf-flowstats .lf-fs-pill em {
-        font-style: normal;
+    .lf-flowstats .lf-fs-num {
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+    }
+    .lf-flowstats .lf-fs-lbl {
         color: var(--lf-muted);
         text-transform: uppercase;
-        letter-spacing: 0.8px;
+        letter-spacing: 0.9px;
         font-size: 9px;
-        margin-left: 2px;
+        font-weight: 500;
     }
     .lf-flowstats .lf-fs-dot {
-        width: 6px; height: 6px; border-radius: 50%;
+        width: 7px; height: 7px; border-radius: 50%;
+        box-shadow: 0 0 0 2px rgba(255,255,255,0.04);
     }
+    .lf-flowstats .lf-fs-dispatched { border-color: rgba(96,165,250,0.35); }
     .lf-flowstats .lf-fs-dispatched .lf-fs-dot { background: var(--lf-blue); }
+    .lf-flowstats .lf-fs-reserved   { border-color: rgba(167,139,250,0.35); }
     .lf-flowstats .lf-fs-reserved   .lf-fs-dot { background: var(--lf-violet); }
+    .lf-flowstats .lf-fs-completed  { border-color: rgba(74,222,128,0.4); }
     .lf-flowstats .lf-fs-completed  .lf-fs-dot { background: var(--lf-green); }
+    .lf-flowstats .lf-fs-failed     { border-color: rgba(248,113,113,0.4); }
     .lf-flowstats .lf-fs-failed     .lf-fs-dot { background: var(--lf-red); }
-    .lf-flowstats .lf-fs-dim { opacity: 0.55; }
+    .lf-flowstats .lf-fs-dim { opacity: 0.5; }
     .lf-flowstats .lf-fs-spacer { flex: 1 1 auto; }
     .lf-flowstats .lf-fs-inflight {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
         color: var(--lf-cyan);
         font-weight: 600;
         letter-spacing: 0.6px;
+        font-size: 10.5px;
+        text-transform: uppercase;
     }
-    .lf-flowstats .lf-fs-inflight.lf-fs-quiet { color: var(--lf-muted); font-weight: 400; }
+    .lf-flowstats .lf-fs-inflight-dot {
+        width: 7px; height: 7px; border-radius: 50%;
+        background: var(--lf-cyan);
+        animation: lf-fs-pulse 1.2s ease-in-out infinite;
+    }
+    .lf-flowstats .lf-fs-inflight.lf-fs-quiet { color: var(--lf-muted); font-weight: 500; }
+    @keyframes lf-fs-pulse {
+        0%, 100% { opacity: 1; transform: scale(1); }
+        50%      { opacity: 0.4; transform: scale(0.85); }
+    }
 
     /* ── LEGEND ──────────────────────────────────────────────────────────── */
     .lf-legend {
