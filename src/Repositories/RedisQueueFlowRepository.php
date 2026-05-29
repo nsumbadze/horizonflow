@@ -180,7 +180,7 @@ class RedisQueueFlowRepository implements QueueFlowRepository
                 $this->queueId($queue['name']),
                 'queue',
                 $queue['name'],
-                $this->status((int) $queue['wait'], (int) $queue['length'], (int) $queue['failed'], (int) $queue['delayed']),
+                $this->status((int) $queue['wait'], (int) $queue['length'], (int) ($queue['failed_in_window'] ?? $queue['failed']), (int) $queue['delayed']),
                 [
                     'pending' => (int) $queue['length'],
                     'wait' => (int) $queue['wait'],
@@ -270,7 +270,13 @@ class RedisQueueFlowRepository implements QueueFlowRepository
 
     protected function windowSeconds(): int
     {
-        return min(86400, max(60, (int) request()->query('window', 900)));
+        try {
+            $value = (int) request()->query('window', 900);
+        } catch (Throwable) {
+            $value = 900;
+        }
+
+        return min(86400, max(60, $value));
     }
 
     /**
@@ -348,6 +354,9 @@ class RedisQueueFlowRepository implements QueueFlowRepository
             'completed' => (int) $queue['completed'],
             'delayed' => (int) $queue['delayed'],
             'failed' => (int) $queue['failed'],
+            'failed_in_window' => (int) ($queue['failed_in_window'] ?? 0),
+            'last_failed_at' => $queue['last_failed_at'] ?? null,
+            'window_seconds' => $this->windowSeconds(),
             'failure_rate' => $this->failureRate((int) $queue['failed'], (int) $queue['completed']),
             'latest_error' => $queue['latest_error'],
             'jobs' => array_values($queue['jobs']),
@@ -598,7 +607,26 @@ class RedisQueueFlowRepository implements QueueFlowRepository
                             $observations[$name]['attempts'],
                             $this->jobAttempts($job)
                         );
-                        $observations[$name]['latest_error'] ??= $this->jobExceptionSummary($job);
+
+                        $failedAt = (int) ($job->failed_at ?? $this->jobActivityTimestamp($job) ?? 0);
+                        $observations[$name]['last_failed_at'] = max(
+                            (int) $observations[$name]['last_failed_at'],
+                            $failedAt
+                        );
+
+                        $windowStart = Carbon::now()->timestamp - $this->windowSeconds();
+                        if ($failedAt > 0 && $failedAt >= $windowStart) {
+                            $observations[$name]['failed_in_window']++;
+                            // Only record the latest error if it's within the
+                            // active window — the inspector shouldn't surface
+                            // a stale exception from days ago.
+                            $observations[$name]['latest_error'] = $this->jobExceptionSummary($job)
+                                ?? $observations[$name]['latest_error'];
+                        } elseif ($observations[$name]['latest_error'] === null && $failedAt === 0) {
+                            // No timestamp available — fall back so we still
+                            // show something rather than nothing.
+                            $observations[$name]['latest_error'] = $this->jobExceptionSummary($job);
+                        }
 
                         if ($this->isRecentJobActivity($job)) {
                             $observations[$name]['recent_activity']++;
@@ -638,6 +666,8 @@ class RedisQueueFlowRepository implements QueueFlowRepository
             'recent_activity' => 0,
             'completed' => (int) ($queue['completed'] ?? 0),
             'failed' => (int) ($queue['failed'] ?? 0),
+            'failed_in_window' => (int) ($queue['failed_in_window'] ?? 0),
+            'last_failed_at' => $queue['last_failed_at'] ?? null,
             'attempts' => (int) ($queue['attempts'] ?? 0),
             'latest_error' => $queue['latest_error'] ?? null,
             'jobs' => $queue['jobs'] ?? [],
@@ -683,6 +713,8 @@ class RedisQueueFlowRepository implements QueueFlowRepository
             'pending' => 0,
             'wait' => 0,
             'failed' => 0,
+            'failed_in_window' => 0,
+            'last_failed_at' => null,
             'completed' => 0,
             'attempts' => 0,
             'recent_activity' => 0,

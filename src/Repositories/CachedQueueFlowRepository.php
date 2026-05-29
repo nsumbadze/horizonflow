@@ -25,6 +25,9 @@ class CachedQueueFlowRepository implements QueueFlowRepository
     /**
      * Get queue flow data, reusing a short-lived cached payload when configured.
      *
+     * The cache key is partitioned by the request `window` parameter so a user
+     * toggling between Last 5m and Last 1h doesn't see stale windowed counts.
+     *
      * @return array<string, mixed>
      */
     public function get(): array
@@ -35,7 +38,13 @@ class CachedQueueFlowRepository implements QueueFlowRepository
             return $this->inner->get();
         }
 
-        return $this->cache->remember(self::CACHE_KEY, $ttl, fn (): array => $this->inner->get());
+        $window = (int) request()->query('window', 900);
+
+        return $this->cache->remember(
+            self::CACHE_KEY.':'.$window,
+            $ttl,
+            fn (): array => $this->inner->get()
+        );
     }
 
     protected function payloadTtl(): int
