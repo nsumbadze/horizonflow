@@ -65,6 +65,8 @@ class RedisQueueFlowRepository implements QueueFlowRepository
         $queues = $this->queues();
         $processes = $queues->sum('processes');
         $failed = $this->jobs->countFailed();
+        $window = $this->windowSeconds();
+        $completedInWindow = $this->completedInWindow($window);
 
         return [
             'source' => 'redis',
@@ -74,10 +76,10 @@ class RedisQueueFlowRepository implements QueueFlowRepository
                 'pending' => $queues->sum('length'),
                 'processing' => $processes,
                 'completed' => $this->jobs->countCompleted(),
-                'completed_in_window' => $queues->sum('completed_in_window'),
+                'completed_in_window' => $completedInWindow ?? $queues->sum('completed_in_window'),
                 'failed' => $failed,
-                'failed_in_window' => $this->failedInWindow($this->windowSeconds()),
-                'window_seconds' => $this->windowSeconds(),
+                'failed_in_window' => $this->failedInWindow($window),
+                'window_seconds' => $window,
                 'delayed' => null,
                 'throughput_per_minute' => $this->metrics->jobsProcessedPerMinute(),
                 'current_throughput_per_minute' => $queues->sum('current_throughput'),
@@ -304,6 +306,21 @@ class RedisQueueFlowRepository implements QueueFlowRepository
      */
     protected function failedInWindow(int $window): ?int
     {
+        return $this->zcountWindow('failed_jobs', $window);
+    }
+
+    /**
+     * Count completed jobs whose insertion time falls within the request window.
+     * The `completed_jobs` index stores entries with the same negative-microtime
+     * score Horizon uses for failed jobs, so the range math is identical.
+     */
+    protected function completedInWindow(int $window): ?int
+    {
+        return $this->zcountWindow('completed_jobs', $window);
+    }
+
+    protected function zcountWindow(string $set, int $window): ?int
+    {
         try {
             $connection = $this->redisConnection();
 
@@ -313,7 +330,7 @@ class RedisQueueFlowRepository implements QueueFlowRepository
 
             $now = Carbon::now()->timestamp;
 
-            return (int) $connection->zcount('failed_jobs', -$now, -($now - $window));
+            return (int) $connection->zcount($set, -$now, -($now - $window));
         } catch (Throwable) {
             return null;
         }
