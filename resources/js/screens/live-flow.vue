@@ -340,11 +340,14 @@
 
             timeRangeSeconds() {
                 return {
-                    'Last 5m': 300,
-                    'Last 15m': 900,
-                    'Last 1h': 3600,
-                    'Last 6h': 21600,
-                    'Last 24h': 86400,
+                    'Last 5m':   300,
+                    'Last 15m':  900,
+                    'Last 1h':   3600,
+                    'Last 6h':   21600,
+                    'Last 24h':  86400,
+                    'Last 3d':   259200,
+                    'Last 7d':   604800,
+                    'Last 30d':  2592000,
                 }[this.timeRange] ?? 900;
             },
 
@@ -815,7 +818,11 @@
                     return `${this.formatNumber(value)} failed`;
                 }
                 if (node.label === 'delayed') return `${this.formatNumber(this.summary.delayed)} delayed`;
-                return `${this.formatNumber(this.summary.completed)} completed`;
+                const completedWindowed = this.summary.completed_in_window;
+                const completedValue = (completedWindowed !== null && completedWindowed !== undefined)
+                    ? completedWindowed
+                    : this.summary.completed;
+                return `${this.formatNumber(completedValue)} completed`;
             },
 
             nodeKind(node) {

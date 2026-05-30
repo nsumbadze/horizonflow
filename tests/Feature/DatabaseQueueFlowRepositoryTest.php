@@ -98,9 +98,9 @@ class DatabaseQueueFlowRepositoryTest extends TestCase
         $payload = (new DatabaseQueueFlowRepository())->get();
         $this->assertSame(60, $payload['summary']['window_seconds']);
 
-        request()->merge(['window' => 999999]);
+        request()->merge(['window' => 9999999]);
         $payload = (new DatabaseQueueFlowRepository())->get();
-        $this->assertSame(86400, $payload['summary']['window_seconds']);
+        $this->assertSame(2592000, $payload['summary']['window_seconds']);
     }
 
     protected function seedPendingJob(string $queue = 'default'): void

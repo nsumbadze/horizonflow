@@ -36,8 +36,20 @@
         <div class="lf-toolbar-gap"></div>
         <input v-model="filterModel" type="text" class="lf-input" placeholder="filter queues…">
         <select v-model="timeRangeModel" class="lf-select" @change="$emit('refresh')">
-            <option>Last 5m</option><option>Last 15m</option>
-            <option>Last 1h</option><option>Last 6h</option><option>Last 24h</option>
+            <optgroup label="Minutes">
+                <option>Last 5m</option>
+                <option>Last 15m</option>
+            </optgroup>
+            <optgroup label="Hours">
+                <option>Last 1h</option>
+                <option>Last 6h</option>
+                <option>Last 24h</option>
+            </optgroup>
+            <optgroup label="Days">
+                <option>Last 3d</option>
+                <option>Last 7d</option>
+                <option>Last 30d</option>
+            </optgroup>
         </select>
         <button class="lf-btn" type="button" @click="$emit('refresh')">
             <svg :class="{ 'lf-spin': refreshing }" width="11" height="11" viewBox="0 0 12 12" fill="none">

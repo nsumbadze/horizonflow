@@ -74,6 +74,7 @@ class RedisQueueFlowRepository implements QueueFlowRepository
                 'pending' => $queues->sum('length'),
                 'processing' => $processes,
                 'completed' => $this->jobs->countCompleted(),
+                'completed_in_window' => $queues->sum('completed_in_window'),
                 'failed' => $failed,
                 'failed_in_window' => $this->failedInWindow($this->windowSeconds()),
                 'window_seconds' => $this->windowSeconds(),
@@ -268,6 +269,11 @@ class RedisQueueFlowRepository implements QueueFlowRepository
         return $timestamp > 0 && Carbon::now()->timestamp - $timestamp <= $this->windowSeconds();
     }
 
+    /**
+     * The dashboard offers ranges up to 30 days. Anything beyond is clamped
+     * because Horizon's completed-job buffer typically rolls over far sooner
+     * than that and the counts would be misleading.
+     */
     protected function windowSeconds(): int
     {
         try {
@@ -276,7 +282,7 @@ class RedisQueueFlowRepository implements QueueFlowRepository
             $value = 900;
         }
 
-        return min(86400, max(60, $value));
+        return min(2592000, max(60, $value));
     }
 
     /**
@@ -352,6 +358,7 @@ class RedisQueueFlowRepository implements QueueFlowRepository
             'estimated_drain_seconds' => $this->estimatedDrainSeconds((int) $queue['length'], (int) $queue['current_throughput']),
             'attempts' => (int) $queue['attempts'],
             'completed' => (int) $queue['completed'],
+            'completed_in_window' => (int) ($queue['completed_in_window'] ?? 0),
             'delayed' => (int) $queue['delayed'],
             'failed' => (int) $queue['failed'],
             'failed_in_window' => (int) ($queue['failed_in_window'] ?? 0),
@@ -596,6 +603,12 @@ class RedisQueueFlowRepository implements QueueFlowRepository
                     if ($status === 'completed') {
                         $observations[$name]['completed']++;
 
+                        $completedAt = (int) ($job->completed_at ?? $this->jobActivityTimestamp($job) ?? 0);
+                        $windowStart = Carbon::now()->timestamp - $this->windowSeconds();
+                        if ($completedAt > 0 && $completedAt >= $windowStart) {
+                            $observations[$name]['completed_in_window']++;
+                        }
+
                         if ($this->isRecentJobActivity($job)) {
                             $observations[$name]['recent_activity']++;
                         }
@@ -665,6 +678,7 @@ class RedisQueueFlowRepository implements QueueFlowRepository
             'current_throughput' => $this->currentThroughput($processes, (int) ($queue['reserved'] ?? 0), $throughput),
             'recent_activity' => 0,
             'completed' => (int) ($queue['completed'] ?? 0),
+            'completed_in_window' => (int) ($queue['completed_in_window'] ?? 0),
             'failed' => (int) ($queue['failed'] ?? 0),
             'failed_in_window' => (int) ($queue['failed_in_window'] ?? 0),
             'last_failed_at' => $queue['last_failed_at'] ?? null,
@@ -716,6 +730,7 @@ class RedisQueueFlowRepository implements QueueFlowRepository
             'failed_in_window' => 0,
             'last_failed_at' => null,
             'completed' => 0,
+            'completed_in_window' => 0,
             'attempts' => 0,
             'recent_activity' => 0,
             'latest_error' => null,

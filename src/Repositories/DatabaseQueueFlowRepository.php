@@ -295,7 +295,7 @@ class DatabaseQueueFlowRepository implements QueueFlowRepository
 
     protected function windowSeconds(): int
     {
-        return min(86400, max(60, (int) request()->query('window', 900)));
+        return min(2592000, max(60, (int) request()->query('window', 900)));
     }
 
     /**
