@@ -33,7 +33,7 @@ return [
 
         'cache' => [
             'queue_keys_ttl' => (int) env('HORIZONXBRAIN_FLOW_QUEUE_KEYS_TTL', 10),
-            'payload_ttl' => (int) env('HORIZONXBRAIN_FLOW_PAYLOAD_TTL', 1),
+            'payload_ttl' => (int) env('HORIZONXBRAIN_FLOW_PAYLOAD_TTL', 3),
         ],
     ],
 ];
