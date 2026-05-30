@@ -132,7 +132,19 @@ class RedisQueueFlowRepository implements QueueFlowRepository
             $queue['length'] = max((int) $queue['length'], $observation['pending']);
             $queue['wait'] = max((int) $queue['wait'], $observation['wait']);
             $queue['failed'] = max((int) $queue['failed'], $observation['failed']);
+            $queue['failed_in_window'] = max(
+                (int) ($queue['failed_in_window'] ?? 0),
+                (int) ($observation['failed_in_window'] ?? 0)
+            );
+            $queue['last_failed_at'] = max(
+                (int) ($queue['last_failed_at'] ?? 0),
+                (int) ($observation['last_failed_at'] ?? 0)
+            ) ?: null;
             $queue['completed'] = max((int) $queue['completed'], $observation['completed']);
+            $queue['completed_in_window'] = max(
+                (int) ($queue['completed_in_window'] ?? 0),
+                (int) ($observation['completed_in_window'] ?? 0)
+            );
             $queue['attempts'] = max((int) $queue['attempts'], $observation['attempts']);
             $queue['recent_activity'] = max((int) $queue['recent_activity'], $observation['recent_activity']);
             $queue['latest_error'] ??= $observation['latest_error'];
@@ -710,7 +722,10 @@ class RedisQueueFlowRepository implements QueueFlowRepository
             'current_throughput' => 0,
             'recent_activity' => 0,
             'completed' => 0,
+            'completed_in_window' => 0,
             'failed' => 0,
+            'failed_in_window' => 0,
+            'last_failed_at' => null,
             'attempts' => 0,
             'latest_error' => null,
             'jobs' => [],
