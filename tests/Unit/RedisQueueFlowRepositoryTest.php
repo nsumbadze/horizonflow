@@ -334,6 +334,22 @@ class RedisQueueFlowRepositoryTest extends UnitTest
         }
     }
 
+    public function test_completed_in_window_estimates_from_throughput_when_zset_is_trimmed(): void
+    {
+        $repository = $this->repository([], collect());
+
+        $estimate = $repository->callCompletedInWindow(window: 900, throughputPerMinute: 4_888, observed: 0);
+
+        $this->assertSame(73_320, $estimate);
+    }
+
+    public function test_completed_in_window_prefers_largest_signal(): void
+    {
+        $repository = $this->repository([], collect());
+
+        $this->assertSame(120, $repository->callCompletedInWindow(window: 60, throughputPerMinute: 30, observed: 120));
+    }
+
     public function test_it_exposes_recent_jobs_and_job_classes_for_queue_inspection(): void
     {
         Carbon::setTestNow(Carbon::createFromTimestamp(1000));
@@ -484,6 +500,11 @@ class RedisQueueFlowRepositoryTest extends UnitTest
             public function callCachedRedisQueueKeys(mixed $connection): array
             {
                 return $this->cachedRedisQueueKeys($connection);
+            }
+
+            public function callCompletedInWindow(int $window, int $throughputPerMinute, int $observed): int
+            {
+                return $this->completedInWindow($window, $throughputPerMinute, $observed);
             }
 
             protected function configuredRedisQueues(): array

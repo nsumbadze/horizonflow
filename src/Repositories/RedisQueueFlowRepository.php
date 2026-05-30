@@ -66,7 +66,12 @@ class RedisQueueFlowRepository implements QueueFlowRepository
         $processes = $queues->sum('processes');
         $failed = $this->jobs->countFailed();
         $window = $this->windowSeconds();
-        $completedInWindow = $this->completedInWindow($window);
+        $throughputPerMinute = (int) $this->metrics->jobsProcessedPerMinute();
+        $completedInWindow = $this->completedInWindow(
+            $window,
+            $throughputPerMinute,
+            (int) $queues->sum('completed_in_window')
+        );
 
         return [
             'source' => 'redis',
@@ -76,12 +81,12 @@ class RedisQueueFlowRepository implements QueueFlowRepository
                 'pending' => $queues->sum('length'),
                 'processing' => $processes,
                 'completed' => $this->jobs->countCompleted(),
-                'completed_in_window' => $completedInWindow ?? $queues->sum('completed_in_window'),
+                'completed_in_window' => $completedInWindow,
                 'failed' => $failed,
                 'failed_in_window' => $this->failedInWindow($window),
                 'window_seconds' => $window,
                 'delayed' => null,
-                'throughput_per_minute' => $this->metrics->jobsProcessedPerMinute(),
+                'throughput_per_minute' => $throughputPerMinute,
                 'current_throughput_per_minute' => $queues->sum('current_throughput'),
                 'average_wait_seconds' => (int) round($queues->avg('wait') ?? 0),
                 'connections' => ['redis'],
@@ -310,13 +315,20 @@ class RedisQueueFlowRepository implements QueueFlowRepository
     }
 
     /**
-     * Count completed jobs whose insertion time falls within the request window.
-     * The `completed_jobs` index stores entries with the same negative-microtime
-     * score Horizon uses for failed jobs, so the range math is identical.
+     * Estimate completed jobs whose insertion time falls within the request
+     * window. Horizon stores entries in `completed_jobs` with a negative
+     * microtime score (same shape as `failed_jobs`), so we prefer a direct
+     * `zcount` for accuracy. When retention is aggressive (`horizon.trim.completed`
+     * set very low) the set is effectively empty even under heavy throughput,
+     * so we fall back to a metrics-based estimate and finally to whatever the
+     * per-queue observation pass managed to bucket.
      */
-    protected function completedInWindow(int $window): ?int
+    protected function completedInWindow(int $window, int $throughputPerMinute, int $observed): int
     {
-        return $this->zcountWindow('completed_jobs', $window);
+        $count = $this->zcountWindow('completed_jobs', $window) ?? 0;
+        $estimate = (int) round($throughputPerMinute * ($window / 60));
+
+        return max($count, $estimate, $observed);
     }
 
     protected function zcountWindow(string $set, int $window): ?int
