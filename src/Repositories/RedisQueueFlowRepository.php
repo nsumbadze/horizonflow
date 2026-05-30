@@ -615,7 +615,7 @@ class RedisQueueFlowRepository implements QueueFlowRepository
                     if ($status === 'completed') {
                         $observations[$name]['completed']++;
 
-                        $completedAt = (int) ($job->completed_at ?? $this->jobActivityTimestamp($job) ?? 0);
+                        $completedAt = $this->jobActivityTimestamp($job) ?? 0;
                         $windowStart = Carbon::now()->timestamp - $this->windowSeconds();
                         if ($completedAt > 0 && $completedAt >= $windowStart) {
                             $observations[$name]['completed_in_window']++;
@@ -633,7 +633,7 @@ class RedisQueueFlowRepository implements QueueFlowRepository
                             $this->jobAttempts($job)
                         );
 
-                        $failedAt = (int) ($job->failed_at ?? $this->jobActivityTimestamp($job) ?? 0);
+                        $failedAt = $this->jobActivityTimestamp($job) ?? 0;
                         $observations[$name]['last_failed_at'] = max(
                             (int) $observations[$name]['last_failed_at'],
                             $failedAt

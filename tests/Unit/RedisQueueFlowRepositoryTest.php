@@ -244,6 +244,96 @@ class RedisQueueFlowRepositoryTest extends UnitTest
         }
     }
 
+    public function test_observations_count_completed_in_window(): void
+    {
+        Carbon::setTestNow(Carbon::createFromTimestamp(1_700_000_000));
+
+        try {
+            $completed = collect([
+                (object) [
+                    'id' => 'completed-recent',
+                    'name' => 'App\\Jobs\\SendEmail',
+                    'connection' => 'redis',
+                    'queue' => 'default',
+                    'payload' => json_encode(['attempts' => 1, 'pushedAt' => 1_700_000_000 - 30]),
+                    'completed_at' => '1700000000.123456',
+                ],
+                (object) [
+                    'id' => 'completed-stale',
+                    'name' => 'App\\Jobs\\SendEmail',
+                    'connection' => 'redis',
+                    'queue' => 'default',
+                    'payload' => json_encode(['attempts' => 1, 'pushedAt' => 1_700_000_000 - 5000]),
+                    'completed_at' => (string) (1_700_000_000 - 5000),
+                ],
+            ]);
+
+            $repository = $this->repository(
+                [],
+                collect(),
+                null,
+                0,
+                [],
+                [],
+                $completed
+            );
+
+            $queues = $repository->exposedQueues();
+
+            $this->assertCount(1, $queues);
+            $this->assertSame('default', $queues[0]['name']);
+            $this->assertSame(2, $queues[0]['completed']);
+            $this->assertSame(1, $queues[0]['completed_in_window']);
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
+    public function test_completed_in_window_falls_back_when_completed_at_is_missing(): void
+    {
+        Carbon::setTestNow(Carbon::createFromTimestamp(1_700_000_000));
+
+        try {
+            $completed = collect([
+                (object) [
+                    'id' => 'completed-phpredis-missing',
+                    'name' => 'App\\Jobs\\SendEmail',
+                    'connection' => 'redis',
+                    'queue' => 'default',
+                    'payload' => json_encode(['attempts' => 1, 'pushedAt' => 1_700_000_000 - 60]),
+                    'completed_at' => false,
+                    'reserved_at' => 1_700_000_000 - 30,
+                ],
+                (object) [
+                    'id' => 'completed-predis-null',
+                    'name' => 'App\\Jobs\\SendEmail',
+                    'connection' => 'redis',
+                    'queue' => 'default',
+                    'payload' => json_encode(['attempts' => 1, 'pushedAt' => 1_700_000_000 - 120]),
+                    'completed_at' => null,
+                    'reserved_at' => 1_700_000_000 - 90,
+                ],
+            ]);
+
+            $repository = $this->repository(
+                [],
+                collect(),
+                null,
+                0,
+                [],
+                [],
+                $completed
+            );
+
+            $queues = $repository->exposedQueues();
+
+            $this->assertSame(2, $queues[0]['completed']);
+            $this->assertSame(2, $queues[0]['completed_in_window']);
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
     public function test_it_exposes_recent_jobs_and_job_classes_for_queue_inspection(): void
     {
         Carbon::setTestNow(Carbon::createFromTimestamp(1000));
