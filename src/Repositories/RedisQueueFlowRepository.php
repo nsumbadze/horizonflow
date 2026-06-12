@@ -226,19 +226,23 @@ class RedisQueueFlowRepository implements QueueFlowRepository
     {
         $edges = [];
 
+        $failedInWindowTotal = 0;
+
         foreach ($queues as $queue) {
-            $status = $this->status((int) $queue['wait'], (int) $queue['length'], (int) $queue['failed'], (int) $queue['delayed']);
+            $failedForStatus = (int) ($queue['failed_in_window'] ?? $queue['failed']);
+            $status = $this->status((int) $queue['wait'], (int) $queue['length'], $failedForStatus, (int) $queue['delayed']);
             $queueId = $this->queueId($queue['name']);
             $throughput = (int) $queue['current_throughput'];
 
+            $failedInWindowTotal += $failedForStatus;
             $edges[] = $this->edge('producer-app', $queueId, $status, 'dispatch', $throughput);
             $edges[] = $this->edge($queueId, 'workers', $status, 'reserve', $throughput);
         }
 
         $edges[] = $this->edge('workers', 'completed', 'healthy', 'finish', collect($queues)->sum('current_throughput'));
 
-        if ($failed > 0) {
-            $edges[] = $this->edge('workers', 'failed', 'critical', "{$failed} failed", 0);
+        if ($failedInWindowTotal > 0) {
+            $edges[] = $this->edge('workers', 'failed', 'critical', "{$failedInWindowTotal} failed", 0);
         }
 
         return $edges;
