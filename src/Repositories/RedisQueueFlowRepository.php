@@ -103,7 +103,7 @@ class RedisQueueFlowRepository implements QueueFlowRepository
      *
      * Workload can be empty when jobs are visible in Horizon but no supervisor has
      * reported a queue length yet. The job indexes keep the graph useful in that
-     * state and expose queue names like "orders-sync" immediately.
+     * state and expose queue names from observed jobs immediately.
      *
      * @return \Illuminate\Support\Collection<int, array{name: string, length: int, wait: int, processes: int, failed: int, latest_error: string|null}>
      */
