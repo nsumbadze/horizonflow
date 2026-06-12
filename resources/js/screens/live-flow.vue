@@ -31,6 +31,7 @@
                 queueJobDetails: {},
                 eventSpawns: [],
                 flowCounts: { dispatched: 0, reserved: 0, completed: 0, failed: 0 },
+                zoom: 1,
             };
         },
 
@@ -957,6 +958,7 @@
                     :selected-id="selectedId"
                     :is-dark="isDark"
                     :summary="summary"
+                    v-model:zoom="zoom"
                     @select="selectNode"
                 />
 

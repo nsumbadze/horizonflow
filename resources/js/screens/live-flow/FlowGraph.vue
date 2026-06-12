@@ -10,15 +10,15 @@
             selectedId: { type: String, default: null },
             isDark: { type: Boolean, default: false },
             summary: { type: Object, default: () => ({}) },
+            zoom: { type: Number, default: 1 },
         },
 
-        emits: ['select'],
+        emits: ['select', 'update:zoom'],
 
         data() {
             return {
                 panX: 0,
                 panY: 0,
-                zoom: 1,
                 isPanning: false,
                 nodeOffsets: {},
                 draggingNodeId: null,
@@ -257,12 +257,12 @@
                 const scale = newZoom / this.zoom;
                 this.panX = pt.x - scale * (pt.x - this.panX);
                 this.panY = pt.y - scale * (pt.y - this.panY);
-                this.zoom = +newZoom.toFixed(4);
+                this.$emit('update:zoom', +newZoom.toFixed(4));
             },
 
-            zoomIn()    { this.zoom = Math.min(2.5, +(this.zoom * 1.2).toFixed(4)); },
-            zoomOut()   { this.zoom = Math.max(0.35, +(this.zoom / 1.2).toFixed(4)); },
-            resetView() { this.panX = 0; this.panY = 0; this.zoom = 1; },
+            zoomIn()    { this.$emit('update:zoom', Math.min(2.5, +(this.zoom * 1.2).toFixed(4))); },
+            zoomOut()   { this.$emit('update:zoom', Math.max(0.35, +(this.zoom / 1.2).toFixed(4))); },
+            resetView() { this.panX = 0; this.panY = 0; this.$emit('update:zoom', 1); },
             resetLayout() { this.nodeOffsets = {}; },
 
             onNodePointerDown(e, node) {
