@@ -814,9 +814,20 @@
 
             resultSubLabel(node) {
                 if (node.label === 'failed') {
-                    const windowed = this.summary.failed_in_window;
-                    const value = (windowed !== null && windowed !== undefined) ? windowed : this.summary.failed;
-                    return `${this.formatNumber(value)} failed`;
+                    const nodeWindowed = node.metrics?.failed_in_window;
+                    const summaryWindowed = this.summary.failed_in_window;
+                    const allTime = node.metrics?.failed ?? this.summary.failed;
+                    const windowed = nodeWindowed ?? summaryWindowed;
+
+                    // When the window has no failures but historical ones exist,
+                    // show the all-time count so the user isn't left wondering why
+                    // a queue with failed jobs reports "0 failed".
+                    if ((windowed === 0 || windowed === null || windowed === undefined) && Number(allTime ?? 0) > 0) {
+                        return `${this.formatNumber(allTime)} failed (all-time)`;
+                    }
+
+                    const value = (windowed !== null && windowed !== undefined) ? windowed : allTime;
+                    return `${this.formatNumber(value ?? 0)} failed`;
                 }
                 if (node.label === 'delayed') return `${this.formatNumber(this.summary.delayed)} delayed`;
                 const completedWindowed = this.summary.completed_in_window;
