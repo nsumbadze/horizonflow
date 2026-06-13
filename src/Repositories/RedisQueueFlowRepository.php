@@ -185,6 +185,14 @@ class RedisQueueFlowRepository implements QueueFlowRepository
      */
     protected function nodes(array $queues, int $failed): array
     {
+        $failedInWindow = $this->failedInWindow($this->windowSeconds());
+        $failedInWindowMetric = $failedInWindow ?? collect($queues)->sum(
+            fn (array $queue): int => (int) ($queue['failed_in_window'] ?? 0)
+        );
+        $failedStatus = ($failedInWindowMetric > 0 || ($failedInWindow === null && $failed > 0))
+            ? 'critical'
+            : 'healthy';
+
         $nodes = [
             $this->node('producer-app', 'producer', config('app.name', 'Application'), 'healthy', [
                 'environment' => app()->environment(),
@@ -192,7 +200,10 @@ class RedisQueueFlowRepository implements QueueFlowRepository
             ]),
             $this->node('workers', 'worker', 'Horizon Workers', 'healthy', ['processes' => collect($queues)->sum('processes')]),
             $this->node('completed', 'result', 'completed', 'healthy'),
-            $this->node('failed', 'result', 'failed', $failed > 0 ? 'critical' : 'healthy', ['failed' => $failed]),
+            $this->node('failed', 'result', 'failed', $failedStatus, [
+                'failed' => $failed,
+                'failed_in_window' => $failedInWindowMetric,
+            ]),
         ];
 
         foreach ($queues as $queue) {
