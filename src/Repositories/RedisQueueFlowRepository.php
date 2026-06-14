@@ -72,6 +72,13 @@ class RedisQueueFlowRepository implements QueueFlowRepository
             $throughputPerMinute,
             (int) $queues->sum('completed_in_window')
         );
+        // Match the per-node logic: take the stronger of global ZCOUNT and
+        // the per-queue observed sum. Avoids the global query reporting 0
+        // while a per-queue observation correctly found 1.
+        $failedInWindow = max(
+            $this->failedInWindow($window) ?? 0,
+            (int) $queues->sum('failed_in_window')
+        );
 
         return [
             'source' => 'redis',
@@ -83,7 +90,7 @@ class RedisQueueFlowRepository implements QueueFlowRepository
                 'completed' => $this->jobs->countCompleted(),
                 'completed_in_window' => $completedInWindow,
                 'failed' => $failed,
-                'failed_in_window' => $this->failedInWindow($window),
+                'failed_in_window' => $failedInWindow,
                 'window_seconds' => $window,
                 'delayed' => null,
                 'throughput_per_minute' => $throughputPerMinute,
@@ -185,13 +192,26 @@ class RedisQueueFlowRepository implements QueueFlowRepository
      */
     protected function nodes(array $queues, int $failed): array
     {
-        $failedInWindow = $this->failedInWindow($this->windowSeconds());
-        $failedInWindowMetric = $failedInWindow ?? collect($queues)->sum(
+        // Two independent signals for failures in the active window:
+        //   1. Global ZCOUNT on the `failed_jobs` zset.
+        //   2. Per-queue observations, which inspect each job's `failed_at`.
+        // They can disagree when the zset score and the `failed_at` field drift
+        // apart (different microtime, trim races). Trust the stronger signal
+        // so the failed-node metric matches the per-queue edge totals.
+        $observedInWindow = (int) collect($queues)->sum(
             fn (array $queue): int => (int) ($queue['failed_in_window'] ?? 0)
         );
-        $failedStatus = ($failedInWindowMetric > 0 || ($failedInWindow === null && $failed > 0))
-            ? 'critical'
-            : 'healthy';
+        $zcountInWindow = $this->failedInWindow($this->windowSeconds());
+        $failedInWindowMetric = max($zcountInWindow ?? 0, $observedInWindow);
+
+        // A node literally labelled "failed" should never read healthy/green
+        // when failures exist. Critical for recent failures, warning for
+        // historical-only.
+        $failedStatus = match (true) {
+            $failedInWindowMetric > 0 => 'critical',
+            $failed > 0               => 'warning',
+            default                   => 'healthy',
+        };
 
         $nodes = [
             $this->node('producer-app', 'producer', config('app.name', 'Application'), 'healthy', [
