@@ -907,6 +907,20 @@
                     }
                     return { type: 'ok', title: 'Status', text: `${this.shortJobName(jobClass.name)} is idle.` };
                 }
+                // Result nodes (completed/failed) need their own messaging:
+                // they have no queue context, and "backpressure" wording for a
+                // failed node is nonsense.
+                if (node.type === 'result' && node.label === 'failed') {
+                    const inWindow = Number(node.metrics?.failed_in_window ?? this.summary.failed_in_window ?? 0);
+                    const allTime = Number(node.metrics?.failed ?? this.summary.failed ?? 0);
+                    if (inWindow > 0) {
+                        return { type: 'critical', title: 'Immediate Action', text: `${this.formatNumber(inWindow)} job${inWindow === 1 ? '' : 's'} failed in the active window. Inspect the failures.` };
+                    }
+                    if (allTime > 0) {
+                        return { type: 'warn', title: 'Heads Up', text: `No recent failures, but ${this.formatNumber(allTime)} historical failure${allTime === 1 ? '' : 's'} on record.` };
+                    }
+                    return { type: 'ok', title: 'Status', text: 'No failed jobs.' };
+                }
                 if (node.status === 'critical') {
                     const failedInWindow = queue ? this.queueFailedInWindow(queue) : 0;
                     if (queue && failedInWindow > 0) {
