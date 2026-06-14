@@ -435,9 +435,13 @@
             },
 
             refreshEvents() {
-                return this.$http.get(Horizon.basePath + '/api/flow/events', {
-                    params: this.lastEventTimestamp > 0 ? { since: this.lastEventTimestamp } : {},
-                }).then(response => {
+                // Forward the active window so this hits the same cache slot as
+                // summary/graph/queues; otherwise the events poll lives in the
+                // default-window slot and forces a parallel payload rebuild.
+                const params = { window: this.timeRangeSeconds() };
+                if (this.lastEventTimestamp > 0) params.since = this.lastEventTimestamp;
+
+                return this.$http.get(Horizon.basePath + '/api/flow/events', { params }).then(response => {
                     const fresh = response.data.events ?? [];
                     if (fresh.length === 0) return;
 
