@@ -251,7 +251,15 @@
                     });
                 });
                 if (completed) workers.forEach(w => generated.push(this.edge(w.id, completed.id, 'healthy', 'finish', this.summary.throughput_per_minute)));
-                if (failed && Number(this.summary.failed ?? 0) > 0) generated.push(this.edge(workers[workers.length - 1].id, failed.id, 'critical', 'exception', this.summary.failed));
+                // Always keep a worker→failed edge so a brand-new failure event
+                // has a path to animate along, even before the next /summary
+                // refresh has incremented summary.failed. Edge stays "idle" when
+                // there are no failures (rate=0 ⇒ rendered as "idle" label).
+                if (failed && workers.length) {
+                    const failedRate = Number(this.summary.failed_in_window ?? this.summary.failed ?? 0);
+                    const status = failedRate > 0 ? 'critical' : 'healthy';
+                    generated.push(this.edge(workers[workers.length - 1].id, failed.id, status, 'exception', failedRate));
+                }
                 return generated;
             },
 

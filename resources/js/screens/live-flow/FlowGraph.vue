@@ -168,21 +168,38 @@
 
                 const lookup = (s, t) => this.edges.find(e => e.source === s && e.target === t);
 
+                // Each branch tries the most specific edge first, then falls
+                // back to the generic worker/queue path. The fallback matters
+                // because the job-class-specific edges only exist after the
+                // corresponding metric is non-zero — a brand-new event would
+                // otherwise drop its particle.
                 if (event.result === 'completed') {
-                    if (job && completed)  return lookup(job.id, completed.id);
+                    if (job && completed) {
+                        const e = lookup(job.id, completed.id);
+                        if (e) return e;
+                    }
                     if (worker && completed) return lookup(worker.id, completed.id);
                 }
                 if (event.result === 'failed') {
-                    if (job && failed)  return lookup(job.id, failed.id);
+                    if (job && failed) {
+                        const e = lookup(job.id, failed.id);
+                        if (e) return e;
+                    }
                     if (worker && failed) return lookup(worker.id, failed.id);
                 }
                 if (event.result === 'workers') {
-                    if (job && worker)   return lookup(job.id, worker.id);
+                    if (job && worker) {
+                        const e = lookup(job.id, worker.id);
+                        if (e) return e;
+                    }
                     if (queue && worker) return lookup(queue.id, worker.id);
                 }
                 if (event.result === 'queue') {
-                    if (queue && job)    return lookup(queue.id, job.id);
-                    if (queue)           return lookup('producer-app', queue.id) ?? lookup('producer-scheduler', queue.id);
+                    if (queue && job) {
+                        const e = lookup(queue.id, job.id);
+                        if (e) return e;
+                    }
+                    if (queue) return lookup('producer-app', queue.id) ?? lookup('producer-scheduler', queue.id);
                 }
                 return null;
             },
