@@ -284,4 +284,16 @@ class Horizon
 
         return new static;
     }
+
+    /**
+     * Register the Horizon dev commands.
+     *
+     * @return void
+     */
+    public static function registerDevCommands()
+    {
+        if (class_exists(\Illuminate\Foundation\DevCommands::class)) {
+            \Illuminate\Foundation\DevCommands::artisan('horizon', 'horizon');
+        }
+    }
 }

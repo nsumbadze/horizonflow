@@ -1,6 +1,24 @@
 # Release Notes
 
-## [Unreleased](https://github.com/laravel/horizon/compare/v5.46.0...5.x)
+## [Unreleased](https://github.com/laravel/horizon/compare/v5.47.2...5.x)
+
+## [v5.47.2](https://github.com/laravel/horizon/compare/v5.47.1...v5.47.2) - 2026-06-03
+
+* Bump axios from 1.15.2 to 1.16.0 by [@dependabot](https://github.com/dependabot)[bot] in https://github.com/laravel/horizon/pull/1772
+* Fix metric clearing with PhpRedis scan prefix by [@ibobgunardi](https://github.com/ibobgunardi) in https://github.com/laravel/horizon/pull/1773
+* GitHub Actions hardening by [@nunomaduro](https://github.com/nunomaduro) in https://github.com/laravel/horizon/pull/1775
+* Bump actions/checkout from 4.3.1 to 6.0.3 in the github-actions group by [@dependabot](https://github.com/dependabot)[bot] in https://github.com/laravel/horizon/pull/1776
+* Pin pull requests and issues workflows to least-privilege reusable workflows by [@nunomaduro](https://github.com/nunomaduro) in https://github.com/laravel/horizon/pull/1778
+* Pin pull requests and issues workflows to latest laravel/.github by [@nunomaduro](https://github.com/nunomaduro) in https://github.com/laravel/horizon/pull/1779
+
+## [v5.47.1](https://github.com/laravel/horizon/compare/v5.47.0...v5.47.1) - 2026-05-20
+
+* Fix null hmget response in baseSnapshotData by [@briskbase-projects](https://github.com/briskbase-projects) in https://github.com/laravel/horizon/pull/1768
+
+## [v5.47.0](https://github.com/laravel/horizon/compare/v5.46.0...v5.47.0) - 2026-05-19
+
+* Bump postcss from 8.4.45 to 8.5.13 by [@dependabot](https://github.com/dependabot)[bot] in https://github.com/laravel/horizon/pull/1763
+* Bump axios from 1.15.0 to 1.15.2 by [@dependabot](https://github.com/dependabot)[bot] in https://github.com/laravel/horizon/pull/1764
 
 ## [v5.46.0](https://github.com/laravel/horizon/compare/v5.45.6...v5.46.0) - 2026-04-20
 
