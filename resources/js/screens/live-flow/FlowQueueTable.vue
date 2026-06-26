@@ -10,18 +10,16 @@
             filterText: { type: String, default: '' },
             queueNodeId: { type: Function, required: true },
             findQueueNode: { type: Function, required: true },
+            // Parent-provided so the table rates queues with the same
+            // windowed failed count the graph uses — otherwise the two
+            // disagree whenever old failures fall outside the window.
+            queueStatus: { type: Function, required: true },
+            queueFailedInWindow: { type: Function, required: true },
         },
 
         emits: ['select'],
 
         methods: {
-            queueStatus(queue) {
-                if ((queue.failed ?? 0) > 0) return 'critical';
-                if (queue.wait_seconds >= 30 || queue.pending >= 500) return 'critical';
-                if (queue.wait_seconds >= 10 || queue.pending >= 100 || queue.delayed > 0) return 'warning';
-                return 'healthy';
-            },
-
             resolveId(queue) {
                 return this.findQueueNode(queue)?.id ?? this.queueNodeId(queue);
             },
@@ -65,7 +63,7 @@
                         <td class="r num muted">{{ formatRate(queue.throughput_per_minute) }}</td>
                         <td class="r num muted">{{ formatDuration(queue.estimated_drain_seconds) }}</td>
                         <td class="r num muted">{{ formatNumber(queue.attempts ?? 0) }}</td>
-                        <td class="r num" :class="{ crit: (queue.failed ?? 0) > 0 }">{{ formatNumber(queue.failed ?? 0) }}</td>
+                        <td class="r num" :class="{ crit: queueFailedInWindow(queue) > 0 }" :title="formatNumber(queue.failed ?? 0) + ' all-time'">{{ formatNumber(queueFailedInWindow(queue)) }}</td>
                         <td class="r num" :class="{ warn: (queue.failure_rate ?? 0) > 0 }">{{ formatPercent(queue.failure_rate) }}</td>
                         <td class="r">
                             <span class="lf-status" :class="'lf-status-' + queueStatus(queue)">{{ statusLabel(queueStatus(queue)) }}</span>

@@ -935,6 +935,8 @@
                     :filter-text="filterText"
                     :queue-node-id="queueNodeId"
                     :find-queue-node="findQueueNode"
+                    :queue-status="queueStatus"
+                    :queue-failed-in-window="queueFailedInWindow"
                     @select="selectNode"
                 />
 
