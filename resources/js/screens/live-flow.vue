@@ -7,9 +7,12 @@
     import FlowQueueTable from './live-flow/FlowQueueTable.vue';
     import FlowToolbar from './live-flow/FlowToolbar.vue';
     import SupervisorControls from './live-flow/SupervisorControls.vue';
+    import formatters from './live-flow/formatters';
 
     export default {
         components: { FailedJobModal, FlowActivity, FlowGraph, FlowInspector, FlowKpis, FlowQueueTable, FlowToolbar, SupervisorControls },
+
+        mixins: [formatters],
 
         data() {
             return {
@@ -537,49 +540,6 @@
             selectNode(id) { this.selectedId = id; },
             toggleLive()   { this.live = !this.live; },
 
-            svgId(value) { return String(value).replace(/[^a-z0-9_-]+/gi, '-'); },
-
-            metricValue(value, suffix = '') {
-                if (value === null || value === undefined) return '—';
-                return this.formatNumber(value) + suffix;
-            },
-
-            formatNumber(value) {
-                if (value === null || value === undefined) return '—';
-                if (typeof value === 'number' && !Number.isInteger(value)) return value.toLocaleString(undefined, { maximumFractionDigits: 1 });
-                return Number(value).toLocaleString();
-            },
-
-            formatRate(value)    { return (value === null || value === undefined) ? '—' : `${this.formatNumber(value)}/m`; },
-
-            formatDuration(value) {
-                if (value === null || value === undefined) return '—';
-                const s = Number(value);
-                if (s < 60) return `${s}s`;
-                if (s < 3600) return `${Math.round(s / 60)}m`;
-                if (s < 86400) return `${(s / 3600).toFixed(1)}h`;
-                return `${(s / 86400).toFixed(1)}d`;
-            },
-
-            eventRelativeTime(event) {
-                const ts = Number(event?.timestamp ?? 0);
-                if (!ts) return '—';
-
-                const delta = Math.max(0, Math.floor(Date.now() / 1000) - ts);
-                if (delta < 5) return 'now';
-                return this.formatDuration(delta);
-            },
-
-            formatPercent(value) {
-                if (value === null || value === undefined) return '—';
-                return `${this.formatNumber(value)}%`;
-            },
-
-            shortJobName(name) {
-                const value = String(name ?? 'Queued job');
-                return value.split('\\').pop();
-            },
-
             queueJobsKey(queue) {
                 if (!queue) return null;
                 if (Array.isArray(queue.drivers) && queue.drivers.length > 1) return queue.name;
@@ -690,28 +650,6 @@
                 return this.jobCounts(job);
             },
 
-            jobCounts(jobClass) {
-                const parts = [
-                    ['pending', jobClass.pending],
-                    ['reserved', jobClass.reserved],
-                    ['ok', jobClass.completed],
-                    ['failed', jobClass.failed],
-                ].filter(([, value]) => Number(value ?? 0) > 0);
-
-                return parts.length
-                    ? parts.map(([label, value]) => `${this.formatNumber(value)} ${label}`).join(' · ')
-                    : 'no recent jobs';
-            },
-
-            jobStatusClass(status) {
-                return {
-                    failed: 'critical',
-                    reserved: 'warning',
-                    pending: 'warning',
-                    completed: 'healthy',
-                }[status] ?? 'healthy';
-            },
-
             jobHref(job) {
                 if (!job?.id) return null;
                 if (job.inspectable === false) return null;
@@ -762,10 +700,6 @@
 
             modalJobError() {
                 return this.selectedJobDetails?.exception ?? this.selectedJob?.exception ?? 'No exception text was captured.';
-            },
-
-            statusLabel(status) {
-                return { healthy: 'healthy', warning: 'warn', critical: 'critical' }[status] ?? status;
             },
 
             edge(source, target, status, label, rate) {
@@ -847,10 +781,6 @@
                     ? completedWindowed
                     : this.summary.completed;
                 return `${this.formatNumber(completedValue)} completed`;
-            },
-
-            nodeKind(node) {
-                return { producer: 'PRODUCER', queue: 'QUEUE', job: 'JOB', worker: 'WORKER', result: node.label?.toUpperCase?.() ?? 'RESULT' }[node.type] ?? node.type?.toUpperCase?.();
             },
 
             inspectorMetrics(node, queue, jobClass) {

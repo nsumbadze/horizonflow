@@ -1,5 +1,9 @@
 <script type="text/ecmascript-6">
+    import formatters from './formatters';
+
     export default {
+        mixins: [formatters],
+
         props: {
             queues: { type: Array, default: () => [] },
             selectedId: { type: String, default: null },
@@ -11,45 +15,11 @@
         emits: ['select'],
 
         methods: {
-            formatNumber(value) {
-                if (value === null || value === undefined) return '—';
-                if (typeof value === 'number' && !Number.isInteger(value)) return value.toLocaleString(undefined, { maximumFractionDigits: 1 });
-                return Number(value).toLocaleString();
-            },
-
-            formatRate(value) {
-                if (value === null || value === undefined) return '—';
-                return `${this.formatNumber(value)}/m`;
-            },
-
-            formatPercent(value) {
-                if (value === null || value === undefined) return '—';
-                return `${this.formatNumber(value)}%`;
-            },
-
-            formatDuration(value) {
-                if (value === null || value === undefined) return '—';
-                const s = Number(value);
-                if (s < 60) return `${s}s`;
-                if (s < 3600) return `${Math.round(s / 60)}m`;
-                if (s < 86400) return `${(s / 3600).toFixed(1)}h`;
-                return `${(s / 86400).toFixed(1)}d`;
-            },
-
-            metricValue(value, suffix = '') {
-                if (value === null || value === undefined) return '—';
-                return this.formatNumber(value) + suffix;
-            },
-
             queueStatus(queue) {
                 if ((queue.failed ?? 0) > 0) return 'critical';
                 if (queue.wait_seconds >= 30 || queue.pending >= 500) return 'critical';
                 if (queue.wait_seconds >= 10 || queue.pending >= 100 || queue.delayed > 0) return 'warning';
                 return 'healthy';
-            },
-
-            statusLabel(status) {
-                return { healthy: 'healthy', warning: 'warn', critical: 'critical' }[status] ?? status;
             },
 
             resolveId(queue) {

@@ -1,5 +1,9 @@
 <script type="text/ecmascript-6">
+    import formatters from './formatters';
+
     export default {
+        mixins: [formatters],
+
         props: {
             supervisors: { type: Array, default: () => [] },
             controlling: { type: Array, default: () => [] },
@@ -20,11 +24,6 @@
 
             processCount(processes) {
                 return Object.values(processes ?? {}).reduce((sum, value) => sum + Number(value ?? 0), 0);
-            },
-
-            formatNumber(value) {
-                if (value === null || value === undefined) return '—';
-                return Number(value).toLocaleString();
             },
         },
     };

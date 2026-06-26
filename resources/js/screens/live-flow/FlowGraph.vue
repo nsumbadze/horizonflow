@@ -1,5 +1,9 @@
 <script type="text/ecmascript-6">
+    import formatters from './formatters';
+
     export default {
+        mixins: [formatters],
+
         props: {
             nodes: { type: Array, default: () => [] },
             edges: { type: Array, default: () => [] },
@@ -88,8 +92,6 @@
         },
 
         methods: {
-            svgId(value) { return String(value).replace(/[^a-z0-9_-]+/gi, '-'); },
-
             startAnimationLoop() {
                 if (this._rafId !== null) return;
                 const tick = (now) => {
@@ -231,13 +233,6 @@
                 }
             },
 
-            formatCount(value) {
-                const n = Number(value ?? 0);
-                if (n >= 100000) return `${(n / 1000).toFixed(0)}k`;
-                if (n >= 10000) return `${(n / 1000).toFixed(1)}k`;
-                return n.toLocaleString();
-            },
-
             getSVGCoords(e) {
                 const svg = this.$refs.flowSvg;
                 if (!svg) return { x: e.clientX, y: e.clientY };
@@ -373,10 +368,6 @@
                 return 'var(--lf-svg-muted)';
             },
 
-            nodeKind(node) {
-                return { producer: 'PRODUCER', queue: 'QUEUE', job: 'JOB', worker: 'WORKER', result: node.label?.toUpperCase?.() ?? 'RESULT' }[node.type] ?? node.type?.toUpperCase?.();
-            },
-
             nodeGradColor(node, edgeStatus) {
                 if (edgeStatus === 'critical') return 'var(--lf-red)';
                 if (edgeStatus === 'warning')  return 'var(--lf-amber)';
@@ -390,12 +381,6 @@
             particleFilter(status) {
                 if (!this.isDark) return 'none';
                 return { healthy: 'url(#lf-glow-cyan)', warning: 'url(#lf-glow-amber)', critical: 'url(#lf-glow-red)' }[status] ?? 'url(#lf-glow-cyan)';
-            },
-
-            formatNumber(value) {
-                if (value === null || value === undefined) return '—';
-                if (typeof value === 'number' && !Number.isInteger(value)) return value.toLocaleString(undefined, { maximumFractionDigits: 1 });
-                return Number(value).toLocaleString();
             },
         },
     };

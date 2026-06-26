@@ -1,5 +1,9 @@
 <script type="text/ecmascript-6">
+    import formatters from './formatters';
+
     export default {
+        mixins: [formatters],
+
         props: {
             inspector: { type: Object, required: true },
             graphNodeLookup: { type: Object, default: () => ({}) },
@@ -9,63 +13,8 @@
         emits: ['retry', 'open-failed'],
 
         methods: {
-            formatNumber(value) {
-                if (value === null || value === undefined) return '—';
-                if (typeof value === 'number' && !Number.isInteger(value)) return value.toLocaleString(undefined, { maximumFractionDigits: 1 });
-                return Number(value).toLocaleString();
-            },
-
-            formatRate(value) {
-                if (value === null || value === undefined) return '—';
-                return `${this.formatNumber(value)}/m`;
-            },
-
-            formatDuration(value) {
-                if (value === null || value === undefined) return '—';
-                const s = Number(value);
-                if (s < 60) return `${s}s`;
-                if (s < 3600) return `${Math.round(s / 60)}m`;
-                if (s < 86400) return `${(s / 3600).toFixed(1)}h`;
-                return `${(s / 86400).toFixed(1)}d`;
-            },
-
-            shortJobName(name) {
-                return String(name ?? 'Queued job').split('\\').pop();
-            },
-
-            jobCounts(jobClass) {
-                const parts = [
-                    ['pending', jobClass.pending],
-                    ['reserved', jobClass.reserved],
-                    ['ok', jobClass.completed],
-                    ['failed', jobClass.failed],
-                ].filter(([, value]) => Number(value ?? 0) > 0);
-
-                return parts.length
-                    ? parts.map(([label, value]) => `${this.formatNumber(value)} ${label}`).join(' · ')
-                    : 'no recent jobs';
-            },
-
-            jobStatusClass(status) {
-                return {
-                    failed: 'critical',
-                    reserved: 'warning',
-                    pending: 'warning',
-                    completed: 'healthy',
-                }[status] ?? 'healthy';
-            },
-
             isRetrying(job) {
                 return this.retryingIds.includes(job?.id);
-            },
-
-            statusLabel(status) {
-                return { healthy: 'healthy', warning: 'warn', critical: 'critical' }[status] ?? status;
-            },
-
-            nodeKind(node) {
-                if (!node) return '';
-                return { producer: 'PRODUCER', queue: 'QUEUE', job: 'JOB', worker: 'WORKER', result: node.label?.toUpperCase?.() ?? 'RESULT' }[node.type] ?? node.type?.toUpperCase?.();
             },
 
             edgeDisplayLabel(edge) {

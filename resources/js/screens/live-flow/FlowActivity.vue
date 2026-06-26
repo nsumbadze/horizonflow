@@ -1,27 +1,11 @@
 <script type="text/ecmascript-6">
+    import formatters from './formatters';
+
     export default {
+        mixins: [formatters],
+
         props: {
             events: { type: Array, default: () => [] },
-        },
-
-        methods: {
-            formatDuration(value) {
-                if (value === null || value === undefined) return '—';
-                const s = Number(value);
-                if (s < 60) return `${s}s`;
-                if (s < 3600) return `${Math.round(s / 60)}m`;
-                if (s < 86400) return `${(s / 3600).toFixed(1)}h`;
-                return `${(s / 86400).toFixed(1)}d`;
-            },
-
-            relativeTime(event) {
-                const ts = Number(event?.timestamp ?? 0);
-                if (!ts) return '—';
-
-                const delta = Math.max(0, Math.floor(Date.now() / 1000) - ts);
-                if (delta < 5) return 'now';
-                return this.formatDuration(delta);
-            },
         },
     };
 </script>
