@@ -8,6 +8,9 @@
     import FlowToolbar from './live-flow/FlowToolbar.vue';
     import SupervisorControls from './live-flow/SupervisorControls.vue';
     import formatters from './live-flow/formatters';
+    import { loadViewState, saveViewState } from './live-flow/viewState';
+
+    const TIME_RANGES = ['Last 5m', 'Last 15m', 'Last 1h', 'Last 6h', 'Last 24h', 'Last 3d', 'Last 7d', 'Last 30d'];
 
     export default {
         components: { FailedJobModal, FlowActivity, FlowGraph, FlowInspector, FlowKpis, FlowQueueTable, FlowToolbar, SupervisorControls },
@@ -15,13 +18,15 @@
         mixins: [formatters],
 
         data() {
+            const saved = loadViewState();
+
             return {
                 flow: null,
                 ready: false,
                 refreshing: false,
                 live: true,
-                filterText: '',
-                timeRange: 'Last 15m',
+                filterText: typeof saved.filterText === 'string' ? saved.filterText : '',
+                timeRange: TIME_RANGES.includes(saved.timeRange) ? saved.timeRange : 'Last 15m',
                 selectedId: null,
                 isDark: this.sniffDark(),
                 retryingJobs: [],
@@ -34,7 +39,7 @@
                 queueJobDetails: {},
                 eventSpawns: [],
                 flowCounts: { dispatched: 0, reserved: 0, completed: 0, failed: 0 },
-                zoom: 1,
+                zoom: Number.isFinite(saved.zoom) ? Math.min(2.5, Math.max(0.35, saved.zoom)) : 1,
             };
         },
 
@@ -46,7 +51,7 @@
                 if (queue) this.fetchQueueJobs(queue);
             },
 
-            timeRange() {
+            timeRange(value) {
                 // Reset the events cursor so the next /events poll fetches the
                 // freshly-scoped window. Drop the rendered events too — they were
                 // tied to the prior window.
@@ -55,6 +60,15 @@
                 this.refreshSummary();
                 this.refreshGraph();
                 this.refreshQueues();
+                saveViewState({ timeRange: value });
+            },
+
+            filterText(value) {
+                saveViewState({ filterText: value });
+            },
+
+            zoom(value) {
+                saveViewState({ zoom: value });
             },
         },
 

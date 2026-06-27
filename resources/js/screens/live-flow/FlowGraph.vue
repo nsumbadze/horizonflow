@@ -1,5 +1,6 @@
 <script type="text/ecmascript-6">
     import formatters from './formatters';
+    import { loadViewState, saveViewState } from './viewState';
 
     export default {
         mixins: [formatters],
@@ -20,11 +21,16 @@
         emits: ['select', 'update:zoom'],
 
         data() {
+            const saved = loadViewState();
+            const offsets = Object.entries(saved.nodeOffsets ?? {}).filter(
+                ([, off]) => Number.isFinite(off?.dx) && Number.isFinite(off?.dy)
+            );
+
             return {
-                panX: 0,
-                panY: 0,
+                panX: Number.isFinite(saved.panX) ? saved.panX : 0,
+                panY: Number.isFinite(saved.panY) ? saved.panY : 0,
                 isPanning: false,
-                nodeOffsets: {},
+                nodeOffsets: Object.fromEntries(offsets),
                 draggingNodeId: null,
                 activeParticles: [],
             };
@@ -256,6 +262,7 @@
             },
 
             onCanvasPointerUp(e) {
+                if (this.isPanning) saveViewState({ panX: this.panX, panY: this.panY });
                 this.isPanning = false;
                 this._lastVp = null;
                 try { e.currentTarget.releasePointerCapture(e.pointerId); } catch {}
@@ -269,13 +276,22 @@
                 const scale = newZoom / this.zoom;
                 this.panX = pt.x - scale * (pt.x - this.panX);
                 this.panY = pt.y - scale * (pt.y - this.panY);
+                saveViewState({ panX: this.panX, panY: this.panY });
                 this.$emit('update:zoom', +newZoom.toFixed(4));
             },
 
             zoomIn()    { this.$emit('update:zoom', Math.min(2.5, +(this.zoom * 1.2).toFixed(4))); },
             zoomOut()   { this.$emit('update:zoom', Math.max(0.35, +(this.zoom / 1.2).toFixed(4))); },
-            resetView() { this.panX = 0; this.panY = 0; this.$emit('update:zoom', 1); },
-            resetLayout() { this.nodeOffsets = {}; },
+            resetView() {
+                this.panX = 0;
+                this.panY = 0;
+                saveViewState({ panX: 0, panY: 0 });
+                this.$emit('update:zoom', 1);
+            },
+            resetLayout() {
+                this.nodeOffsets = {};
+                saveViewState({ nodeOffsets: {} });
+            },
 
             onNodePointerDown(e, node) {
                 e.stopPropagation();
@@ -312,7 +328,8 @@
                 this._dragState = null;
                 this.draggingNodeId = null;
                 try { e.currentTarget.releasePointerCapture(e.pointerId); } catch {}
-                if (!wasDrag) this.$emit('select', node.id);
+                if (wasDrag) saveViewState({ nodeOffsets: this.nodeOffsets });
+                else this.$emit('select', node.id);
             },
 
             edgePath(edge) {
