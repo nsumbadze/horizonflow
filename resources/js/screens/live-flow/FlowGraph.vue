@@ -409,8 +409,8 @@
                     <svg width="9" height="9" viewBox="0 0 9 9" fill="none"><rect x="0.75" y="0.75" width="2.75" height="2.75" rx="0.5" stroke="currentColor" stroke-width="1.2"/><rect x="5.5" y="0.75" width="2.75" height="2.75" rx="0.5" stroke="currentColor" stroke-width="1.2"/><rect x="0.75" y="5.5" width="2.75" height="2.75" rx="0.5" stroke="currentColor" stroke-width="1.2"/><rect x="5.5" y="5.5" width="2.75" height="2.75" rx="0.5" stroke="currentColor" stroke-width="1.2"/></svg>
                 </button>
             </div>
-            <span class="lf-live-tag">
-                <span class="lf-blink lf-blink-inline lf-blink-green"></span>live
+            <span class="lf-live-tag" :class="{ 'lf-live-tag-paused': !live }">
+                <span v-if="live" class="lf-blink lf-blink-inline lf-blink-green"></span>{{ live ? 'live' : 'paused' }}
             </span>
         </div>
 

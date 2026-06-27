@@ -65,6 +65,15 @@
             this.startPolling();
             this.isDark = this.sniffDark();
             this.initDarkWatcher();
+            // Catch up immediately when the tab becomes visible again. The
+            // bootstrap flag is cleared so the backlog of events fetched
+            // after a long hidden stretch doesn't burst as stale particles.
+            this._visibilityHandler = () => {
+                if (document.hidden || !this.live) return;
+                this._eventsBootstrapped = false;
+                this.refreshAll();
+            };
+            document.addEventListener('visibilitychange', this._visibilityHandler);
         },
 
         beforeUnmount() {
@@ -72,6 +81,7 @@
             this._darkObserver?.disconnect();
             this._mq?.removeEventListener('change', this._mqUpdate);
             if (this._storageHandler) window.removeEventListener('storage', this._storageHandler);
+            if (this._visibilityHandler) document.removeEventListener('visibilitychange', this._visibilityHandler);
         },
 
         computed: {
@@ -364,12 +374,18 @@
             },
 
             startPolling() {
+                // document.hidden guard: no point polling a tab nobody is
+                // looking at — refreshAll() on visibilitychange catches up.
                 this._intervals = [
-                    setInterval(() => this.live && this.refreshSummary(),  5000),
-                    setInterval(() => this.live && this.refreshGraph(),   10000),
-                    setInterval(() => this.live && this.refreshQueues(),  10000),
-                    setInterval(() => this.live && this.refreshEvents(),   2000),
+                    setInterval(() => this.shouldPoll() && this.refreshSummary(),  5000),
+                    setInterval(() => this.shouldPoll() && this.refreshGraph(),   10000),
+                    setInterval(() => this.shouldPoll() && this.refreshQueues(),  10000),
+                    setInterval(() => this.shouldPoll() && this.refreshEvents(),   2000),
                 ];
+            },
+
+            shouldPoll() {
+                return this.live && !document.hidden;
             },
 
             stopPolling() {
@@ -1249,6 +1265,11 @@
         background: rgba(5,150,105,.10);
         color: var(--lf-green);
         border: 1px solid rgba(5,150,105,.22);
+    }
+    .lf-live-tag-paused {
+        background: rgba(217,119,6,.10);
+        color: var(--lf-amber);
+        border-color: rgba(217,119,6,.22);
     }
 
     .lf-tag {
