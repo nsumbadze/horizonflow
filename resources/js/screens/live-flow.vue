@@ -40,6 +40,8 @@
                 eventSpawns: [],
                 flowCounts: { dispatched: 0, reserved: 0, completed: 0, failed: 0 },
                 zoom: Number.isFinite(saved.zoom) ? Math.min(2.5, Math.max(0.35, saved.zoom)) : 1,
+                kpiHistory: { pending: [], processing: [], delayed: [], failed: [], flow: [], wait: [] },
+                queueSnapshots: {},
             };
         },
 
@@ -48,7 +50,10 @@
                 const node = this.graphNodeLookup[id];
                 if (!node || node.type !== 'queue') return;
                 const queue = this.queues.find(q => this.queueNodeId(q) === node.id || this.findQueueNode(q)?.id === node.id);
-                if (queue) this.fetchQueueJobs(queue);
+                if (queue) {
+                    this.fetchQueueJobs(queue);
+                    this.fetchQueueSnapshots(queue);
+                }
             },
 
             timeRange(value) {
@@ -304,7 +309,7 @@
                     { key: 'failed',     label: 'FAILED',   value: this.metricValue(failedValue),             sub: failedSub, cls: (failedValue ?? 0) > 0 ? 'danger' : '' },
                     { key: 'flow',       label: 'FLOW',     value: this.metricValue(this.summary.current_throughput_per_minute ?? this.summary.throughput_per_minute), sub: 'jobs / min', cls: 'ok' },
                     { key: 'wait',       label: 'AVG WAIT', value: this.metricValue(this.summary.average_wait_seconds, 's'), sub: 'latency', cls: '' },
-                ];
+                ].map(metric => ({ ...metric, history: this.kpiHistory[metric.key] ?? [] }));
             },
 
             selectedNode() {
@@ -334,6 +339,7 @@
                     metrics: this.inspectorMetrics(node, queue, jobClass),
                     jobClasses: queue && !jobClass ? this.queueJobClasses(queue) : [],
                     jobs: queue ? this.queueJobs(queue).filter(job => !jobClass || job.name === jobClass.name) : [],
+                    snapshots: queue ? (this.queueSnapshots[queue.name]?.snapshots ?? []) : [],
                     incoming: this.graphEdges.filter(e => e.target === node.id),
                     outgoing: this.graphEdges.filter(e => e.source === node.id),
                     action: this.suggestedAction(node, queue, jobClass),
@@ -432,16 +438,38 @@
                 return this.$http.get(Horizon.basePath + '/api/flow/summary', {
                     params: { window: this.timeRangeSeconds() },
                 })
-                    .then(response => this.mergeFlow({
-                        source: response.data.source,
-                        sources: response.data.sources,
-                        errors: response.data.errors ?? [],
-                        health: response.data.health ?? [],
-                        meta: response.data.meta ?? {},
-                        generated_at: response.data.generated_at,
-                        summary: response.data.summary ?? {},
-                    }))
+                    .then(response => {
+                        this.mergeFlow({
+                            source: response.data.source,
+                            sources: response.data.sources,
+                            errors: response.data.errors ?? [],
+                            health: response.data.health ?? [],
+                            meta: response.data.meta ?? {},
+                            generated_at: response.data.generated_at,
+                            summary: response.data.summary ?? {},
+                        });
+                        this.recordKpiHistory();
+                    })
                     .catch(() => {});
+            },
+
+            // Ring buffers behind the KPI sparklines — one point per summary
+            // poll, capped so an afternoon-long session stays flat.
+            recordKpiHistory() {
+                const summary = this.flow?.summary ?? {};
+                const push = (key, value) => {
+                    if (value === null || value === undefined) return;
+                    const series = this.kpiHistory[key];
+                    series.push(Number(value));
+                    if (series.length > 60) series.shift();
+                };
+
+                push('pending', summary.pending);
+                push('processing', summary.processing);
+                push('delayed', summary.delayed);
+                push('failed', summary.failed_in_window ?? summary.failed);
+                push('flow', summary.current_throughput_per_minute ?? summary.throughput_per_minute);
+                push('wait', summary.average_wait_seconds);
             },
 
             refreshGraph() {
@@ -462,7 +490,10 @@
                     .then(response => {
                         this.mergeFlow({ queues: response.data.queues ?? [] });
                         const selected = this.selectedQueue();
-                        if (selected) this.fetchQueueJobs(selected);
+                        if (selected) {
+                            this.fetchQueueJobs(selected);
+                            this.fetchQueueSnapshots(selected);
+                        }
                     })
                     .catch(() => {});
             },
@@ -591,6 +622,31 @@
                 const detail = this.queueJobDetail(queue);
                 const jobs = detail?.jobs ?? queue?.jobs ?? [];
                 return jobs.slice(0, 12);
+            },
+
+            // Horizon's own metrics endpoint serves the snapshot series the
+            // scheduler's horizon:snapshot command records (~1/min, 24 kept).
+            // A short TTL keeps re-selections from hammering it.
+            fetchQueueSnapshots(queue) {
+                const name = queue?.name;
+                if (!name) return Promise.resolve();
+
+                const entry = this.queueSnapshots[name];
+                if (entry && Date.now() - entry.fetchedAt < 60000) return Promise.resolve();
+
+                this.queueSnapshots = {
+                    ...this.queueSnapshots,
+                    [name]: { fetchedAt: Date.now(), snapshots: entry?.snapshots ?? [] },
+                };
+
+                return this.$http.get(Horizon.basePath + '/api/metrics/queues/' + encodeURIComponent(name))
+                    .then(response => {
+                        this.queueSnapshots = {
+                            ...this.queueSnapshots,
+                            [name]: { fetchedAt: Date.now(), snapshots: Array.isArray(response.data) ? response.data : [] },
+                        };
+                    })
+                    .catch(() => {});
             },
 
             fetchQueueJobs(queue) {
@@ -1206,6 +1262,32 @@
     .lf-val-warn    { color: var(--lf-amber)  !important; }
     .lf-val-danger  { color: var(--lf-red)    !important; }
     .lf-val-ok      { color: var(--lf-green)  !important; }
+
+    /* ── SPARKLINES ──────────────────────────────────────────────────────── */
+    .lf-spark { display: block; }
+    .lf-metric-spark { width: 100%; height: 20px; margin-top: 7px; opacity: .85; }
+
+    .lf-trend {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 3px 0;
+    }
+    .lf-trend-label {
+        font-size: 10.5px;
+        color: var(--lf-muted);
+        min-width: 62px;
+    }
+    .lf-trend-spark { flex: 1; height: 18px; min-width: 0; }
+    .lf-trend-latest {
+        font-size: 10.5px;
+        font-weight: 600;
+        color: var(--lf-text);
+        font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+        font-variant-numeric: tabular-nums;
+        min-width: 44px;
+        text-align: right;
+    }
 
     /* ── LOADING ─────────────────────────────────────────────────────────── */
     .lf-loading {

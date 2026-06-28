@@ -1,7 +1,10 @@
 <script type="text/ecmascript-6">
     import formatters from './formatters';
+    import Sparkline from './Sparkline.vue';
 
     export default {
+        components: { Sparkline },
+
         mixins: [formatters],
 
         props: {
@@ -11,6 +14,29 @@
         },
 
         emits: ['retry', 'open-failed'],
+
+        computed: {
+            // Snapshot series recorded by horizon:snapshot (~1/min). Rows are
+            // hidden until at least two points exist so a fresh install
+            // doesn't render empty charts.
+            trendRows() {
+                const snapshots = this.inspector.snapshots ?? [];
+                if (snapshots.length < 2) return [];
+
+                const series = (key) => snapshots.map(s => Number(s?.[key] ?? 0));
+                const latest = (values) => values[values.length - 1];
+
+                const throughput = series('throughput');
+                const runtime = series('runtime');
+                const wait = series('wait');
+
+                return [
+                    { key: 'throughput', label: 'throughput', values: throughput, latest: this.formatRate(latest(throughput)), color: 'var(--lf-cyan)' },
+                    { key: 'runtime',    label: 'runtime',    values: runtime,    latest: this.metricValue(latest(runtime), 's'), color: 'var(--lf-violet)' },
+                    { key: 'wait',       label: 'wait',       values: wait,       latest: this.metricValue(latest(wait), 's'), color: 'var(--lf-amber)' },
+                ];
+            },
+        },
 
         methods: {
             isRetrying(job) {
@@ -47,6 +73,15 @@
                 <div class="lf-kv" v-for="m in inspector.metrics" :key="m[0]">
                     <span class="lf-kv-k">{{ m[0] }}</span>
                     <span class="lf-kv-v">{{ m[1] }}</span>
+                </div>
+            </div>
+
+            <div class="lf-insp-sec" v-if="inspector.queue && trendRows.length">
+                <div class="lf-insp-sec-title">Trends</div>
+                <div class="lf-trend" v-for="trend in trendRows" :key="trend.key">
+                    <span class="lf-trend-label">{{ trend.label }}</span>
+                    <Sparkline class="lf-trend-spark" :values="trend.values" :color="trend.color" :height="18"/>
+                    <span class="lf-trend-latest">{{ trend.latest }}</span>
                 </div>
             </div>
 
