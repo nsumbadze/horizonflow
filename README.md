@@ -66,7 +66,7 @@ Live-flow behaviour is configured via `config/horizonxbrain.php`:
 ### Abilities
 
 - `viewHorizon` — required to enter the dashboard (existing Horizon gate).
-- `controlHorizon` — required for mutation endpoints (`POST /jobs/retry/{id}`, `POST /masters/{action}`, `POST /supervisors/{name}/{action}`). When the gate is undefined the upstream behaviour is preserved (any viewer can mutate). Define it in `HorizonApplicationServiceProvider::gate()` to lock destructive actions to a subset of users.
+- `controlHorizon` — required for mutation endpoints (`POST /jobs/retry/{id}`, `POST /masters/{action}`, `POST /supervisors/{name}/{action}`). When the gate is undefined, mutations are only allowed in `local` and `testing` environments; everywhere else, define the gate in `HorizonApplicationServiceProvider::gate()` to enable destructive actions for a trusted subset of users.
 
 ### Environment Variables
 

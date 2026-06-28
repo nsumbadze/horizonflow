@@ -14,8 +14,9 @@ use Laravel\Horizon\Horizon;
  * check for `controlHorizon` so an operator can be granted read-only access
  * while reserving destructive operations for trusted users.
  *
- * If `controlHorizon` is not defined, the check is a no-op — keeping the
- * upstream behavior where any viewer can also mutate state.
+ * If `controlHorizon` is not defined, control is only permitted in local and
+ * testing environments — everywhere else the gate must be defined explicitly,
+ * so a production dashboard viewer can never pause workers by accident.
  */
 class AuthenticateControl
 {
@@ -30,8 +31,11 @@ class AuthenticateControl
             throw ForbiddenException::make();
         }
 
-        if (Gate::has('controlHorizon')
-            && ! Gate::forUser($request->user())->check('controlHorizon')) {
+        if (Gate::has('controlHorizon')) {
+            if (! Gate::forUser($request->user())->check('controlHorizon')) {
+                throw ForbiddenException::make();
+            }
+        } elseif (! app()->environment('local', 'testing')) {
             throw ForbiddenException::make();
         }
 

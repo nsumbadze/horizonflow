@@ -29,11 +29,30 @@ class AuthenticateControlTest extends TestCase
         parent::tearDown();
     }
 
-    public function test_it_passes_when_control_gate_is_not_defined(): void
+    public function test_it_passes_when_control_gate_is_not_defined_in_local_environments(): void
     {
         Horizon::auth(fn ($request) => true);
 
         $this->assertSame('next', $this->dispatch($this->actingUser()));
+    }
+
+    public function test_it_forbids_when_control_gate_is_not_defined_outside_local_environments(): void
+    {
+        Horizon::auth(fn ($request) => true);
+        $this->app['env'] = 'production';
+
+        $this->expectException(ForbiddenException::class);
+
+        $this->dispatch($this->actingUser());
+    }
+
+    public function test_it_passes_when_control_gate_grants_access_outside_local_environments(): void
+    {
+        Horizon::auth(fn ($request) => true);
+        $this->app['env'] = 'production';
+        Gate::define('controlHorizon', fn ($user) => $user->email === 'op@example.com');
+
+        $this->assertSame('next', $this->dispatch($this->actingUser('op@example.com')));
     }
 
     public function test_it_passes_when_control_gate_grants_access(): void
