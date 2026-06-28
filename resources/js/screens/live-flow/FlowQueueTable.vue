@@ -19,9 +19,90 @@
 
         emits: ['select'],
 
+        data() {
+            return {
+                sortKey: null,
+                sortDir: 1,
+            };
+        },
+
+        computed: {
+            columns() {
+                return [
+                    { key: 'name',       label: 'Queue',      string: true },
+                    { key: 'source',     label: 'Src',        string: true },
+                    { key: 'connection', label: 'Connection', string: true },
+                    { key: 'driver',     label: 'Driver',     string: true },
+                    { key: 'pending',    label: 'Pending' },
+                    { key: 'delayed',    label: 'Delayed' },
+                    { key: 'oldest',     label: 'Oldest' },
+                    { key: 'wait',       label: 'Wait' },
+                    { key: 'procs',      label: 'Procs' },
+                    { key: 'current',    label: 'Current' },
+                    { key: 'last',       label: 'Last' },
+                    { key: 'eta',        label: 'ETA' },
+                    { key: 'attempts',   label: 'Attempts' },
+                    { key: 'failed',     label: 'Failed' },
+                    { key: 'failrate',   label: 'Fail %' },
+                    { key: 'status',     label: 'Status' },
+                ];
+            },
+
+            sortedQueues() {
+                if (!this.sortKey) return this.queues;
+
+                const dir = this.sortDir;
+                const key = this.sortKey;
+
+                return [...this.queues].sort((a, b) => {
+                    const va = this.sortValue(a, key);
+                    const vb = this.sortValue(b, key);
+                    return (typeof va === 'string' ? va.localeCompare(vb) : va - vb) * dir;
+                });
+            },
+        },
+
         methods: {
             resolveId(queue) {
                 return this.findQueueNode(queue)?.id ?? this.queueNodeId(queue);
+            },
+
+            sortBy(column) {
+                if (this.sortKey === column.key) {
+                    this.sortDir = -this.sortDir;
+                    return;
+                }
+                this.sortKey = column.key;
+                // Strings read naturally ascending; metrics are more useful
+                // worst-first.
+                this.sortDir = column.string ? 1 : -1;
+            },
+
+            sortValue(queue, key) {
+                switch (key) {
+                    case 'name':       return String(queue.name ?? '');
+                    case 'source':     return String(queue.source ?? queue.driver ?? '');
+                    case 'connection': return String(queue.connection ?? '');
+                    case 'driver':     return String(queue.driver ?? '');
+                    case 'pending':    return Number(queue.pending ?? 0);
+                    case 'delayed':    return Number(queue.delayed ?? 0);
+                    case 'oldest':     return Number(queue.oldest_pending_seconds ?? queue.wait_seconds ?? 0);
+                    case 'wait':       return Number(queue.wait_seconds ?? 0);
+                    case 'procs':      return Number(queue.processes ?? 0);
+                    case 'current':    return Number(queue.current_throughput_per_minute ?? 0);
+                    case 'last':       return Number(queue.throughput_per_minute ?? 0);
+                    case 'eta':        return Number(queue.estimated_drain_seconds ?? 0);
+                    case 'attempts':   return Number(queue.attempts ?? 0);
+                    case 'failed':     return this.queueFailedInWindow(queue);
+                    case 'failrate':   return Number(queue.failure_rate ?? 0);
+                    case 'status':     return { healthy: 0, warning: 1, critical: 2 }[this.queueStatus(queue)] ?? 0;
+                    default:           return 0;
+                }
+            },
+
+            sortArrow(column) {
+                if (this.sortKey !== column.key) return '';
+                return this.sortDir === 1 ? '▲' : '▼';
             },
         },
     };
@@ -37,15 +118,18 @@
             <table class="lf-tbl">
                 <thead>
                     <tr>
-                        <th>Queue</th><th>Src</th><th>Connection</th><th>Driver</th>
-                        <th class="r">Pending</th><th class="r">Delayed</th><th class="r">Oldest</th><th class="r">Wait</th>
-                        <th class="r">Procs</th><th class="r">Current</th><th class="r">Last</th><th class="r">ETA</th>
-                        <th class="r">Attempts</th><th class="r">Failed</th><th class="r">Fail %</th><th class="r">Status</th>
+                        <th
+                            v-for="column in columns"
+                            :key="column.key"
+                            class="sortable"
+                            :class="{ r: !column.string, 'lf-th-active': sortKey === column.key }"
+                            @click="sortBy(column)"
+                        >{{ column.label }}<span class="lf-th-arrow" v-if="sortKey === column.key">{{ sortArrow(column) }}</span></th>
                     </tr>
                 </thead>
                 <tbody>
                     <tr
-                        v-for="queue in queues"
+                        v-for="queue in sortedQueues"
                         :key="queue.driver + ':' + queue.connection + ':' + queue.name"
                         :class="{ 'lf-tbl-sel': selectedId === resolveId(queue) }"
                         @click="$emit('select', resolveId(queue))"

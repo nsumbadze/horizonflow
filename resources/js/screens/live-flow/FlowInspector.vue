@@ -126,6 +126,11 @@
             <div class="lf-action" :class="'lf-action-' + inspector.action.type">
                 <div class="lf-action-title">{{ inspector.action.title }}</div>
                 <div class="lf-action-text">{{ inspector.action.text }}</div>
+                <router-link
+                    v-if="inspector.action.link"
+                    class="lf-action-link"
+                    :to="inspector.action.link.to"
+                >{{ inspector.action.link.text }}</router-link>
             </div>
         </div>
     </aside>

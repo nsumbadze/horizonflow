@@ -7,6 +7,18 @@
         props: {
             events: { type: Array, default: () => [] },
         },
+
+        methods: {
+            // Failed events carry the Horizon job id (a UUID) when the job
+            // is still on record; the sha1 fallback id can't be inspected.
+            failedJobRoute(event) {
+                if (event.state !== 'failed') return null;
+                if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(event.id ?? ''))) {
+                    return { name: 'failed-jobs-preview', params: { jobId: event.id } };
+                }
+                return { name: 'failed-jobs' };
+            },
+        },
     };
 </script>
 
@@ -17,15 +29,18 @@
             <span class="lf-tag">recent</span>
         </div>
         <div class="lf-activity">
-            <div
-                v-for="(event, i) in events"
-                :key="i"
+            <component
+                v-for="event in events"
+                :key="event.id ?? event.timestamp + '-' + event.label"
+                :is="failedJobRoute(event) ? 'router-link' : 'div'"
+                :to="failedJobRoute(event) ?? undefined"
                 class="lf-event"
+                :class="{ 'lf-event-link': failedJobRoute(event) }"
             >
                 <span class="lf-event-time">{{ relativeTime(event) }}</span>
                 <span class="lf-dot" :class="'lf-dot-' + event.status" style="flex-shrink:0"></span>
                 <span class="lf-event-label">{{ event.label }}</span>
-            </div>
+            </component>
             <div class="lf-empty" v-if="events.length === 0">No recent flow events.</div>
         </div>
     </div>

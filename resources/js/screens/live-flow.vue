@@ -873,11 +873,12 @@
                 if (node.type === 'result' && node.label === 'failed') {
                     const inWindow = Number(node.metrics?.failed_in_window ?? this.summary.failed_in_window ?? 0);
                     const allTime = Number(node.metrics?.failed ?? this.summary.failed ?? 0);
+                    const link = { to: { name: 'failed-jobs' }, text: 'View failed jobs →' };
                     if (inWindow > 0) {
-                        return { type: 'critical', title: 'Immediate Action', text: `${this.formatNumber(inWindow)} job${inWindow === 1 ? '' : 's'} failed in the active window. Inspect the failures.` };
+                        return { type: 'critical', title: 'Immediate Action', text: `${this.formatNumber(inWindow)} job${inWindow === 1 ? '' : 's'} failed in the active window. Inspect the failures.`, link };
                     }
                     if (allTime > 0) {
-                        return { type: 'warn', title: 'Heads Up', text: `No recent failures, but ${this.formatNumber(allTime)} historical failure${allTime === 1 ? '' : 's'} on record.` };
+                        return { type: 'warn', title: 'Heads Up', text: `No recent failures, but ${this.formatNumber(allTime)} historical failure${allTime === 1 ? '' : 's'} on record.`, link };
                     }
                     return { type: 'ok', title: 'Status', text: 'No failed jobs.' };
                 }
@@ -886,7 +887,8 @@
                     if (queue && failedInWindow > 0) {
                         return { type: 'critical', title: 'Immediate Action', text: queue.latest_error
                             ? `${queue.name} has ${this.formatNumber(failedInWindow)} failed jobs in window. Latest error: ${queue.latest_error}`
-                            : `${queue.name} has ${this.formatNumber(failedInWindow)} failed jobs in window. Inspect the failures.` };
+                            : `${queue.name} has ${this.formatNumber(failedInWindow)} failed jobs in window. Inspect the failures.`,
+                            link: { to: { name: 'failed-jobs' }, text: 'View failed jobs →' } };
                     }
                     return { type: 'critical', title: 'Immediate Action', text: queue
                         ? `Backlog is critical on ${queue.name}. Scale workers or reduce dispatch rate.`
@@ -1438,6 +1440,10 @@
         border-bottom: 1px solid var(--lf-border);
         white-space: nowrap;
     }
+    .lf-tbl th.sortable { cursor: pointer; user-select: none; transition: color .1s; }
+    .lf-tbl th.sortable:hover { color: var(--lf-violet); }
+    .lf-tbl th.lf-th-active { color: var(--lf-violet); }
+    .lf-th-arrow { margin-left: 3px; font-size: 7px; }
     .lf-tbl .r { text-align: right; }
     .lf-tbl .num { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: 11px; font-variant-numeric: tabular-nums; }
     .lf-tbl .muted { color: var(--lf-muted); }
@@ -1659,6 +1665,20 @@
     .lf-action-warn     .lf-action-title { color: var(--lf-amber); }
     .lf-action-critical .lf-action-title { color: var(--lf-red); }
     .lf-action-text { font-size: 11px; color: var(--lf-muted); line-height: 1.55; }
+    .lf-action-link {
+        display: inline-block;
+        margin-top: 6px;
+        font-size: 10.5px;
+        font-weight: 700;
+        text-decoration: none;
+    }
+    .lf-action-critical .lf-action-link { color: var(--lf-red); }
+    .lf-action-warn     .lf-action-link { color: var(--lf-amber); }
+    .lf-action-ok       .lf-action-link { color: var(--lf-green); }
+    .lf-action-link:hover { text-decoration: underline; }
+
+    .lf-event-link { text-decoration: none; color: inherit; cursor: pointer; }
+    .lf-event-link:hover .lf-event-label { color: var(--lf-violet); }
 
     /* ── MODAL ───────────────────────────────────────────────────────────── */
     .lf-modal-backdrop {
