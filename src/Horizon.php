@@ -318,6 +318,7 @@ class Horizon
     {
         if (class_exists(\Illuminate\Foundation\DevCommands::class)) {
             \Illuminate\Foundation\DevCommands::artisan('horizon', 'horizon');
+            \Illuminate\Foundation\DevCommands::except('queue');
         }
     }
 }
