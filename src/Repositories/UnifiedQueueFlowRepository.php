@@ -169,8 +169,7 @@ class UnifiedQueueFlowRepository implements QueueFlowRepository
         $totalPending = (int) $queues->sum('pending');
         $totalThroughput = $this->nullableQueueSum($queues, 'throughput_per_minute');
 
-        return [
-            ...$first,
+        return array_merge($first, [
             'name' => (string) ($first['name'] ?? 'default'),
             'connection' => $connections[0] ?? ($first['connection'] ?? 'unknown'),
             'driver' => $drivers[0] ?? ($first['driver'] ?? 'unknown'),
@@ -195,7 +194,7 @@ class UnifiedQueueFlowRepository implements QueueFlowRepository
             'last_failed_at' => $queues->pluck('last_failed_at')->filter()->sortDesc()->first(),
             'jobs' => $queues->pluck('jobs')->flatten(1)->sortByDesc(fn (array $job): int => (int) ($job['timestamp'] ?? 0))->take(12)->values()->all(),
             'job_classes' => $this->mergeJobClasses($queues->pluck('job_classes')->flatten(1)->all()),
-        ];
+        ]);
     }
 
     /**
@@ -282,12 +281,11 @@ class UnifiedQueueFlowRepository implements QueueFlowRepository
     {
         return $sources
             ->flatMap(fn (array $source): array => collect($source['events'] ?? [])
-                ->map(fn (array $event): array => [
-                    ...$event,
+                ->map(fn (array $event): array => array_merge($event, [
                     'status' => $event['status'] ?? 'healthy',
                     'label' => '['.($source['source'] ?? 'source').'] '.($event['label'] ?? 'Queue event'),
                     'source' => $source['source'] ?? null,
-                ])
+                ]))
                 ->all())
             ->sortByDesc(fn (array $event): int => (int) ($event['timestamp'] ?? 0))
             ->take(60)

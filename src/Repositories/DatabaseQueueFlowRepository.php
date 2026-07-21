@@ -34,15 +34,14 @@ class DatabaseQueueFlowRepository implements QueueFlowRepository
                     'job_classes' => [],
                 ];
 
-                return [
-                    ...$queue,
+                return array_merge($queue, [
                     'failed' => $failure['failed'],
                     'latest_error' => $failure['latest_error'],
                     'last_failed_at' => $failure['last_failed_at'],
                     'jobs' => $this->mergeRecentJobs($queue['jobs'] ?? [], $failure['jobs']),
                     'job_classes' => $this->mergeJobClasses($queue['job_classes'] ?? [], $failure['job_classes']),
                     'failure_rate' => null,
-                ];
+                ]);
             })
             ->sortBy(fn (array $queue): string => $queue['connection'].':'.$queue['name'])
             ->values();
