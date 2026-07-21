@@ -5,6 +5,7 @@ namespace Laravel\Horizon\Tests\Feature;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Queue;
 use Laravel\Horizon\Contracts\MetricsRepository;
+use Laravel\Horizon\Repositories\RedisMetricsRepository;
 use Laravel\Horizon\Stopwatch;
 use Laravel\Horizon\Tests\IntegrationTest;
 use Mockery;
@@ -190,6 +191,49 @@ class MetricsTest extends IntegrationTest
         $this->assertSame(
             0.0, resolve(MetricsRepository::class)->jobsProcessedPerMinute()
         );
+    }
+
+    public function test_queue_with_maximum_runtime_and_throughput_compares_latest_snapshot()
+    {
+        $repository = resolve(MetricsRepository::class);
+        $connection = $repository->connection();
+
+        // Two measured queues, each with three snapshots (the case where the
+        // ZRANGE range matters — fewer than three would mask the bug). The most
+        // recent snapshot is the highest-scored member. "fast" has the greater
+        // throughput, "slow" the greater runtime, so each card must surface a
+        // different queue rather than an arbitrary one.
+        $connection->sadd('measured_queues', 'queue:fast', 'queue:slow');
+
+        foreach ([
+            'fast' => [['throughput' => 10, 'runtime' => 5], ['throughput' => 50, 'runtime' => 10], ['throughput' => 102, 'runtime' => 21]],
+            'slow' => [['throughput' => 3, 'runtime' => 100], ['throughput' => 7, 'runtime' => 200], ['throughput' => 11, 'runtime' => 338]],
+        ] as $queue => $snapshots) {
+            foreach ($snapshots as $score => $snapshot) {
+                $connection->zadd('snapshot:queue:'.$queue, $score, json_encode($snapshot));
+            }
+        }
+
+        $this->assertSame('fast', $repository->queueWithMaximumThroughput());
+        $this->assertSame('slow', $repository->queueWithMaximumRuntime());
+    }
+
+    public function test_snapshot_does_not_fail_when_hmget_returns_null()
+    {
+        $connection = Mockery::mock();
+        $connection->shouldReceive('smembers')->with('measured_jobs')->andReturn(['job:Foo']);
+        $connection->shouldReceive('smembers')->with('measured_queues')->andReturn([]);
+        $connection->shouldReceive('transaction')->andReturn([null, 0]);
+        $connection->shouldReceive('zadd');
+        $connection->shouldReceive('zremrangebyrank');
+        $connection->shouldReceive('set');
+
+        $repository = Mockery::mock(RedisMetricsRepository::class.'[connection]', [app('redis')]);
+        $repository->shouldReceive('connection')->andReturn($connection);
+
+        $repository->snapshot();
+
+        $this->assertTrue(true);
     }
 
     public function test_only_past_24_snapshots_are_retained()
