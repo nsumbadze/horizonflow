@@ -31,3 +31,14 @@ composer.lock
 
 # Codex workspace placeholder prevents a normal .git directory here.
 /.gitdata
+
+# Local AI assistant tooling and configuration
+/.claude
+/.codex
+/.cursor
+/.gemini
+/.mcp.json
+/AGENTS.md
+/CLAUDE.md
+/GEMINI.md
+/opencode.json
