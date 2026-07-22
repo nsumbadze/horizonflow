@@ -111,8 +111,15 @@ jobs:
           sudo apt-get install -y --fix-missing redis-server
           sudo service redis-server stop
 
+          # Every node needs its own data directory. Sharing one means sharing a
+          # single `appendonlydir`, and three servers creating that AOF manifest
+          # at the same time is enough to make one of them die on startup.
           for port in 7000 7001 7002; do
-            redis-server --daemonize yes --port "$port" --appendonly yes --cluster-enabled yes --cluster-config-file "nodes-$port.conf"
+            mkdir -p "$RUNNER_TEMP/redis-$port"
+            redis-server --daemonize yes --port "$port" --appendonly yes --cluster-enabled yes \
+              --cluster-config-file "nodes-$port.conf" \
+              --dir "$RUNNER_TEMP/redis-$port" \
+              --logfile "$RUNNER_TEMP/redis-$port/redis.log"
           done
 
           # --daemonize returns as soon as the parent forks, before the node
@@ -127,7 +134,8 @@ jobs:
               sleep 1
             done
 
-            echo "Redis node on port $port never started accepting connections."
+            echo "Redis node on port $port never started accepting connections. Its log:"
+            cat "$RUNNER_TEMP/redis-$port/redis.log" || true
             exit 1
           done
 
