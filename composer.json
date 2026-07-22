@@ -1,14 +1,19 @@
 {
     "name": "horizonxflow/horizonxflow",
-    "description": "Queue monitoring with Horizon telemetry and Brain-style flow visualization.",
-    "keywords": ["laravel", "queue"],
+    "description": "Live queue-flow visualization and operational insights for Laravel Horizon.",
+    "keywords": ["horizon", "laravel", "monitoring", "queue", "redis"],
+    "homepage": "https://github.com/nsumbadze/horizonxflow",
     "license": "MIT",
     "authors": [
         {
             "name": "Taylor Otwell",
-            "email": "taylor@laravel.com"
+            "role": "Original Author"
         }
     ],
+    "support": {
+        "issues": "https://github.com/nsumbadze/horizonxflow/issues",
+        "source": "https://github.com/nsumbadze/horizonxflow"
+    },
     "require": {
         "php": "^8.0",
         "ext-json": "*",
