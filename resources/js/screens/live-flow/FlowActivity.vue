@@ -38,8 +38,7 @@
                 :class="{ 'lf-event-link': failedJobRoute(event) }"
             >
                 <span class="lf-event-time">{{ relativeTime(event) }}</span>
-                <span class="lf-dot" :class="'lf-dot-' + event.status" style="flex-shrink:0"></span>
-                <span class="lf-event-label">{{ event.label }}</span>
+                <span class="lf-event-label" :class="'lf-st-' + event.status">{{ event.label }}</span>
             </component>
             <div class="lf-empty" v-if="events.length === 0">No recent flow events.</div>
         </div>

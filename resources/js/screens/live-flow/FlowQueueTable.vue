@@ -134,7 +134,7 @@
                         :class="{ 'lf-tbl-sel': selectedId === resolveId(queue) }"
                         @click="$emit('select', resolveId(queue))"
                     >
-                        <td><span class="lf-qname"><span class="lf-dot" :class="'lf-dot-' + queueStatus(queue)"></span>{{ queue.name }}</span></td>
+                        <td><span class="lf-qname">{{ queue.name }}</span></td>
                         <td class="muted">{{ queue.source ?? queue.driver }}</td>
                         <td class="muted">{{ queue.connection }}</td>
                         <td><span class="lf-drv" :class="'lf-drv-' + queue.driver">{{ queue.driver }}</span></td>

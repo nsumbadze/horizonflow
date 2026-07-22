@@ -117,11 +117,10 @@
                     :class="{ 'lf-job-row-clickable': job.status === 'failed' }"
                     @click="$emit('open-failed', job)"
                 >
-                    <span class="lf-dot" :class="'lf-dot-' + jobStatusClass(job.status)"></span>
                     <div class="lf-job-main">
                         <div class="lf-job-name">{{ shortJobName(job.name) }}</div>
                         <div class="lf-job-sub">
-                            {{ job.status }} · attempts {{ formatNumber(job.attempts ?? 0) }} · age {{ formatDuration(job.age_seconds) }}
+                            <span :class="'lf-st-' + jobStatusClass(job.status)">{{ job.status }}</span> · attempts {{ formatNumber(job.attempts ?? 0) }} · age {{ formatDuration(job.age_seconds) }}
                         </div>
                         <div class="lf-job-error" v-if="job.exception">{{ job.exception }}</div>
                     </div>
@@ -141,9 +140,8 @@
             <div class="lf-insp-sec">
                 <div class="lf-insp-sec-title">Incoming</div>
                 <div class="lf-edge-row" v-for="edge in inspector.incoming" :key="edge.id">
-                    <span class="lf-dot" :class="'lf-dot-' + edge.status"></span>
                     <span class="lf-edge-lbl">{{ graphNodeLookup[edge.source]?.label ?? edge.source }}</span>
-                    <span class="lf-edge-rate">{{ edgeDisplayLabel(edge) }}</span>
+                    <span class="lf-edge-rate" :class="'lf-st-' + edge.status">{{ edgeDisplayLabel(edge) }}</span>
                 </div>
                 <div class="lf-empty-sm" v-if="inspector.incoming.length === 0">—</div>
             </div>
@@ -151,9 +149,8 @@
             <div class="lf-insp-sec">
                 <div class="lf-insp-sec-title">Outgoing</div>
                 <div class="lf-edge-row" v-for="edge in inspector.outgoing" :key="edge.id">
-                    <span class="lf-dot" :class="'lf-dot-' + edge.status"></span>
                     <span class="lf-edge-lbl">{{ graphNodeLookup[edge.target]?.label ?? edge.target }}</span>
-                    <span class="lf-edge-rate">{{ edgeDisplayLabel(edge) }}</span>
+                    <span class="lf-edge-rate" :class="'lf-st-' + edge.status">{{ edgeDisplayLabel(edge) }}</span>
                 </div>
                 <div class="lf-empty-sm" v-if="inspector.outgoing.length === 0">—</div>
             </div>

@@ -52,7 +52,6 @@
 
         <div class="lf-supervisors" v-if="supervisors.length">
             <div class="lf-supervisor" v-for="supervisor in supervisors" :key="supervisor.name">
-                <span class="lf-dot" :class="'lf-dot-' + statusKey(supervisor.status)"></span>
                 <div class="lf-supervisor-main">
                     <div class="lf-supervisor-name">{{ supervisor.name }}</div>
                     <div class="lf-supervisor-sub">

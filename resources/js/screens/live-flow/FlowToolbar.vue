@@ -30,7 +30,7 @@
 <template>
     <div class="lf-toolbar">
         <span v-if="flow" class="lf-chip" :class="'lf-chip-' + sourceClass">
-            <span class="lf-blink"></span>{{ sourceLabel }}
+            {{ sourceLabel }}
         </span>
         <span v-if="generatedAt" class="lf-ts">{{ generatedAt }}</span>
         <div class="lf-toolbar-gap"></div>
@@ -59,7 +59,7 @@
             refresh
         </button>
         <button class="lf-btn" :class="{ 'lf-btn-live': live }" type="button" @click="$emit('toggle-live')">
-            <span class="lf-blink lf-blink-inline"></span>live
+            live
         </button>
     </div>
 </template>

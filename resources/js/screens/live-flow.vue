@@ -37,10 +37,8 @@
                 controllingHorizon: [],
                 lastEventTimestamp: 0,
                 queueJobDetails: {},
-                eventSpawns: [],
                 flowCounts: { dispatched: 0, reserved: 0, completed: 0, failed: 0 },
                 zoom: Number.isFinite(saved.zoom) ? Math.min(2.5, Math.max(0.35, saved.zoom)) : 1,
-                kpiHistory: { pending: [], processing: [], delayed: [], failed: [], flow: [], wait: [] },
                 queueSnapshots: {},
             };
         },
@@ -85,8 +83,8 @@
             this.isDark = this.sniffDark();
             this.initDarkWatcher();
             // Catch up immediately when the tab becomes visible again. The
-            // bootstrap flag is cleared so the backlog of events fetched
-            // after a long hidden stretch doesn't burst as stale particles.
+            // bootstrap flag is cleared so the backlog of events fetched after
+            // a long hidden stretch doesn't inflate the session counters.
             this._visibilityHandler = () => {
                 if (document.hidden || !this.live) return;
                 this._eventsBootstrapped = false;
@@ -308,7 +306,7 @@
                     { key: 'failed',     label: 'FAILED',   value: this.metricValue(failedValue),             sub: failedSub, cls: (failedValue ?? 0) > 0 ? 'danger' : '' },
                     { key: 'flow',       label: 'FLOW',     value: this.metricValue(this.summary.current_throughput_per_minute ?? this.summary.throughput_per_minute), sub: 'jobs / min', cls: 'ok' },
                     { key: 'wait',       label: 'AVG WAIT', value: this.metricValue(this.summary.average_wait_seconds, 's'), sub: 'latency', cls: '' },
-                ].map(metric => ({ ...metric, history: this.kpiHistory[metric.key] ?? [] }));
+                ];
             },
 
             selectedNode() {
@@ -447,28 +445,8 @@
                             generated_at: response.data.generated_at,
                             summary: response.data.summary ?? {},
                         });
-                        this.recordKpiHistory();
                     })
                     .catch(() => {});
-            },
-
-            // Ring buffers behind the KPI sparklines — one point per summary
-            // poll, capped so an afternoon-long session stays flat.
-            recordKpiHistory() {
-                const summary = this.flow?.summary ?? {};
-                const push = (key, value) => {
-                    if (value === null || value === undefined) return;
-                    const series = this.kpiHistory[key];
-                    series.push(Number(value));
-                    if (series.length > 60) series.shift();
-                };
-
-                push('pending', summary.pending);
-                push('processing', summary.processing);
-                push('delayed', summary.delayed);
-                push('failed', summary.failed_in_window ?? summary.failed);
-                push('flow', summary.current_throughput_per_minute ?? summary.throughput_per_minute);
-                push('wait', summary.average_wait_seconds);
             },
 
             refreshGraph() {
@@ -526,28 +504,13 @@
                     );
 
                     // First poll returns historical events — skip them so the
-                    // graph doesn't burst with N stale particles on page load.
-                    // Subsequent polls are real-time deltas; each event maps to
-                    // one dot traveling its edge plus a flow-count bump.
+                    // session counters don't jump by N on page load. Subsequent
+                    // polls are real-time deltas, one flow-count bump each.
                     if (this._eventsBootstrapped) {
-                        this.dispatchEventSpawns(fresh);
+                        fresh.forEach(event => this.bumpFlowCount(event));
                     }
                     this._eventsBootstrapped = true;
                 }).catch(() => {});
-            },
-
-            dispatchEventSpawns(events) {
-                const ordered = [...events].sort((a, b) =>
-                    Number(a.timestamp ?? 0) - Number(b.timestamp ?? 0)
-                );
-                const additions = ordered.map(event => {
-                    this._spawnSequence = (this._spawnSequence ?? 0) + 1;
-                    this.bumpFlowCount(event);
-                    return { ...event, _spawnId: this._spawnSequence };
-                });
-                if (additions.length === 0) return;
-                const next = [...this.eventSpawns, ...additions];
-                this.eventSpawns = next.length > 200 ? next.slice(-200) : next;
             },
 
             bumpFlowCount(event) {
@@ -1013,13 +976,11 @@
                 <FlowGraph
                     :nodes="graphNodes"
                     :edges="graphEdges"
-                    :event-spawns="eventSpawns"
                     :flow-counts="flowCounts"
                     :live="live"
                     :svg-height="svgHeight"
                     :selected-id="selectedId"
                     :is-dark="isDark"
-                    :summary="summary"
                     v-model:zoom="zoom"
                     @select="selectNode"
                 />
@@ -1086,9 +1047,6 @@
         --lf-red:     #dc2626;
 
         --lf-canvas-bg: var(--bs-secondary-bg, #e9ecef);
-        --lf-dot-color: rgba(119, 70, 236, 0.10);
-        --lf-grid:      rgba(119, 70, 236, 0.055);
-        --lf-stage:     rgba(90, 88, 84, 0.50);
 
         --lf-svg-text:  #111827;
         --lf-svg-muted: #6b7280;
@@ -1128,9 +1086,6 @@
         --lf-red:     #e84050;
 
         --lf-canvas-bg: #06090d;
-        --lf-dot-color: rgba(0, 200, 212, 0.09);
-        --lf-grid:      rgba(0, 200, 212, 0.038);
-        --lf-stage:     rgba(104, 120, 160, 0.45);
 
         --lf-svg-text:  #c8d6e8;
         --lf-svg-muted: #6b7e96;
@@ -1272,7 +1227,6 @@
 
     /* ── SPARKLINES ──────────────────────────────────────────────────────── */
     .lf-spark { display: block; }
-    .lf-metric-spark { width: 100%; height: 20px; margin-top: 7px; opacity: .85; }
 
     .lf-trend {
         display: flex;
@@ -1395,16 +1349,11 @@
         overflow: hidden;
         user-select: none;
         background-color: var(--lf-canvas-bg);
-        background-image: radial-gradient(circle, var(--lf-dot-color) 1px, transparent 1px);
-        background-size: 22px 22px;
-        background-position: 11px 11px;
     }
     .lf-svg { width: 100%; height: auto; min-height: max(500px, calc(100vh - 340px)); display: block; }
     .lf-svg-mono { font-family: ui-monospace, "Cascadia Code", "SF Mono", Consolas, monospace; }
     .lf-svg-node { cursor: pointer; }
     .lf-svg-node:hover > rect:first-child { filter: brightness(1.08); }
-    .lf-svg-grid line { stroke: var(--lf-grid); stroke-width: 1; }
-    .lf-stage { fill: var(--lf-stage); font-size: 8px; letter-spacing: 1.8px; font-family: ui-monospace, Consolas, monospace; }
 
     /* ── FLOW STATS STRIP ────────────────────────────────────────────────── */
     .lf-flowstats {
@@ -1429,7 +1378,7 @@
         display: inline-flex;
         align-items: center;
         gap: 7px;
-        padding: 5px 11px 5px 9px;
+        padding: 5px 11px;
         border: 1px solid var(--lf-border);
         border-radius: 999px;
         background: var(--lf-bg);
@@ -1449,41 +1398,15 @@
         font-size: 9px;
         font-weight: 500;
     }
-    .lf-flowstats .lf-fs-dot {
-        width: 7px; height: 7px; border-radius: 50%;
-        box-shadow: 0 0 0 2px rgba(255,255,255,0.04);
-    }
     .lf-flowstats .lf-fs-dispatched { border-color: rgba(96,165,250,0.35); }
-    .lf-flowstats .lf-fs-dispatched .lf-fs-dot { background: var(--lf-blue); }
+    .lf-flowstats .lf-fs-dispatched .lf-fs-num { color: var(--lf-blue); }
     .lf-flowstats .lf-fs-reserved   { border-color: rgba(167,139,250,0.35); }
-    .lf-flowstats .lf-fs-reserved   .lf-fs-dot { background: var(--lf-violet); }
+    .lf-flowstats .lf-fs-reserved   .lf-fs-num { color: var(--lf-violet); }
     .lf-flowstats .lf-fs-completed  { border-color: rgba(74,222,128,0.4); }
-    .lf-flowstats .lf-fs-completed  .lf-fs-dot { background: var(--lf-green); }
+    .lf-flowstats .lf-fs-completed  .lf-fs-num { color: var(--lf-green); }
     .lf-flowstats .lf-fs-failed     { border-color: rgba(248,113,113,0.4); }
-    .lf-flowstats .lf-fs-failed     .lf-fs-dot { background: var(--lf-red); }
+    .lf-flowstats .lf-fs-failed     .lf-fs-num { color: var(--lf-red); }
     .lf-flowstats .lf-fs-dim { opacity: 0.5; }
-    .lf-flowstats .lf-fs-spacer { flex: 1 1 auto; }
-    .lf-flowstats .lf-fs-inflight {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        color: var(--lf-cyan);
-        font-weight: 600;
-        letter-spacing: 0.6px;
-        font-size: 10.5px;
-        text-transform: uppercase;
-    }
-    .lf-flowstats .lf-fs-inflight-dot {
-        width: 7px; height: 7px; border-radius: 50%;
-        background: var(--lf-cyan);
-        animation: lf-fs-pulse 1.2s ease-in-out infinite;
-    }
-    .lf-flowstats .lf-fs-inflight.lf-fs-quiet { color: var(--lf-muted); font-weight: 500; }
-    @keyframes lf-fs-pulse {
-        0%, 100% { opacity: 1; transform: scale(1); }
-        50%      { opacity: 0.4; transform: scale(0.85); }
-    }
-
     /* ── LEGEND ──────────────────────────────────────────────────────────── */
     .lf-legend {
         display: flex;
@@ -1495,12 +1418,12 @@
         flex-wrap: wrap;
     }
     .lf-leg-item { display: inline-flex; align-items: center; gap: 5px; font-size: 10px; color: var(--lf-muted); }
-    .lf-ld  { display: inline-block; width: 7px; height: 7px; border-radius: 50%; }
-    .lf-ld-producer { background: var(--lf-blue); opacity: .65; }
-    .lf-ld-queue    { background: var(--lf-violet); opacity: .65; }
-    .lf-ld-worker   { background: var(--lf-green); opacity: .65; }
-    .lf-ld-done     { background: var(--lf-green); }
-    .lf-ld-fail     { background: var(--lf-red); }
+    .lf-leg-producer { color: var(--lf-blue); }
+    .lf-leg-queue    { color: var(--lf-violet); }
+    .lf-leg-job      { color: var(--lf-cyan); }
+    .lf-leg-worker   { color: var(--lf-green); }
+    .lf-leg-done     { color: var(--lf-green); }
+    .lf-leg-fail     { color: var(--lf-red); }
     .lf-ll  { display: inline-block; width: 16px; height: 2px; border-radius: 1px; }
     .lf-ll-ok   { background: var(--lf-cyan); }
     .lf-ll-warn { background: var(--lf-amber); }
@@ -1553,10 +1476,10 @@
     .lf-drv-pgsql    { background: rgba(5,150,105,.09);  color: var(--lf-green); }
 
     /* ── STATUS ──────────────────────────────────────────────────────────── */
-    .lf-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
-    .lf-dot-healthy  { background: var(--lf-green); }
-    .lf-dot-warning  { background: var(--lf-amber); }
-    .lf-dot-critical { background: var(--lf-red); animation: lf-blink-anim 1s ease-in-out infinite; }
+    /* Status rides on the words that already state it. Healthy is deliberately
+       unstyled so only trouble draws the eye. */
+    .lf-st-warning  { color: var(--lf-amber); }
+    .lf-st-critical { color: var(--lf-red); }
 
     .lf-status { display: inline-block; padding: 2px 6px; border-radius: 3px; font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
     .lf-status-healthy  { background: rgba(5,150,105,.10);  color: var(--lf-green); }
@@ -1867,7 +1790,6 @@
     .lf-mini-btn-safe:hover:not(:disabled)   { border-color: var(--lf-green); background: rgba(5,150,105,.08); color: var(--lf-green); }
 
     /* ── LEGEND JOB TYPE ─────────────────────────────────────────────────── */
-    .lf-ld-job { background: var(--lf-cyan); opacity: .65; }
 
     /* ── MODAL: IMPROVED STACK TRACE ─────────────────────────────────────── */
     .lf-modal-error {
@@ -1901,19 +1823,7 @@
         .lf-supervisor { min-width: 320px; }
     }
 
-    /* ── BLINK / PULSE ───────────────────────────────────────────────────── */
-    .lf-blink {
-        display: inline-block;
-        width: 6px; height: 6px;
-        border-radius: 50%;
-        background: currentColor;
-        animation: lf-blink-anim 2s ease-in-out infinite;
-    }
-    .lf-blink-inline { vertical-align: middle; margin-right: 1px; }
-    .lf-blink-green  { background: var(--lf-green); }
-
     /* ── ANIMATIONS ──────────────────────────────────────────────────────── */
-    @keyframes lf-blink-anim { 0%,100%{opacity:1} 50%{opacity:.2} }
     @keyframes lf-spin-anim  { to{transform:rotate(360deg)} }
     .lf-spin { animation: lf-spin-anim .9s linear infinite; display: inline-block; }
 
