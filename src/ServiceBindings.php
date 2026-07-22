@@ -13,6 +13,7 @@ trait ServiceBindings
         // General services...
         AutoScaler::class,
         Contracts\HorizonCommandQueue::class => RedisHorizonCommandQueue::class,
+        Contracts\IncidentRepository::class => Repositories\RedisIncidentRepository::class,
         Listeners\TrimRecentJobs::class,
         Listeners\TrimFailedJobs::class,
         Listeners\TrimMonitoredJobs::class,

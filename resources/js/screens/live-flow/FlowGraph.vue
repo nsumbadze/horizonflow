@@ -14,6 +14,7 @@
             selectedId: { type: String, default: null },
             isDark: { type: Boolean, default: false },
             zoom: { type: Number, default: 1 },
+            monitoredTags: { type: Array, default: () => [] },
         },
 
         emits: ['select', 'update:zoom'],
@@ -231,6 +232,15 @@
             <span class="lf-zoom-mode-badge" :class="'lf-zmb-' + zoomMode" :title="zoomMode === 'individual' ? 'Showing individual job instances (zoom ≥ 135%)' : 'Showing job classes (zoom in to see individual jobs)'">
                 {{ zoomMode === 'individual' ? 'jobs' : 'classes' }}
             </span>
+            <div class="lf-graph-tags" v-if="monitoredTags.length" aria-label="Monitored tags">
+                <router-link
+                    v-for="tag in monitoredTags.slice(0, 3)"
+                    :key="tag.tag"
+                    class="lf-graph-tag"
+                    :to="{ name: 'monitoring-jobs', params: { tag: tag.tag } }"
+                    :title="`Open monitored tag ${tag.tag}`"
+                >{{ tag.tag }} <span>{{ formatCount(tag.count) }}</span></router-link>
+            </div>
             <div class="lf-vp">
                 <button v-if="hasCustomLayout" class="lf-vp-btn lf-vp-reset" @click="resetLayout" title="Reset node positions">
                     <svg width="9" height="9" viewBox="0 0 9 9" fill="none"><path d="M7.5 2A3.5 3.5 0 1 0 8 4.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><path d="M7.5 2V4H5.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -330,9 +340,7 @@
                             :fill="nodeFill(node)"
                             :stroke="nodeStroke(node)"
                             :stroke-width="nodeStrokeWidth(node)"
-                        >
-                            <animate v-if="node.status === 'critical'" attributeName="stroke-opacity" values="1;0.35;1" dur="2s" repeatCount="indefinite"/>
-                        </rect>
+                        />
                         <rect v-if="node.id === selectedId" :x="node.x" :y="node.y" :width="node.width" :height="node.height" rx="3" fill="var(--lf-violet)" opacity="0.06"/>
                         <rect :x="node.x" :y="node.y + 2" width="3" :height="node.height - 4" rx="1.5" :fill="nodeAccent(node)" opacity="0.7"/>
                         <text :x="node.x + node.width / 2" :y="node.y + 18" text-anchor="middle" class="lf-svg-mono" font-size="8" :fill="nodeAccent(node)" letter-spacing="0.7">{{ nodeKind(node) }}</text>
@@ -367,17 +375,5 @@
             </span>
         </div>
 
-        <div class="lf-legend">
-            <span class="lf-leg-item lf-leg-producer">Producer</span>
-            <span class="lf-leg-item lf-leg-queue">Queue</span>
-            <span class="lf-leg-item lf-leg-job">Job</span>
-            <span class="lf-leg-item lf-leg-worker">Worker</span>
-            <span class="lf-leg-item lf-leg-done">Completed</span>
-            <span class="lf-leg-item lf-leg-fail">Failed</span>
-            <span class="lf-leg-sep"></span>
-            <span class="lf-leg-item"><span class="lf-ll lf-ll-ok"></span>Healthy</span>
-            <span class="lf-leg-item"><span class="lf-ll lf-ll-warn"></span>Backpressure</span>
-            <span class="lf-leg-item"><span class="lf-ll lf-ll-crit"></span>Critical</span>
-        </div>
     </div>
 </template>

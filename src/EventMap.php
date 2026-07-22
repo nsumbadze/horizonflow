@@ -48,6 +48,11 @@ trait EventMap
         Events\JobFailed::class => [
             Listeners\MarkJobAsFailed::class,
             Listeners\StoreTagsForFailedJob::class,
+            Listeners\StoreIncident::class,
+        ],
+
+        Events\MasterSupervisorDeployed::class => [
+            Listeners\StoreIncident::class,
         ],
 
         Events\MasterSupervisorLooped::class => [
@@ -74,6 +79,7 @@ trait EventMap
 
         Events\LongWaitDetected::class => [
             Listeners\SendNotification::class,
+            Listeners\StoreIncident::class,
         ],
     ];
 }
