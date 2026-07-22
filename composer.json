@@ -78,6 +78,12 @@
             "@build",
             "@php vendor/bin/testbench serve"
         ],
+        "serve:demo": [
+            "Composer\\Config::disableProcessTimeout",
+            "@putenv HORIZONXBRAIN_FLOW_SOURCE=mock",
+            "@build",
+            "@php vendor/bin/testbench serve"
+        ],
         "lint": [
             "@php vendor/bin/phpstan analyse"
         ],
