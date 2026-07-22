@@ -172,9 +172,8 @@
                 const midY = H / 2;
 
                 const queues = this.filteredQueues.map((queue, i) => {
-                    const node = this.findQueueNode(queue);
                     return {
-                        id: node?.id ?? this.queueNodeId(queue),
+                        id: this.queueGraphId(queue),
                         type: 'queue', label: queue.name, sub: this.queueSubLabel(queue),
                         status: this.queueStatus(queue),
                         x: 205, y: this.distributedY(i, this.filteredQueues.length, qYMin, qYMax),
@@ -324,7 +323,7 @@
                 let jobClass = null;
 
                 if (node.type === 'job') {
-                    queue = this.queues.find(q => this.queueNodeId(q) === node.queueId) ?? null;
+                    queue = this.queues.find(q => this.queueGraphId(q) === node.queueId) ?? null;
                     if (queue) {
                         jobClass = this.queueJobClasses(queue).find(c => c.name === node.name) ?? null;
                     }
@@ -674,7 +673,7 @@
 
             queueJobNodes() {
                 return this.filteredQueues.flatMap(queue => {
-                    const queueId = this.queueNodeId(queue);
+                    const queueId = this.queueGraphId(queue);
 
                     if (this.zoom >= 1.35) {
                         return (queue.jobs ?? [])
@@ -804,6 +803,14 @@
 
             queueNodeId(queue) {
                 return `queue-${queue.driver}-${queue.connection}-${queue.name}`.replace(/[^a-z0-9-]+/gi, '-').toLowerCase();
+            },
+
+            // The graph node id a queue actually renders under: the backend's id
+            // when the payload carries one, otherwise the local fallback. Job
+            // nodes and the inspector must resolve queues through the same id,
+            // or their edges never connect to the queue they belong to.
+            queueGraphId(queue) {
+                return this.findQueueNode(queue)?.id ?? this.queueNodeId(queue);
             },
 
             queueStatus(queue) {

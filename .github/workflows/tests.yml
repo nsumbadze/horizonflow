@@ -110,9 +110,35 @@ jobs:
           sudo apt update
           sudo apt-get install -y --fix-missing redis-server
           sudo service redis-server stop
-          redis-server --daemonize yes --port 7000 --appendonly yes --cluster-enabled yes --cluster-config-file nodes-7000.conf
-          redis-server --daemonize yes --port 7001 --appendonly yes --cluster-enabled yes --cluster-config-file nodes-7001.conf
-          redis-server --daemonize yes --port 7002 --appendonly yes --cluster-enabled yes --cluster-config-file nodes-7002.conf
+
+          # Every node needs its own data directory. Sharing one means sharing a
+          # single `appendonlydir`, and three servers creating that AOF manifest
+          # at the same time is enough to make one of them die on startup.
+          for port in 7000 7001 7002; do
+            mkdir -p "$RUNNER_TEMP/redis-$port"
+            redis-server --daemonize yes --port "$port" --appendonly yes --cluster-enabled yes \
+              --cluster-config-file "nodes-$port.conf" \
+              --dir "$RUNNER_TEMP/redis-$port" \
+              --logfile "$RUNNER_TEMP/redis-$port/redis.log"
+          done
+
+          # --daemonize returns as soon as the parent forks, before the node
+          # accepts connections, so creating the cluster straight away races
+          # the last node into a refused connection. Wait for every node to
+          # answer PING first.
+          for port in 7000 7001 7002; do
+            for attempt in $(seq 30); do
+              if [ "$(redis-cli -p "$port" ping 2>/dev/null)" = "PONG" ]; then
+                continue 2
+              fi
+              sleep 1
+            done
+
+            echo "Redis node on port $port never started accepting connections. Its log:"
+            cat "$RUNNER_TEMP/redis-$port/redis.log" || true
+            exit 1
+          done
+
           redis-cli --cluster create 127.0.0.1:7000 127.0.0.1:7001 127.0.0.1:7002 --cluster-replicas 0 --cluster-yes
 
       - name: Check Redis Cluster is ready
