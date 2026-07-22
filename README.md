@@ -1,58 +1,32 @@
-<p align="center"><img width="373" height="60" src="/art/logo.svg" alt="Laravel Horizon"></p>
+<h1 align="center">HorizonXFlow</h1>
+
+<p align="center">Live queue-flow visibility and operational insights for Laravel Horizon.</p>
 
 <p align="center">
-<a href="https://github.com/laravel/horizon/actions"><img src="https://github.com/laravel/horizon/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/horizon"><img src="https://img.shields.io/packagist/dt/laravel/horizon" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/horizon"><img src="https://img.shields.io/packagist/v/laravel/horizon" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/horizon"><img src="https://img.shields.io/packagist/l/laravel/horizon" alt="License"></a>
+<a href="https://github.com/nsumbadze/horizonxflow/actions/workflows/tests.yml"><img src="https://github.com/nsumbadze/horizonxflow/actions/workflows/tests.yml/badge.svg?branch=main" alt="Build Status"></a>
+<a href="LICENSE.md"><img src="https://img.shields.io/badge/license-MIT-green" alt="License"></a>
 </p>
 
-## Introduction
-
-Horizon provides a beautiful dashboard and code-driven configuration for your Laravel powered Redis queues. Horizon allows you to easily monitor key metrics of your queue system such as job throughput, runtime, and job failures.
-
-All of your worker configuration is stored in a single, simple configuration file, allowing your configuration to stay in source control where your entire team can collaborate.
-
-<p align="center">
-<img src="https://laravel.com/img/docs/horizon-example.png">
-</p>
-
-## Official Documentation
-
-Documentation for Horizon can be found on the [Laravel website](https://laravel.com/docs/horizon).
-
-## Contributing
-
-Thank you for considering contributing to Horizon! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
-
-## Code of Conduct
-
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
-
-## Security Vulnerabilities
-
-Please review [our security policy](https://github.com/laravel/horizon/security/policy) on how to report security vulnerabilities.
+HorizonXFlow is an independent fork of [Laravel Horizon](https://github.com/laravel/horizon). It retains Horizon's dashboard and code-driven worker configuration while adding a live operational workspace for understanding how jobs move through queues. It is not an official Laravel product.
 
 ## Live Flow
 
-This is a fork of [Laravel Horizon](https://github.com/laravel/horizon). Everything above is upstream Horizon; this section covers the one screen the fork adds on top of it.
-
-**Live Flow** is a workspace at `/horizon/live-flow` that visualises producers, queues, jobs, workers, and results in real time across Redis and database queue drivers. It polls focused endpoints (summary, graph, queues, queue-jobs, events, incidents) and merges them into a single live payload.
+**Live Flow** is available at `/horizon/live-flow`. It visualises producers, queues, jobs, workers, and results in real time across Redis and database queue drivers.
 
 <p align="center">
-<img src="art/live-flow.png" alt="Live Flow">
+<img src="art/live-flow.png" alt="HorizonXFlow Live Flow workspace">
 </p>
 
-Under a row of KPIs (pending, workers, delayed, failed, throughput, average wait) the screen is split into four tabs:
+Under a row of queue KPIs, the workspace is organised into four areas:
 
 - **Flow** — the queue topology as an SVG **graph** (producers → queues → workers → completed/failed, with per-edge throughput), or the same data as a filterable, sortable **queue table**. Selecting a node opens the **Inspector**, which shows that node's metrics, drain ETA, failure rate, recent job classes, and a suggested action when a queue is under backpressure.
 - **Activity** — a rolling stream of jobs entering, completing, and failing.
 - **Insights** — an incident timeline (long waits, job failures, supervisor deployments), monitored tags, and recent batches.
 - **Horizon controls** — pause and continue the master supervisors or an individual supervisor.
 
-The active tab, graph/table mode, time window, queue filter, and selected node are all reflected in the query string, so any view is linkable — for example `/horizon/live-flow?view=flow&node=queue-notifications`.
+The active workspace, graph/table mode, time window, queue filter, and selected node are reflected in the query string, so operational views can be shared directly.
 
-To explore the screen without a live queue, run `composer serve:demo`, which boots the workbench app with `HORIZONXFLOW_FLOW_SOURCE=mock` and generated demo data.
+To explore without a live queue, run `composer serve:demo`. This boots the workbench application with generated demo data.
 
 ### Configuration
 
@@ -96,6 +70,20 @@ Live-flow behaviour is configured via `config/horizonxflow.php`:
 - `HORIZONXFLOW_DISCOVER_DATABASE_QUEUES` — overrides `flow.database.discover_connections`.
 - `QUEUE_FAILED_TABLE` — overrides `flow.database.failed_table`.
 
+## Upstream Horizon
+
+HorizonXFlow is based on Laravel Horizon and keeps its existing dashboard, queue supervision, metrics, and worker configuration. Refer to the [Laravel Horizon documentation](https://laravel.com/docs/horizon) for inherited Horizon behaviour.
+
+Issues caused by HorizonXFlow changes should be reported in this repository. Upstream Laravel Horizon maintains its own issue tracker and release process.
+
+## Contributing
+
+Contributions are welcome. Please read the [contribution guide](.github/CONTRIBUTING.md) and [Code of Conduct](.github/CODE_OF_CONDUCT.md) before opening an issue or pull request.
+
+## Security
+
+Do not disclose security vulnerabilities in public issues. Follow this repository's [security policy](.github/SECURITY.md) to report them privately.
+
 ## License
 
-Laravel Horizon is open-sourced software licensed under the [MIT license](LICENSE.md).
+HorizonXFlow is released under the [MIT license](LICENSE.md). The original Laravel Horizon copyright and license notice are retained.
