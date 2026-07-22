@@ -8,7 +8,7 @@ use Throwable;
 
 class RedisIncidentRepository implements IncidentRepository
 {
-    protected const KEY = 'horizonxbrain:incidents';
+    protected const KEY = 'horizonxflow:incidents';
 
     public function __construct(
         protected RedisFactory $redis,

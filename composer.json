@@ -1,5 +1,5 @@
 {
-    "name": "horizonxbrain/horizonxbrain",
+    "name": "horizonxflow/horizonxflow",
     "description": "Queue monitoring with Horizon telemetry and Brain-style flow visualization.",
     "keywords": ["laravel", "queue"],
     "license": "MIT",
@@ -80,7 +80,7 @@
         ],
         "serve:demo": [
             "Composer\\Config::disableProcessTimeout",
-            "@putenv HORIZONXBRAIN_FLOW_SOURCE=mock",
+            "@putenv HORIZONXFLOW_FLOW_SOURCE=mock",
             "@build",
             "@php vendor/bin/testbench serve"
         ],

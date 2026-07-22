@@ -1052,7 +1052,7 @@ class RedisQueueFlowRepository implements QueueFlowRepository
             return self::DEFAULT_RECENT_JOBS_LIMIT;
         }
 
-        return max(1, (int) config('horizonxbrain.flow.recent_jobs.max', self::DEFAULT_RECENT_JOBS_LIMIT));
+        return max(1, (int) config('horizonxflow.flow.recent_jobs.max', self::DEFAULT_RECENT_JOBS_LIMIT));
     }
 
     protected function queueKeysTtl(): int
@@ -1061,7 +1061,7 @@ class RedisQueueFlowRepository implements QueueFlowRepository
             return self::DEFAULT_QUEUE_KEYS_TTL;
         }
 
-        return max(0, (int) config('horizonxbrain.flow.cache.queue_keys_ttl', self::DEFAULT_QUEUE_KEYS_TTL));
+        return max(0, (int) config('horizonxflow.flow.cache.queue_keys_ttl', self::DEFAULT_QUEUE_KEYS_TTL));
     }
 
     protected function currentThroughput(int $processes, int $reserved, int $throughput): int

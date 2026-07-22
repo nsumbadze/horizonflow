@@ -68,7 +68,7 @@ class UnifiedQueueFlowRepository implements QueueFlowRepository
         $sources = collect();
         $errors = [];
 
-        foreach ((array) config('horizonxbrain.flow.sources', ['redis']) as $source) {
+        foreach ((array) config('horizonxflow.flow.sources', ['redis']) as $source) {
             try {
                 $payload = $this->source($source);
             } catch (Throwable $exception) {
@@ -300,7 +300,7 @@ class UnifiedQueueFlowRepository implements QueueFlowRepository
      */
     protected function health(Collection $sources, array $errors): array
     {
-        $configured = collect((array) config('horizonxbrain.flow.sources', ['redis']))
+        $configured = collect((array) config('horizonxflow.flow.sources', ['redis']))
             ->filter(fn ($name): bool => is_string($name) && $name !== '')
             ->map(fn (string $name): string => $name)
             ->values();

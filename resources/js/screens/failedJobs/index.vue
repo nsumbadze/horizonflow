@@ -23,7 +23,7 @@
          * Prepare the component.
          */
         mounted() {
-            document.title = "HorizonXBrain - Failed Jobs";
+            document.title = "Horizon - Failed Jobs";
         },
 
 

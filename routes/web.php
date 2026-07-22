@@ -10,20 +10,20 @@ Route::prefix('api')->group(function () {
     Route::get('/workload', 'WorkloadController@index')->name('horizon.workload.index');
 
     // Queue Flow Routes...
-    Route::get('/flow', 'QueueFlowController@index')->name('horizonxbrain.flow.index');
-    Route::get('/flow/summary', 'QueueFlowController@summary')->name('horizonxbrain.flow.summary');
-    Route::get('/flow/graph', 'QueueFlowController@graph')->name('horizonxbrain.flow.graph');
-    Route::get('/flow/queues', 'QueueFlowController@queues')->name('horizonxbrain.flow.queues');
-    Route::get('/flow/queue-jobs', 'QueueFlowController@queueJobs')->name('horizonxbrain.flow.queue-jobs');
-    Route::get('/flow/events', 'QueueFlowController@events')->name('horizonxbrain.flow.events');
-    Route::get('/flow/incidents', 'IncidentController@index')->name('horizonxbrain.flow.incidents');
+    Route::get('/flow', 'QueueFlowController@index')->name('horizonxflow.flow.index');
+    Route::get('/flow/summary', 'QueueFlowController@summary')->name('horizonxflow.flow.summary');
+    Route::get('/flow/graph', 'QueueFlowController@graph')->name('horizonxflow.flow.graph');
+    Route::get('/flow/queues', 'QueueFlowController@queues')->name('horizonxflow.flow.queues');
+    Route::get('/flow/queue-jobs', 'QueueFlowController@queueJobs')->name('horizonxflow.flow.queue-jobs');
+    Route::get('/flow/events', 'QueueFlowController@events')->name('horizonxflow.flow.events');
+    Route::get('/flow/incidents', 'IncidentController@index')->name('horizonxflow.flow.incidents');
 
     // Master Supervisor Routes...
     Route::get('/masters', 'MasterSupervisorController@index')->name('horizon.masters.index');
-    Route::post('/masters/pause', 'SupervisorControlController@pauseMasters')->name('horizonxbrain.masters.pause');
-    Route::post('/masters/continue', 'SupervisorControlController@continueMasters')->name('horizonxbrain.masters.continue');
-    Route::post('/supervisors/{name}/pause', 'SupervisorControlController@pauseSupervisor')->name('horizonxbrain.supervisors.pause');
-    Route::post('/supervisors/{name}/continue', 'SupervisorControlController@continueSupervisor')->name('horizonxbrain.supervisors.continue');
+    Route::post('/masters/pause', 'SupervisorControlController@pauseMasters')->name('horizonxflow.masters.pause');
+    Route::post('/masters/continue', 'SupervisorControlController@continueMasters')->name('horizonxflow.masters.continue');
+    Route::post('/supervisors/{name}/pause', 'SupervisorControlController@pauseSupervisor')->name('horizonxflow.supervisors.pause');
+    Route::post('/supervisors/{name}/continue', 'SupervisorControlController@continueSupervisor')->name('horizonxflow.supervisors.continue');
 
     // Monitoring Routes...
     Route::get('/monitoring', 'MonitoringController@index')->name('horizon.monitoring.index');

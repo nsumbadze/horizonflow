@@ -126,7 +126,7 @@
         },
 
         mounted() {
-            document.title = "HorizonXBrain - Live Flow";
+            document.title = "Horizon - Live Flow";
             this.refreshAll().then(() => { this.ready = true; });
             this.loadSupervisorControls();
             this.loadMonitoredTags();

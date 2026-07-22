@@ -46,11 +46,11 @@ class ConfiguredQueueFlowRepository implements QueueFlowRepository
      */
     protected function repositoryClass(): string
     {
-        $source = (string) config('horizonxbrain.flow.source', 'redis');
+        $source = (string) config('horizonxflow.flow.source', 'redis');
 
         if (! isset(self::SOURCES[$source])) {
             throw new InvalidArgumentException(sprintf(
-                'Unknown horizonxbrain.flow.source [%s]. Expected one of: %s.',
+                'Unknown horizonxflow.flow.source [%s]. Expected one of: %s.',
                 $source,
                 implode(', ', array_keys(self::SOURCES))
             ));
