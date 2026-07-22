@@ -7,7 +7,7 @@
 <a href="LICENSE.md"><img src="https://img.shields.io/badge/license-MIT-green" alt="License"></a>
 </p>
 
-HorizonXFlow is an independent fork of [Laravel Horizon](https://github.com/laravel/horizon). It retains Horizon's dashboard and code-driven worker configuration while adding a live operational workspace for understanding how jobs move through queues. It is not an official Laravel product.
+HorizonXFlow is an independently maintained project based on [Laravel Horizon](https://github.com/laravel/horizon). It retains Horizon's dashboard and code-driven worker configuration while adding a live operational workspace for understanding how jobs move through queues. It is not an official Laravel product.
 
 ## Live Flow
 
