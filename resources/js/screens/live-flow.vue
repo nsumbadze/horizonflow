@@ -1369,6 +1369,7 @@
                             :retrying-ids="retryingJobs"
                             :nodes="graphNodes"
                             :selected-id="selectedId"
+                            :mode="flowMode"
                             @retry="retryJob"
                             @open-failed="openJobModal"
                             @open-activity="selectWorkspaceTab('activity')"
@@ -1852,11 +1853,7 @@
     }
     .lf-flow-primary,
     .lf-flow-inspector { min-width: 0; }
-    .lf-workspace-panel .lf-inspector.lf-flow-inspector .lf-pane-sticky {
-        display: block;
-        max-height: calc(100vh - 120px);
-    }
-    .lf-flow-inspector .lf-inspector-empty { min-height: 420px; padding: 34px 22px; }
+    .lf-flow-inspector .lf-inspector-empty { min-height: 280px; padding: 34px 22px; }
     .lf-flow-inspector .lf-inspector-picker { min-width: 0; width: 100%; order: 3; }
     .lf-flow-inspector .lf-pane-head { flex-wrap: wrap; }
     .lf-flow-inspector .lf-pane-title { margin-right: auto; }
@@ -1869,7 +1866,6 @@
         overflow: hidden;
     }
     .lf-pane-gap    { margin-top: 12px; }
-    .lf-pane-sticky { position: sticky; top: 10px; max-height: calc(100vh - 20px); overflow-y: auto; }
 
     .lf-pane-head {
         display: flex;
@@ -2226,21 +2222,6 @@
     .lf-inspector { align-self: start; }
 
     .lf-workspace-panel .lf-inspector { width: 100%; }
-    .lf-workspace-panel .lf-inspector .lf-pane-sticky {
-        position: static;
-        display: grid;
-        grid-template-columns: minmax(220px, 1.05fr) minmax(260px, 1.2fr) minmax(220px, .9fr);
-        max-height: none;
-        overflow: visible;
-    }
-    .lf-workspace-panel .lf-inspector .lf-pane-head,
-    .lf-workspace-panel .lf-inspector .lf-insp-top,
-    .lf-workspace-panel .lf-inspector .lf-action { grid-column: 1 / -1; }
-    .lf-workspace-panel .lf-insp-sec-metrics { grid-column: 1; }
-    .lf-workspace-panel .lf-insp-sec-trends { grid-column: 2; }
-    .lf-workspace-panel .lf-insp-sec-classes { grid-column: 3; }
-    .lf-workspace-panel .lf-insp-sec-jobs { grid-column: 1 / 3; }
-    .lf-workspace-panel .lf-insp-connections { grid-column: 3; }
     .lf-workspace-panel .lf-inspector .lf-action { margin-top: 12px; }
 
     .lf-inspector-empty {
@@ -2300,7 +2281,20 @@
         margin-bottom: 6px;
     }
     .lf-insp-sec-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-    .lf-insp-sec-heading > span { color: var(--lf-dim); font: 600 9.5px/1 ui-monospace, Consolas, monospace; }
+    .lf-insp-sec-actions { display: flex; align-items: center; gap: 8px; }
+    .lf-insp-sec-actions > span { color: var(--lf-dim); font: 600 9.5px/1 ui-monospace, Consolas, monospace; }
+    .lf-insp-sec-actions button {
+        padding: 0;
+        border: 0;
+        background: transparent;
+        color: var(--lf-violet);
+        font-family: inherit;
+        font-size: 9.5px;
+        font-weight: 700;
+        cursor: pointer;
+    }
+    .lf-insp-sec-actions button:hover { text-decoration: underline; }
+    .lf-insp-sec-actions button:focus-visible { outline: 2px solid var(--lf-violet); outline-offset: 2px; }
     .lf-insp-connections { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .lf-insp-connections .lf-insp-sec-outgoing { border-left: 1px solid var(--lf-border); }
 
@@ -2334,7 +2328,7 @@
     .lf-kv-detail summary { color: var(--lf-violet); cursor: pointer; font-size: 10px; font-weight: 650; list-style-position: inside; }
     .lf-kv-detail summary:hover { text-decoration: underline; }
     .lf-kv-detail summary:focus-visible { outline: 2px solid var(--lf-violet); outline-offset: 2px; }
-    .lf-kv-detail > div {
+    .lf-kv-detail-body {
         margin-top: 6px;
         padding: 7px 8px;
         border: 1px solid var(--lf-border);
@@ -2342,10 +2336,19 @@
         background: var(--lf-bg);
         color: var(--lf-text);
         font: 500 10px/1.5 ui-monospace, "Cascadia Code", Consolas, monospace;
-        overflow-wrap: anywhere;
         text-align: left;
         white-space: normal;
     }
+    .lf-kv-detail-body strong {
+        display: block;
+        margin-bottom: 3px;
+        overflow: hidden;
+        color: var(--lf-text);
+        font-weight: 700;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    .lf-kv-detail-body span { display: block; overflow-wrap: break-word; color: var(--lf-muted); }
 
     .lf-job-class,
     .lf-job-row {
@@ -2415,31 +2418,6 @@
     .lf-mini-btn:hover:not(:disabled) { border-color: var(--lf-violet); color: var(--lf-violet); }
     .lf-mini-btn:disabled { opacity: .55; cursor: not-allowed; }
     .lf-job-actions { display: flex; flex: 0 0 auto; flex-direction: column; gap: 4px; }
-    .lf-inspector-job-footer {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 8px;
-        margin-top: 5px;
-        padding: 7px 8px;
-        border: 1px solid var(--lf-border);
-        border-radius: 4px;
-        background: var(--lf-hover);
-        color: var(--lf-muted);
-        font-size: 10px;
-    }
-    .lf-inspector-job-footer button {
-        padding: 0;
-        border: 0;
-        background: transparent;
-        color: var(--lf-violet);
-        font-family: inherit;
-        font-size: 10px;
-        font-weight: 700;
-        cursor: pointer;
-    }
-    .lf-inspector-job-footer button:hover { text-decoration: underline; }
-    .lf-inspector-job-footer button:focus-visible { outline: 2px solid var(--lf-violet); outline-offset: 2px; }
 
     .lf-head-actions { display: flex; gap: 6px; margin-left: auto; }
     .lf-control-picker {
@@ -2838,19 +2816,9 @@
         .lf-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
         .lf-insights { grid-template-columns: 1fr; }
         .lf-flow-layout { grid-template-columns: 1fr; }
-        .lf-flow-inspector .lf-pane-sticky { position: static; max-height: none; }
-        .lf-workspace-panel .lf-inspector .lf-pane-sticky { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-        .lf-workspace-panel .lf-insp-sec-metrics,
-        .lf-workspace-panel .lf-insp-sec-trends,
-        .lf-workspace-panel .lf-insp-sec-classes,
-        .lf-workspace-panel .lf-insp-sec-jobs,
-        .lf-workspace-panel .lf-insp-sec-incoming,
-        .lf-workspace-panel .lf-insp-sec-outgoing { grid-column: auto; }
-        .lf-workspace-panel .lf-insp-sec-jobs { grid-column: 1 / -1; }
     }
     @media (max-width: 820px) {
         .lf-supervisors { grid-template-columns: 1fr; }
-        .lf-workspace-panel .lf-inspector .lf-pane-sticky { display: block; }
         .lf-workspace-panel .lf-inspector .lf-action { margin-top: 0; }
         .lf-control-picker { width: 100%; order: 4; margin-left: 0; }
         .lf-control-picker select { flex: 1; min-width: 0; }

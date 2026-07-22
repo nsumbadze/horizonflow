@@ -13,6 +13,7 @@
             retryingIds: { type: Array, default: () => [] },
             nodes: { type: Array, default: () => [] },
             selectedId: { type: String, default: null },
+            mode: { type: String, default: 'graph' },
         },
 
         emits: ['retry', 'open-failed', 'open-graph', 'open-activity', 'select'],
@@ -72,19 +73,36 @@
             isLongMetric(metric) {
                 return String(metric?.[0] ?? '').includes('error') || String(metric?.[1] ?? '').length > 72;
             },
+
+            metricDetail(value) {
+                const text = String(value ?? '');
+                const separator = text.indexOf(': ');
+
+                if (separator < 1) {
+                    return { type: null, fullType: null, message: text };
+                }
+
+                const fullType = text.slice(0, separator);
+
+                return {
+                    type: fullType.split('\\').pop(),
+                    fullType,
+                    message: text.slice(separator + 2),
+                };
+            },
         },
     };
 </script>
 
 <template>
     <aside class="lf-inspector">
-        <div class="lf-pane lf-pane-sticky">
+        <div class="lf-pane">
             <div class="lf-pane-head">
                 <span class="lf-pane-title">Inspector</span>
                 <label class="lf-inspector-picker">
-                    <span class="visually-hidden">Select graph node</span>
+                    <span class="visually-hidden">Choose inspector node</span>
                     <select :value="selectedId ?? ''" @change="$emit('select', $event.target.value || null)">
-                        <option value="">Select graph node…</option>
+                        <option value="">Choose a node…</option>
                         <optgroup v-for="group in nodeGroups" :key="group.type" :label="group.label">
                             <option v-for="node in group.nodes" :key="node.id" :value="node.id">{{ node.label }}</option>
                         </optgroup>
@@ -99,9 +117,10 @@
                     <rect x="18" y="18" width="10" height="8" rx="2" stroke="currentColor" stroke-width="1.5"/>
                     <path d="M14 10h3a5 5 0 015 5v3M17 15l5 3 3-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
                 </svg>
-                <div class="lf-inspector-empty-title">Select a node to inspect it</div>
-                <div class="lf-inspector-empty-text">Use the selector above or choose a producer, queue, job, worker, or result directly on the graph. Its metrics, recent jobs, connections, and recommended actions will appear here.</div>
-                <button class="lf-control-btn lf-control-btn-primary" type="button" @click="$emit('open-graph')">Open graph</button>
+                <div class="lf-inspector-empty-title">Nothing selected</div>
+                <div class="lf-inspector-empty-text" v-if="mode === 'graph'">Choose a producer, queue, job, worker, or result on the graph—or use the menu above—to inspect its metrics and recent activity.</div>
+                <div class="lf-inspector-empty-text" v-else>Select a queue in the table, choose any node from the menu above, or switch to the graph for the complete flow.</div>
+                <button v-if="mode !== 'graph'" class="lf-control-btn lf-control-btn-primary" type="button" @click="$emit('open-graph')">Switch to graph</button>
             </div>
 
             <template v-else>
@@ -129,7 +148,10 @@
                     <span class="lf-kv-k">{{ m[0] }}</span>
                     <details class="lf-kv-detail" v-if="isLongMetric(m)">
                         <summary>View details</summary>
-                        <div>{{ m[1] }}</div>
+                        <div class="lf-kv-detail-body">
+                            <strong v-if="metricDetail(m[1]).type" :title="metricDetail(m[1]).fullType">{{ metricDetail(m[1]).type }}</strong>
+                            <span>{{ metricDetail(m[1]).message }}</span>
+                        </div>
                     </details>
                     <span class="lf-kv-v" v-else>{{ m[1] }}</span>
                 </div>
@@ -170,7 +192,10 @@
             <div class="lf-insp-sec lf-insp-sec-jobs" v-if="inspector.queue">
                 <div class="lf-insp-sec-heading">
                     <div class="lf-insp-sec-title">Recent Jobs</div>
-                    <span>{{ inspector.jobs.length }}</span>
+                    <div class="lf-insp-sec-actions">
+                        <span>Latest {{ Math.min(5, inspector.jobs.length) }} of {{ inspector.jobs.length }}</span>
+                        <button type="button" v-if="inspector.jobs.length > 5" @click="$emit('open-activity')">Activity →</button>
+                    </div>
                 </div>
                 <div
                     class="lf-job-row"
@@ -197,10 +222,6 @@
                     </div>
                 </div>
                 <div class="lf-empty-sm" v-if="inspector.jobs.length === 0">No recent jobs captured for this queue.</div>
-                <div class="lf-inspector-job-footer" v-if="inspector.jobs.length > 5">
-                    <span>Showing 5 of {{ inspector.jobs.length }}</span>
-                    <button type="button" @click="$emit('open-activity')">Open activity →</button>
-                </div>
             </div>
 
             <div class="lf-insp-connections">
