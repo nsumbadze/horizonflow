@@ -10,7 +10,7 @@ class CachedQueueFlowRepository implements QueueFlowRepository
     /**
      * Cache key used to memoize the full flow payload between requests.
      */
-    public const CACHE_KEY = 'horizonxbrain:flow:payload';
+    public const CACHE_KEY = 'horizonxflow:flow:payload';
 
     /**
      * Create a new cached queue flow repository.
@@ -49,6 +49,6 @@ class CachedQueueFlowRepository implements QueueFlowRepository
 
     protected function payloadTtl(): int
     {
-        return max(0, (int) config('horizonxbrain.flow.cache.payload_ttl', 1));
+        return max(0, (int) config('horizonxflow.flow.cache.payload_ttl', 1));
     }
 }

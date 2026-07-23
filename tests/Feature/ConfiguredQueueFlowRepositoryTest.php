@@ -23,45 +23,45 @@ class ConfiguredQueueFlowRepositoryTest extends TestCase
 
     public function test_it_resolves_redis_repository_for_redis_source(): void
     {
-        config(['horizonxbrain.flow.source' => 'redis']);
+        config(['horizonxflow.flow.source' => 'redis']);
 
         $this->assertSame(RedisQueueFlowRepository::class, $this->resolveRepositoryClass());
     }
 
     public function test_it_resolves_database_repository_for_database_source(): void
     {
-        config(['horizonxbrain.flow.source' => 'database']);
+        config(['horizonxflow.flow.source' => 'database']);
 
         $this->assertSame(DatabaseQueueFlowRepository::class, $this->resolveRepositoryClass());
     }
 
     public function test_it_resolves_unified_repository_for_auto_source(): void
     {
-        config(['horizonxbrain.flow.source' => 'auto']);
+        config(['horizonxflow.flow.source' => 'auto']);
 
         $this->assertSame(UnifiedQueueFlowRepository::class, $this->resolveRepositoryClass());
     }
 
     public function test_it_resolves_mock_repository_only_when_explicitly_opted_in(): void
     {
-        config(['horizonxbrain.flow.source' => 'mock']);
+        config(['horizonxflow.flow.source' => 'mock']);
 
         $this->assertSame(MockQueueFlowRepository::class, $this->resolveRepositoryClass());
     }
 
     public function test_it_throws_for_unknown_source(): void
     {
-        config(['horizonxbrain.flow.source' => 'kafka']);
+        config(['horizonxflow.flow.source' => 'kafka']);
 
         $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage('Unknown horizonxbrain.flow.source [kafka]');
+        $this->expectExceptionMessage('Unknown horizonxflow.flow.source [kafka]');
 
         $this->resolveRepositoryClass();
     }
 
     public function test_it_refuses_mock_source_in_production_environment(): void
     {
-        config(['horizonxbrain.flow.source' => 'mock']);
+        config(['horizonxflow.flow.source' => 'mock']);
         $this->app->detectEnvironment(fn (): string => 'production');
 
         $this->expectException(InvalidArgumentException::class);

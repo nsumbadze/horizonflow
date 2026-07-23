@@ -4,7 +4,7 @@
          * Prepare the component.
          */
         created() {
-            document.title = "HorizonXBrain - Metrics";
+            document.title = "Horizon - Metrics";
         }
     }
 </script>

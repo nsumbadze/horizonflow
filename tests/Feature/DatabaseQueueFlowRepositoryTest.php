@@ -35,7 +35,7 @@ class DatabaseQueueFlowRepositoryTest extends TestCase
             'table' => 'jobs',
             'queue' => 'default',
         ]);
-        $app['config']->set('horizonxbrain.flow.database.discover_connections', false);
+        $app['config']->set('horizonxflow.flow.database.discover_connections', false);
     }
 
     protected function setUp(): void

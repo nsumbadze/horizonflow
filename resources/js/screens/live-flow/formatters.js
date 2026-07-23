@@ -58,6 +58,10 @@ export default {
             return { healthy: 'healthy', warning: 'warn', critical: 'critical' }[status] ?? status;
         },
 
+        /**
+         * Severity of a job state, for anything that rolls up into queue
+         * health. Use jobStateKey() instead when showing the state itself.
+         */
         jobStatusClass(status) {
             return {
                 failed: 'critical',
@@ -65,6 +69,16 @@ export default {
                 pending: 'warning',
                 completed: 'healthy',
             }[status] ?? 'healthy';
+        },
+
+        /**
+         * Lifecycle state of a single job. This is a category, not a severity:
+         * completed and failed are both "finished" and must stay tellable
+         * apart at a glance, so each state keeps its own colour.
+         */
+        jobStateKey(state) {
+            const key = String(state ?? '').toLowerCase();
+            return ['pending', 'reserved', 'completed', 'failed'].includes(key) ? key : 'pending';
         },
 
         jobCounts(jobClass) {

@@ -35,7 +35,7 @@ class CachedQueueFlowRepositoryTest extends TestCase
 
     public function test_it_serves_cached_payload_within_ttl(): void
     {
-        config(['horizonxbrain.flow.cache.payload_ttl' => 10]);
+        config(['horizonxflow.flow.cache.payload_ttl' => 10]);
 
         $inner = Mockery::mock(QueueFlowRepository::class);
         $inner->shouldReceive('get')->once()->andReturn(['source' => 'redis']);
@@ -51,7 +51,7 @@ class CachedQueueFlowRepositoryTest extends TestCase
 
     public function test_it_bypasses_cache_when_ttl_is_zero(): void
     {
-        config(['horizonxbrain.flow.cache.payload_ttl' => 0]);
+        config(['horizonxflow.flow.cache.payload_ttl' => 0]);
 
         $inner = Mockery::mock(QueueFlowRepository::class);
         $inner->shouldReceive('get')->twice()->andReturn(['source' => 'redis']);

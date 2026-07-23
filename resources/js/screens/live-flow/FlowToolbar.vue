@@ -30,12 +30,12 @@
 <template>
     <div class="lf-toolbar">
         <span v-if="flow" class="lf-chip" :class="'lf-chip-' + sourceClass">
-            <span class="lf-blink"></span>{{ sourceLabel }}
+            {{ sourceLabel }}
         </span>
-        <span v-if="generatedAt" class="lf-ts">{{ generatedAt }}</span>
+        <span v-if="generatedAt" class="lf-ts">Updated {{ generatedAt }}</span>
         <div class="lf-toolbar-gap"></div>
-        <input v-model="filterModel" type="text" class="lf-input" placeholder="filter queues…">
-        <select v-model="timeRangeModel" class="lf-select" @change="$emit('refresh')">
+        <input v-model="filterModel" type="search" class="lf-input" placeholder="Filter queues" aria-label="Filter queues">
+        <select v-model="timeRangeModel" class="lf-select" aria-label="Telemetry time range" @change="$emit('refresh')">
             <optgroup label="Minutes">
                 <option>Last 5m</option>
                 <option>Last 15m</option>
@@ -51,15 +51,15 @@
                 <option>Last 30d</option>
             </optgroup>
         </select>
-        <button class="lf-btn" type="button" @click="$emit('refresh')">
+        <button class="lf-btn" type="button" :disabled="refreshing" @click="$emit('refresh')">
             <svg :class="{ 'lf-spin': refreshing }" width="11" height="11" viewBox="0 0 12 12" fill="none">
                 <path d="M10.5 2A5 5 0 1 0 11 6.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
                 <path d="M10.5 2V5H7.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
-            refresh
+            {{ refreshing ? 'Refreshing' : 'Refresh' }}
         </button>
-        <button class="lf-btn" :class="{ 'lf-btn-live': live }" type="button" @click="$emit('toggle-live')">
-            <span class="lf-blink lf-blink-inline"></span>live
+        <button class="lf-btn" :class="{ 'lf-btn-live': live, 'lf-btn-paused': !live }" type="button" :aria-pressed="live" @click="$emit('toggle-live')">
+            {{ live ? 'Live updates' : 'Updates paused' }}
         </button>
     </div>
 </template>

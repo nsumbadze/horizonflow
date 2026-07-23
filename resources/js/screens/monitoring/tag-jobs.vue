@@ -32,7 +32,7 @@
          * Prepare the component.
          */
         mounted() {
-            document.title = "HorizonXBrain - Monitoring";
+            document.title = "Horizon - Monitoring";
 
             this.loadJobs(this.$route.params.tag);
         },

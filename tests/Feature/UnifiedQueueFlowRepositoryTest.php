@@ -28,7 +28,7 @@ class UnifiedQueueFlowRepositoryTest extends TestCase
 
     public function test_it_reports_per_source_errors_instead_of_swallowing_them(): void
     {
-        config(['horizonxbrain.flow.sources' => ['redis', 'database']]);
+        config(['horizonxflow.flow.sources' => ['redis', 'database']]);
 
         $redis = Mockery::mock(RedisQueueFlowRepository::class);
         $redis->shouldReceive('get')->andThrow(new RuntimeException('redis unreachable'));
@@ -49,7 +49,7 @@ class UnifiedQueueFlowRepositoryTest extends TestCase
 
     public function test_it_returns_no_errors_when_every_source_succeeds(): void
     {
-        config(['horizonxbrain.flow.sources' => ['redis']]);
+        config(['horizonxflow.flow.sources' => ['redis']]);
 
         $redis = Mockery::mock(RedisQueueFlowRepository::class);
         $redis->shouldReceive('get')->andReturn($this->databasePayload('redis'));
@@ -65,7 +65,7 @@ class UnifiedQueueFlowRepositoryTest extends TestCase
 
     public function test_health_block_marks_failing_sources(): void
     {
-        config(['horizonxbrain.flow.sources' => ['redis', 'database']]);
+        config(['horizonxflow.flow.sources' => ['redis', 'database']]);
 
         $redis = Mockery::mock(RedisQueueFlowRepository::class);
         $redis->shouldReceive('get')->andThrow(new RuntimeException('redis unreachable'));
@@ -85,7 +85,7 @@ class UnifiedQueueFlowRepositoryTest extends TestCase
 
     public function test_health_block_marks_disabled_sources_when_not_configured(): void
     {
-        config(['horizonxbrain.flow.sources' => ['redis']]);
+        config(['horizonxflow.flow.sources' => ['redis']]);
 
         $redis = Mockery::mock(RedisQueueFlowRepository::class);
         $redis->shouldReceive('get')->andReturn($this->databasePayload('redis'));
@@ -101,7 +101,7 @@ class UnifiedQueueFlowRepositoryTest extends TestCase
 
     public function test_it_merges_same_named_queue_across_drivers_into_one_row(): void
     {
-        config(['horizonxbrain.flow.sources' => ['redis', 'database']]);
+        config(['horizonxflow.flow.sources' => ['redis', 'database']]);
 
         $redis = Mockery::mock(RedisQueueFlowRepository::class);
         $redis->shouldReceive('get')->andReturn($this->payloadWithQueue('redis', 'redis', 'redis', [

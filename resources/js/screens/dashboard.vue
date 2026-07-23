@@ -22,7 +22,7 @@
          * Prepare the component.
          */
         mounted() {
-            document.title = "HorizonXBrain - Dashboard";
+            document.title = "Horizon - Dashboard";
         },
 
 

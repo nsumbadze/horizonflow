@@ -20,7 +20,7 @@
          * Prepare the component.
          */
         mounted() {
-            document.title = "HorizonXBrain - Batches";
+            document.title = "Horizon - Batches";
 
             this.loadBatches(this.$route.query.before_id || '');
         },

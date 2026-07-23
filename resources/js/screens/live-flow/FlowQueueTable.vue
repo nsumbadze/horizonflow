@@ -60,6 +60,14 @@
                     return (typeof va === 'string' ? va.localeCompare(vb) : va - vb) * dir;
                 });
             },
+
+            queueHealthCounts() {
+                return this.queues.reduce((counts, queue) => {
+                    const status = this.queueStatus(queue);
+                    counts[status] = (counts[status] ?? 0) + 1;
+                    return counts;
+                }, { healthy: 0, warning: 0, critical: 0 });
+            },
         },
 
         methods: {
@@ -104,6 +112,11 @@
                 if (this.sortKey !== column.key) return '';
                 return this.sortDir === 1 ? '▲' : '▼';
             },
+
+            sortAria(column) {
+                if (this.sortKey !== column.key) return 'none';
+                return this.sortDir === 1 ? 'ascending' : 'descending';
+            },
         },
     };
 </script>
@@ -113,6 +126,11 @@
         <div class="lf-pane-head">
             <span class="lf-pane-title">Queues</span>
             <span class="lf-pane-meta">{{ queues.length }} queue{{ queues.length === 1 ? '' : 's' }}</span>
+            <div class="lf-queue-summary" aria-label="Queue health summary">
+                <span class="lf-queue-summary-item lf-queue-summary-healthy">{{ queueHealthCounts.healthy }} operational</span>
+                <span class="lf-queue-summary-item lf-queue-summary-warning">{{ queueHealthCounts.warning }} attention</span>
+                <span class="lf-queue-summary-item lf-queue-summary-critical">{{ queueHealthCounts.critical }} critical</span>
+            </div>
         </div>
         <div class="lf-tbl-wrap">
             <table class="lf-tbl">
@@ -123,8 +141,8 @@
                             :key="column.key"
                             class="sortable"
                             :class="{ r: !column.string, 'lf-th-active': sortKey === column.key }"
-                            @click="sortBy(column)"
-                        >{{ column.label }}<span class="lf-th-arrow" v-if="sortKey === column.key">{{ sortArrow(column) }}</span></th>
+                            :aria-sort="sortAria(column)"
+                        ><button class="lf-sort-btn" type="button" @click="sortBy(column)">{{ column.label }}<span class="lf-th-arrow" v-if="sortKey === column.key">{{ sortArrow(column) }}</span></button></th>
                     </tr>
                 </thead>
                 <tbody>
@@ -132,9 +150,11 @@
                         v-for="queue in sortedQueues"
                         :key="queue.driver + ':' + queue.connection + ':' + queue.name"
                         :class="{ 'lf-tbl-sel': selectedId === resolveId(queue) }"
+                        tabindex="0"
                         @click="$emit('select', resolveId(queue))"
+                        @keydown.enter="$emit('select', resolveId(queue))"
                     >
-                        <td><span class="lf-qname"><span class="lf-dot" :class="'lf-dot-' + queueStatus(queue)"></span>{{ queue.name }}</span></td>
+                        <td><span class="lf-qname">{{ queue.name }}</span></td>
                         <td class="muted">{{ queue.source ?? queue.driver }}</td>
                         <td class="muted">{{ queue.connection }}</td>
                         <td><span class="lf-drv" :class="'lf-drv-' + queue.driver">{{ queue.driver }}</span></td>

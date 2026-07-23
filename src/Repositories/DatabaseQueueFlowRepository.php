@@ -78,7 +78,7 @@ class DatabaseQueueFlowRepository implements QueueFlowRepository
      */
     protected function connections(): array
     {
-        $configured = config('horizonxbrain.flow.database.connections', []);
+        $configured = config('horizonxflow.flow.database.connections', []);
 
         if ($configured !== []) {
             return collect($configured)->map(fn (array $connection, string $name): array => [
@@ -100,7 +100,7 @@ class DatabaseQueueFlowRepository implements QueueFlowRepository
                 'queue' => $connection['queue'] ?? null,
             ]);
 
-        if (! config('horizonxbrain.flow.database.discover_connections', true)) {
+        if (! config('horizonxflow.flow.database.discover_connections', true)) {
             return $queueConnections->unique(fn (array $connection): string => $this->connectionKey($connection))->values()->all();
         }
 
@@ -233,7 +233,7 @@ class DatabaseQueueFlowRepository implements QueueFlowRepository
     {
         try {
             return DB::connection($connection['database'])
-                ->table(config('horizonxbrain.flow.database.failed_table', 'failed_jobs'))
+                ->table(config('horizonxflow.flow.database.failed_table', 'failed_jobs'))
                 ->select('*')
                 ->whereIn('connection', [$connection['queue_connection'], $connection['connection']])
                 ->when($connection['queue'], fn ($query, string $queue) => $query->where('queue', $queue))
@@ -272,7 +272,7 @@ class DatabaseQueueFlowRepository implements QueueFlowRepository
     protected function failedInWindow(array $connections, int $window): ?int
     {
         $since = Carbon::now()->subSeconds($window);
-        $table = config('horizonxbrain.flow.database.failed_table', 'failed_jobs');
+        $table = config('horizonxflow.flow.database.failed_table', 'failed_jobs');
         $total = 0;
         $any = false;
 
