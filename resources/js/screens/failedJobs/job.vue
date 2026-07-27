@@ -31,14 +31,6 @@
              */
             hasEditableParameters() {
                 return !! (this.parameters && this.parameters.editable);
-            },
-
-
-            /**
-             * The parameters that may not be edited from the dashboard.
-             */
-            readOnlyParameters() {
-                return (this.parameters ? this.parameters.parameters : []).filter(parameter => ! parameter.editable);
             }
         },
 
@@ -371,57 +363,55 @@
             <div class="card-body card-bg-secondary" v-if="! loadingParameters && parameters">
                 <div class="alert alert-danger mb-3" v-if="parameterError">{{ parameterError }}</div>
 
-                <p class="text-muted" :class="{'mb-0': ! readOnlyParameters.length}" v-if="! hasEditableParameters">{{ parameters.reason }}</p>
+                <p class="text-muted" :class="{'mb-0': ! parameters.parameters.length}" v-if="! hasEditableParameters">{{ parameters.reason }}</p>
 
-                <div class="row mb-3" v-for="parameter in readOnlyParameters" :key="parameter.name">
+                <div class="row mb-3" v-for="parameter in parameters.parameters" :key="parameter.name">
                     <div class="col-md-3">
-                        <label class="mb-0 text-muted">{{ parameter.name }}</label>
+                        <label class="mb-0" :class="{'text-muted': ! parameter.editable}" :for="'parameter-' + parameter.name">
+                            {{ parameter.name }}
+                        </label>
                         <div><small class="text-muted">{{ parameter.type }}</small></div>
                     </div>
 
-                    <div class="col">
-                        <input class="form-control" :value="readOnlyValueFor(parameter)" disabled>
+                    <div class="col" v-if="parameter.editable && parameterForm[parameter.name]">
+                        <select class="form-select" :id="'parameter-' + parameter.name" v-model="parameterForm[parameter.name].value"
+                                v-if="parameter.type === 'bool'" :disabled="parameterForm[parameter.name].isNull">
+                            <option :value="true">true</option>
+                            <option :value="false">false</option>
+                        </select>
+
+                        <textarea class="form-control font-monospace" :id="'parameter-' + parameter.name" rows="4"
+                                  v-model="parameterForm[parameter.name].value"
+                                  v-else-if="parameter.type === 'array' || parameter.type === 'iterable'"
+                                  :disabled="parameterForm[parameter.name].isNull"></textarea>
+
+                        <input class="form-control" :id="'parameter-' + parameter.name" v-model="parameterForm[parameter.name].value"
+                               :disabled="parameterForm[parameter.name].isNull"
+                               :type="parameter.type === 'int' || parameter.type === 'float' ? 'number' : 'text'" v-else>
+
+                        <div class="form-check mt-1" v-if="parameter.nullable">
+                            <input class="form-check-input" type="checkbox" :id="'parameter-null-' + parameter.name"
+                                   v-model="parameterForm[parameter.name].isNull">
+                            <label class="form-check-label text-muted" :for="'parameter-null-' + parameter.name">
+                                <small>Send as null</small>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="col" v-else>
+                        <div class="text-muted font-monospace pt-1">{{ readOnlyValueFor(parameter) || '—' }}</div>
                         <small class="text-muted">{{ parameter.reason }}</small>
                     </div>
                 </div>
 
-                <div v-if="hasEditableParameters">
-                    <div class="row mb-3" v-for="(field, name) in parameterForm" :key="name">
-                        <div class="col-md-3">
-                            <label class="mb-0" :for="'parameter-' + name">{{ name }}</label>
-                            <div><small class="text-muted">{{ field.type }}</small></div>
-                        </div>
+                <div class="d-flex align-items-center" v-if="hasEditableParameters">
+                    <button class="btn btn-primary me-2" :disabled="retrying" v-on:click.prevent="retryWithParameters">
+                        {{ retrying ? 'Retrying...' : 'Retry With Parameters' }}
+                    </button>
 
-                        <div class="col">
-                            <select class="form-select" :id="'parameter-' + name" v-model="field.value" v-if="field.type === 'bool'" :disabled="field.isNull">
-                                <option :value="true">true</option>
-                                <option :value="false">false</option>
-                            </select>
-
-                            <textarea class="form-control font-monospace" :id="'parameter-' + name" rows="4" v-model="field.value"
-                                      v-else-if="field.type === 'array' || field.type === 'iterable'" :disabled="field.isNull"></textarea>
-
-                            <input class="form-control" :id="'parameter-' + name" v-model="field.value" :disabled="field.isNull"
-                                   :type="field.type === 'int' || field.type === 'float' ? 'number' : 'text'" v-else>
-
-                            <div class="form-check mt-1" v-if="field.nullable">
-                                <input class="form-check-input" type="checkbox" :id="'parameter-null-' + name" v-model="field.isNull">
-                                <label class="form-check-label text-muted" :for="'parameter-null-' + name">
-                                    <small>Send as null</small>
-                                </label>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="d-flex align-items-center">
-                        <button class="btn btn-primary me-2" :disabled="retrying" v-on:click.prevent="retryWithParameters">
-                            {{ retrying ? 'Retrying...' : 'Retry With Parameters' }}
-                        </button>
-
-                        <button class="btn btn-secondary" :disabled="retrying" v-on:click.prevent="resetParameters">
-                            Reset
-                        </button>
-                    </div>
+                    <button class="btn btn-secondary" :disabled="retrying" v-on:click.prevent="resetParameters">
+                        Reset
+                    </button>
                 </div>
             </div>
         </div>
