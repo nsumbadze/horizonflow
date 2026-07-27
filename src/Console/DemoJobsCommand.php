@@ -6,9 +6,9 @@ use DateTimeImmutable;
 use Illuminate\Console\Command;
 use Illuminate\Support\Str;
 use Laravel\Horizon\Contracts\JobRepository;
-use Laravel\Horizon\Demo\DeliverWebhook;
-use Laravel\Horizon\Demo\ImportRecords;
-use Laravel\Horizon\Demo\PushDeviceMessage;
+use Laravel\Horizon\Demo\AssembleSprocket;
+use Laravel\Horizon\Demo\FlashBeacon;
+use Laravel\Horizon\Demo\PingSatellite;
 use Laravel\Horizon\JobPayload;
 use RuntimeException;
 use Symfony\Component\Console\Attribute\AsCommand;
@@ -89,20 +89,20 @@ class DemoJobsCommand extends Command
     {
         return [
             [
-                new ImportRecords(
-                    'imports/2026-07-customers.csv',
+                new AssembleSprocket(
+                    'blueprints/sprocket-mk3.json',
                     500,
                     true,
-                    ['email', 'first_name', 'last_name', 'country'],
-                    'ops@example.com',
+                    ['degrease', 'align', 'torque', 'inspect'],
+                    'workshop@acme.test',
                 ),
-                'imports',
-                'Illuminate\\Queue\\MaxAttemptsExceededException: App\\Jobs\\ImportRecords has been attempted too many times',
+                'assembly',
+                'Illuminate\\Queue\\MaxAttemptsExceededException: Acme\\Jobs\\AssembleSprocket has been attempted too many times',
             ],
             [
-                new PushDeviceMessage(
+                new FlashBeacon(
                     'f4c1c0d1e2a34b5c9d8e7f6a5b4c3d2e',
-                    'Your order has shipped.',
+                    'Sprocket assembly finished.',
                     5,
                     new DateTimeImmutable('2026-08-01 09:00:00'),
                 ),
@@ -110,14 +110,14 @@ class DemoJobsCommand extends Command
                 'GuzzleHttp\\Exception\\ConnectException: cURL error 28: Operation timed out after 10000 milliseconds',
             ],
             [
-                new DeliverWebhook(
-                    'https://example.test/hooks/orders',
-                    ['event' => 'order.created', 'order_id' => 8412],
+                new PingSatellite(
+                    'https://acme.test/hooks/telemetry',
+                    ['event' => 'sprocket.assembled', 'sprocket_id' => 8412],
                     2.5,
                     true,
                 ),
                 'webhooks',
-                'Symfony\\Component\\HttpClient\\Exception\\ServerException: HTTP 503 returned for "https://example.test/hooks/orders"',
+                'Symfony\\Component\\HttpClient\\Exception\\ServerException: HTTP 503 returned for "https://acme.test/hooks/telemetry"',
             ],
         ];
     }

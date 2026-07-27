@@ -2,27 +2,27 @@
 
 namespace Laravel\Horizon\Demo;
 
+use DateTimeImmutable;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 
-class DeliverWebhook implements ShouldQueue
+class FlashBeacon implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     /**
      * Create a new demo job instance.
      *
-     * @param  array<string, mixed>  $payload
      * @return void
      */
     public function __construct(
-        public string $endpoint,
-        public array $payload,
-        public float $timeoutSeconds,
-        public bool $verifySsl = true,
+        public string $beaconId,
+        public string $message,
+        public int $priority,
+        public DateTimeImmutable $expiresAt,
     ) {
     }
 

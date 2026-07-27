@@ -8,22 +8,22 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 
-class ImportRecords implements ShouldQueue
+class AssembleSprocket implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     /**
      * Create a new demo job instance.
      *
-     * @param  array<int, string>  $columns
+     * @param  array<int, string>  $stages
      * @return void
      */
     public function __construct(
-        public string $filePath,
-        public int $chunkSize,
+        public string $blueprint,
+        public int $batchSize,
         public bool $notifyOnCompletion,
-        public array $columns,
-        public ?string $importedBy = null,
+        public array $stages,
+        public ?string $requestedBy = null,
     ) {
     }
 
