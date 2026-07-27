@@ -87,6 +87,7 @@
             "Composer\\Config::disableProcessTimeout",
             "@putenv HORIZONXFLOW_FLOW_SOURCE=mock",
             "@build",
+            "@php vendor/bin/testbench horizonxflow:demo-jobs",
             "@php vendor/bin/testbench serve"
         ],
         "lint": [

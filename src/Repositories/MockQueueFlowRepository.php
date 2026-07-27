@@ -33,9 +33,9 @@ class MockQueueFlowRepository implements QueueFlowRepository
             'failed_in_window' => 0,
             'latest_error' => null,
             'classes' => [
-                ['name' => 'App\\Jobs\\SendWelcomeEmail', 'pending' => 18, 'reserved' => 4, 'completed' => 63, 'failed' => 0],
-                ['name' => 'App\\Jobs\\SyncUserProfile', 'pending' => 21, 'reserved' => 3, 'completed' => 41, 'failed' => 0],
-                ['name' => 'App\\Jobs\\PruneSessions', 'pending' => 7, 'reserved' => 2, 'completed' => 18, 'failed' => 0],
+                ['name' => 'Acme\\Jobs\\PolishWidget', 'pending' => 18, 'reserved' => 4, 'completed' => 63, 'failed' => 0],
+                ['name' => 'Acme\\Jobs\\CalibrateGizmo', 'pending' => 21, 'reserved' => 3, 'completed' => 41, 'failed' => 0],
+                ['name' => 'Acme\\Jobs\\SweepWorkshop', 'pending' => 7, 'reserved' => 2, 'completed' => 18, 'failed' => 0],
             ],
         ],
         [
@@ -51,8 +51,8 @@ class MockQueueFlowRepository implements QueueFlowRepository
             'failed_in_window' => 0,
             'latest_error' => null,
             'classes' => [
-                ['name' => 'App\\Jobs\\DeliverWebhook', 'pending' => 8, 'reserved' => 6, 'completed' => 96, 'failed' => 0],
-                ['name' => 'App\\Jobs\\VerifySignature', 'pending' => 3, 'reserved' => 0, 'completed' => 44, 'failed' => 0],
+                ['name' => 'Acme\\Jobs\\PingSatellite', 'pending' => 8, 'reserved' => 6, 'completed' => 96, 'failed' => 0],
+                ['name' => 'Acme\\Jobs\\VerifyChecksum', 'pending' => 3, 'reserved' => 0, 'completed' => 44, 'failed' => 0],
             ],
         ],
         [
@@ -68,13 +68,13 @@ class MockQueueFlowRepository implements QueueFlowRepository
             'failed_in_window' => 0,
             'latest_error' => 'GuzzleHttp\\Exception\\ConnectException: cURL error 28: Operation timed out after 10000 milliseconds',
             'classes' => [
-                ['name' => 'App\\Notifications\\OrderShipped', 'pending' => 96, 'reserved' => 3, 'completed' => 52, 'failed' => 0],
-                ['name' => 'App\\Notifications\\WeeklyDigest', 'pending' => 41, 'reserved' => 1, 'completed' => 11, 'failed' => 0],
-                ['name' => 'App\\Jobs\\PushDeviceMessage', 'pending' => 11, 'reserved' => 1, 'completed' => 27, 'failed' => 2],
+                ['name' => 'Acme\\Notifications\\WidgetPolished', 'pending' => 96, 'reserved' => 3, 'completed' => 52, 'failed' => 0],
+                ['name' => 'Acme\\Notifications\\WorkshopDigest', 'pending' => 41, 'reserved' => 1, 'completed' => 11, 'failed' => 0],
+                ['name' => 'Acme\\Jobs\\FlashBeacon', 'pending' => 11, 'reserved' => 1, 'completed' => 27, 'failed' => 2],
             ],
         ],
         [
-            'name' => 'imports',
+            'name' => 'assembly',
             'pending' => 612,
             'wait' => 47,
             'processes' => 4,
@@ -84,11 +84,11 @@ class MockQueueFlowRepository implements QueueFlowRepository
             'completed' => 9744,
             'failed' => 27,
             'failed_in_window' => 4,
-            'latest_error' => 'Illuminate\\Queue\\MaxAttemptsExceededException: App\\Jobs\\ImportRecords has been attempted too many times',
+            'latest_error' => 'Illuminate\\Queue\\MaxAttemptsExceededException: Acme\\Jobs\\AssembleSprocket has been attempted too many times',
             'classes' => [
-                ['name' => 'App\\Jobs\\ImportRecords', 'pending' => 402, 'reserved' => 3, 'completed' => 12, 'failed' => 4],
-                ['name' => 'App\\Jobs\\NormalizeAddresses', 'pending' => 178, 'reserved' => 1, 'completed' => 6, 'failed' => 0],
-                ['name' => 'App\\Jobs\\ReindexCatalog', 'pending' => 32, 'reserved' => 0, 'completed' => 3, 'failed' => 0],
+                ['name' => 'Acme\\Jobs\\AssembleSprocket', 'pending' => 402, 'reserved' => 3, 'completed' => 12, 'failed' => 4],
+                ['name' => 'Acme\\Jobs\\StraightenFlywheel', 'pending' => 178, 'reserved' => 1, 'completed' => 6, 'failed' => 0],
+                ['name' => 'Acme\\Jobs\\ReindexToolbox', 'pending' => 32, 'reserved' => 0, 'completed' => 3, 'failed' => 0],
             ],
         ],
         [
@@ -113,8 +113,8 @@ class MockQueueFlowRepository implements QueueFlowRepository
      * @var array<string, string>
      */
     protected const EXCEPTIONS = [
-        'App\\Jobs\\ImportRecords' => 'Illuminate\\Queue\\MaxAttemptsExceededException: App\\Jobs\\ImportRecords has been attempted too many times or run too long',
-        'App\\Jobs\\PushDeviceMessage' => 'GuzzleHttp\\Exception\\ConnectException: cURL error 28: Operation timed out after 10000 milliseconds',
+        'Acme\\Jobs\\AssembleSprocket' => 'Illuminate\\Queue\\MaxAttemptsExceededException: Acme\\Jobs\\AssembleSprocket has been attempted too many times or run too long',
+        'Acme\\Jobs\\FlashBeacon' => 'GuzzleHttp\\Exception\\ConnectException: cURL error 28: Operation timed out after 10000 milliseconds',
     ];
 
     /**

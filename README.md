@@ -26,7 +26,7 @@ Under a row of queue KPIs, the workspace is organised into four areas:
 
 The active workspace, graph/table mode, time window, queue filter, and selected node are reflected in the query string, so operational views can be shared directly.
 
-To explore without a live queue, run `composer serve:demo`. This boots the workbench application with generated demo data.
+To explore without a live queue, run `composer serve:demo`. This boots the workbench application with generated demo data and seeds a handful of failed jobs you can open and retry.
 
 ### Configuration
 
@@ -58,7 +58,7 @@ Live-flow behaviour is configured via `config/horizonxflow.php`:
 ### Abilities
 
 - `viewHorizon` — required to enter the dashboard (existing Horizon gate).
-- `controlHorizon` — required for mutation endpoints (`POST /jobs/retry/{id}`, `POST /masters/{action}`, `POST /supervisors/{name}/{action}`). When the gate is undefined, mutations are only allowed in `local` and `testing` environments; everywhere else, define the gate in `HorizonApplicationServiceProvider::gate()` to enable destructive actions for a trusted subset of users.
+- `controlHorizon` — required for mutation endpoints (`POST /jobs/retry/{id}`, `POST /masters/{action}`, `POST /supervisors/{name}/{action}`) and for `GET /jobs/failed/{id}/parameters`, which backs retrying with edited parameters. When the gate is undefined, mutations are only allowed in `local` and `testing` environments; everywhere else, define the gate in `HorizonApplicationServiceProvider::gate()` to enable destructive actions for a trusted subset of users.
 
 ### Environment Variables
 
@@ -69,6 +69,45 @@ Live-flow behaviour is configured via `config/horizonxflow.php`:
 - `HORIZONXFLOW_FLOW_PAYLOAD_TTL` — overrides `flow.cache.payload_ttl`.
 - `HORIZONXFLOW_DISCOVER_DATABASE_QUEUES` — overrides `flow.database.discover_connections`.
 - `QUEUE_FAILED_TABLE` — overrides `flow.database.failed_table`.
+
+## Retry With Parameters
+
+A failed job usually fails because of what it was handed: a wrong path, a batch size that was too large, a flag left on. Horizon can only push that same job back onto the queue unchanged, so the normal fix is a tinker session or a one-off command. HorizonXFlow lets you change the arguments and retry from the dashboard instead.
+
+Open a failed job and press **Edit Parameters**. HorizonXFlow reads the job class constructor and lists every parameter it accepts, prefilled with the values the failed job was queued with:
+
+<p align="center">
+<img src="art/retry-parameters.png" alt="Editing a failed job's parameters before retrying it">
+</p>
+
+Change what you need and press **Retry With Parameters**. The job is queued as a normal retry, so it still shows up under the original job's retry history.
+
+What you can edit:
+
+- `string`, `int`, `float`, `bool`, `array` and `iterable` parameters, plus untyped ones holding those values. Arrays are edited as JSON.
+- Nullable parameters get a **Send as null** toggle.
+- Parameters that were never passed still appear, prefilled with their declared default.
+
+What you cannot edit, and why the panel says so next to each one:
+
+- Objects and Eloquent models. They are shown read-only rather than hidden, so you can still see what the job was carrying.
+- Queued closures, and jobs whose class no longer exists in the application.
+
+Values are cast to the parameter's declared type before the job is queued (`"9"` becomes `9` for an `int`). Anything that does not fit is rejected with a `422` and the reason, and nothing is queued. Jobs implementing `ShouldBeEncrypted` are decrypted for inspection and re-encrypted on the way out.
+
+Editing parameters is gated by `controlHorizon`, the same ability an ordinary retry needs. Both the read and the retry go through it:
+
+| Path | Returns |
+| ---- | ------- |
+| `GET /horizon/api/jobs/failed/{id}/parameters` | The job's constructor parameters, their current values, and whether each one may be edited. |
+| `POST /horizon/api/jobs/retry/{id}`            | Retries the job. Accepts an optional `parameters` object of overrides. |
+
+To try it locally, `composer serve:demo` seeds three failed demo jobs. You can also seed or remove them directly:
+
+```bash
+php artisan horizonxflow:demo-jobs
+php artisan horizonxflow:demo-jobs --clear
+```
 
 ## Upstream Horizon
 

@@ -6,6 +6,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Queue\Factory as Queue;
 use Illuminate\Support\Str;
 use Laravel\Horizon\Contracts\JobRepository;
+use Laravel\Horizon\JobParameterInspector;
 
 class RetryFailedJob
 {
@@ -13,10 +14,12 @@ class RetryFailedJob
      * Create a new job instance.
      *
      * @param  string  $id  The job ID.
+     * @param  array<string, mixed>  $parameters  The job parameters to override before retrying.
      * @return void
      */
     public function __construct(
         public $id,
+        public array $parameters = [],
     ) {
     }
 
@@ -25,16 +28,17 @@ class RetryFailedJob
      *
      * @param  \Illuminate\Contracts\Queue\Factory  $queue
      * @param  \Laravel\Horizon\Contracts\JobRepository  $jobs
+     * @param  \Laravel\Horizon\JobParameterInspector  $inspector
      * @return void
      */
-    public function handle(Queue $queue, JobRepository $jobs)
+    public function handle(Queue $queue, JobRepository $jobs, JobParameterInspector $inspector)
     {
         if (is_null($job = $jobs->findFailed($this->id))) {
             return;
         }
 
         $queue->connection($job->connection)->pushRaw(
-            $this->preparePayload($id = Str::uuid(), $job->payload), $job->queue
+            $this->preparePayload($id = Str::uuid(), $job->payload, $inspector), $job->queue
         );
 
         $jobs->storeRetryReference($this->id, $id);
@@ -45,11 +49,12 @@ class RetryFailedJob
      *
      * @param  string  $id
      * @param  string  $payload
+     * @param  \Laravel\Horizon\JobParameterInspector  $inspector
      * @return string
      */
-    protected function preparePayload($id, $payload)
+    protected function preparePayload($id, $payload, JobParameterInspector $inspector)
     {
-        $payload = json_decode($payload, true);
+        $payload = $inspector->applyOverrides(json_decode($payload, true), $this->parameters);
 
         return json_encode(array_merge($payload, [
             'id' => $id,
