@@ -52,6 +52,7 @@ Route::prefix('api')->group(function () {
     Route::get('/jobs/silenced', 'SilencedJobsController@index')->name('horizon.silenced-jobs.index');
     Route::get('/jobs/failed', 'FailedJobsController@index')->name('horizon.failed-jobs.index');
     Route::get('/jobs/failed/{id}', 'FailedJobsController@show')->name('horizon.failed-jobs.show');
+    Route::get('/jobs/failed/{id}/parameters', 'RetryController@parameters')->name('horizonxflow.retry-jobs.parameters');
     Route::post('/jobs/retry/{id}', 'RetryController@store')->name('horizon.retry-jobs.show');
     Route::get('/jobs/{id}', 'JobsController@show')->name('horizon.jobs.show');
 });

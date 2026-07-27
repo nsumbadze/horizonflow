@@ -61,7 +61,7 @@
                     <li class="nav-item">
                         <router-link active-class="active" to="/live-flow" class="nav-link d-flex align-items-center">
                             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
-                                <path fill-rule="evenodd" d="M2 5.25A3.25 3.25 0 015.25 2h1.5A3.25 3.25 0 0110 5.25v.25h4.25a3.75 3.75 0 010 7.5H10v.25a3.25 3.25 0 01-3.25 3.25h-1.5a3.25 3.25 0 010-6.5h1.5A3.25 3.25 0 0110 13.25V11.5h4.25a2.25 2.25 0 000-4.5H10v.25a3.25 3.25 0 01-3.25 3.25h-1.5A3.25 3.25 0 012 7.25v-2zm3.25-1.75a1.75 1.75 0 000 3.5h1.5a1.75 1.75 0 000-3.5h-1.5zm0 8a1.75 1.75 0 000 3.5h1.5a1.75 1.75 0 000-3.5h-1.5z" clip-rule="evenodd" />
+                                <path fill-rule="evenodd" d="M11.983 1.907a.75.75 0 00-1.292-.657l-8.5 9.5A.75.75 0 002.75 12h6.572l-1.305 6.093a.75.75 0 001.292.657l8.5-9.5A.75.75 0 0017.25 8h-6.572l1.305-6.093z" clip-rule="evenodd" />
                             </svg>
                             <span>Live Flow</span>
                         </router-link>

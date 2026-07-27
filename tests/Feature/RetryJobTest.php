@@ -24,7 +24,7 @@ class RetryJobTest extends IntegrationTest
     {
         parent::tearDown();
 
-        unset($_SERVER['horizon.fail']);
+        unset($_SERVER['horizon.fail'], $_SERVER['horizon.job.parameters']);
     }
 
     public function test_nothing_happens_for_failed_job_that_doesnt_exist()
@@ -81,6 +81,34 @@ class RetryJobTest extends IntegrationTest
 
         // Test status is now failed on the retry...
         $this->assertSame('failed', $retried[0]['status']);
+    }
+
+    public function test_failed_job_can_be_retried_with_overridden_parameters()
+    {
+        unset($_SERVER['horizon.job.parameters']);
+
+        $_SERVER['horizon.fail'] = true;
+        $id = Queue::push(new Jobs\JobWithParameters('import', 3, 0.5, true, ['chunk' => 100]));
+        $this->work();
+        $this->assertSame(1, $this->failedJobs());
+
+        unset($_SERVER['horizon.fail']);
+        dispatch(new RetryFailedJob($id, [
+            'name' => 'export',
+            'attempts' => '9',
+            'options' => ['chunk' => 250],
+            'reason' => 'retried from the dashboard',
+        ]));
+        $this->work();
+
+        $this->assertSame([
+            'name' => 'export',
+            'attempts' => 9,
+            'ratio' => 0.5,
+            'notify' => true,
+            'options' => ['chunk' => 250],
+            'reason' => 'retried from the dashboard',
+        ], $_SERVER['horizon.job.parameters']);
     }
 
     public function test_retrying_failed_job_with_retry_until_and_without_pushed_at()

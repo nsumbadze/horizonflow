@@ -128,6 +128,7 @@ class HorizonServiceProvider extends ServiceProvider
                 Console\ClearMetricsCommand::class,
                 Console\ContinueCommand::class,
                 Console\ContinueSupervisorCommand::class,
+                Console\DemoJobsCommand::class,
                 Console\ForgetFailedCommand::class,
                 Console\HorizonCommand::class,
                 Console\InstallCommand::class,
