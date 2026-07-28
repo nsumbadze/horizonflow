@@ -24,6 +24,8 @@ Under a row of queue KPIs, the workspace is organised into four areas:
 - **Insights** — an incident timeline (long waits, job failures, supervisor deployments), monitored tags, and recent batches.
 - **Horizon controls** — pause and continue the master supervisors or an individual supervisor.
 
+Selecting a Redis queue in the Inspector also exposes queue pause/resume controls and safe cancellation actions for its pending or running jobs.
+
 The active workspace, graph/table mode, time window, queue filter, and selected node are reflected in the query string, so operational views can be shared directly.
 
 To explore without a live queue, run `composer serve:demo`. This boots the workbench application with generated demo data and seeds a handful of failed jobs you can open and retry.
@@ -54,11 +56,14 @@ Live-flow behaviour is configured via `config/horizonxflow.php`:
 | `GET /horizon/api/flow/queue-jobs`   | Recent jobs + job-classes for a single queue (`?key=driver:connection:name`). |
 | `GET /horizon/api/flow/events`       | Activity stream. Pass `?since=<unix ts>` for incremental polling. |
 | `GET /horizon/api/flow/incidents`    | Recent incidents (long waits, job failures, supervisor deployments) for the Insights timeline. |
+| `POST /horizon/api/flow/queues/pause`  | Pause one Redis queue while retaining pending and newly dispatched jobs. |
+| `POST /horizon/api/flow/queues/resume` | Resume processing one paused Redis queue. |
+| `POST /horizon/api/jobs/{id}/cancel`   | Cancel a pending job or request cooperative cancellation of a running job. |
 
 ### Abilities
 
 - `viewHorizon` — required to enter the dashboard (existing Horizon gate).
-- `controlHorizon` — required for mutation endpoints (`POST /jobs/retry/{id}`, `POST /masters/{action}`, `POST /supervisors/{name}/{action}`) and for `GET /jobs/failed/{id}/parameters`, which backs retrying with edited parameters. When the gate is undefined, mutations are only allowed in `local` and `testing` environments; everywhere else, define the gate in `HorizonApplicationServiceProvider::gate()` to enable destructive actions for a trusted subset of users.
+- `controlHorizon` — required for mutation endpoints (`POST /jobs/retry/{id}`, `POST /jobs/{id}/cancel`, `POST /flow/queues/{action}`, `POST /masters/{action}`, `POST /supervisors/{name}/{action}`) and for `GET /jobs/failed/{id}/parameters`, which backs retrying with edited parameters. When the gate is undefined, mutations are only allowed in `local` and `testing` environments; everywhere else, define the gate in `HorizonApplicationServiceProvider::gate()` to enable destructive actions for a trusted subset of users.
 
 ### Environment Variables
 
@@ -69,6 +74,48 @@ Live-flow behaviour is configured via `config/horizonxflow.php`:
 - `HORIZONXFLOW_FLOW_PAYLOAD_TTL` — overrides `flow.cache.payload_ttl`.
 - `HORIZONXFLOW_DISCOVER_DATABASE_QUEUES` — overrides `flow.database.discover_connections`.
 - `QUEUE_FAILED_TABLE` — overrides `flow.database.failed_table`.
+
+## Job and Queue Controls
+
+The Live Flow Inspector can pause an individual Redis queue and cancel one pending or running job. These controls deliberately preserve Laravel's queue safety boundaries:
+
+- Pausing a queue does not reject dispatches or kill workers. A job already running finishes, while pending and newly dispatched jobs remain queued until the queue is resumed.
+- Cancelling a pending job atomically removes its exact payload from the ready list or delayed set. If a worker reserves it first, HorizonXFlow records a cooperative cancellation request instead of reporting a false success.
+- A running worker process is never force-killed. Side effects already performed by a job cannot be rolled back by HorizonXFlow.
+- Cancelled jobs remain visible in the Inspector with their cancellation time and operator identifier. Repeated requests are idempotent, and completed or failed jobs return `409 Conflict`.
+
+Mutation routes use the `controlHorizon` ability described above. Queue connection and queue names are validated server-side, raw job payloads are never accepted from or returned to the control UI, and every destructive action has an explicit confirmation step.
+
+### Cooperative cancellation checkpoints
+
+A running job must opt in before it can stop between units of work. Add `InteractsWithCancellation` and return from `handle()` when a checkpoint acknowledges the request:
+
+```php
+use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Foundation\Queue\InteractsWithQueue;
+use Laravel\Horizon\Concerns\InteractsWithCancellation;
+
+class SendCampaignMail implements ShouldQueue
+{
+    use InteractsWithQueue;
+    use InteractsWithCancellation;
+
+    public function handle(): void
+    {
+        foreach ($this->recipients as $recipient) {
+            if ($this->cancelIfRequested()) {
+                return;
+            }
+
+            $this->sendTo($recipient);
+        }
+    }
+}
+```
+
+Place checkpoints before idempotent units of work. A cancellation requested while a single non-interruptible call is executing—for example, an SMTP hand-off—takes effect only after that call returns and the next checkpoint is reached.
+
+Queue and job controls currently support Redis queues. Database queues remain observable in Live Flow but do not expose these mutation controls.
 
 ## Retry With Parameters
 

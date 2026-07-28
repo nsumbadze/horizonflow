@@ -11,12 +11,14 @@
             inspector: { type: Object, required: true },
             graphNodeLookup: { type: Object, default: () => ({}) },
             retryingIds: { type: Array, default: () => [] },
+            controllingJobIds: { type: Array, default: () => [] },
+            queueControlling: { type: Boolean, default: false },
             nodes: { type: Array, default: () => [] },
             selectedId: { type: String, default: null },
             mode: { type: String, default: 'graph' },
         },
 
-        emits: ['retry', 'open-failed', 'open-graph', 'open-activity', 'select'],
+        emits: ['retry', 'cancel-job', 'pause-queue', 'resume-queue', 'open-failed', 'open-graph', 'open-activity', 'select'],
 
         computed: {
             nodeGroups() {
@@ -60,6 +62,10 @@
                 return this.retryingIds.includes(job?.id);
             },
 
+            isControllingJob(job) {
+                return this.controllingJobIds.includes(job?.id);
+            },
+
             edgeDisplayLabel(edge) {
                 const rate = Number(edge.rate_per_minute ?? 0);
                 if (rate <= 0) return ['dispatch', 'reserve', 'finish'].includes(edge.label) ? 'idle' : edge.label;
@@ -67,7 +73,12 @@
             },
 
             stateLabel(state) {
-                return { reserved: 'Running', completed: 'Succeeded' }[this.jobStateKey(state)] ?? state;
+                return {
+                    reserved: 'Running',
+                    cancellation_requested: 'Cancel requested',
+                    cancelled: 'Cancelled',
+                    completed: 'Succeeded',
+                }[this.jobStateKey(state)] ?? state;
             },
 
             isLongMetric(metric) {
@@ -125,10 +136,32 @@
 
             <template v-else>
             <div class="lf-insp-top">
-                <div class="lf-insp-name">{{ inspector.node.label }}</div>
+                <div class="lf-insp-title-row">
+                    <div class="lf-insp-name">{{ inspector.node.label }}</div>
+                    <span class="lf-jstate lf-jstate-cancellation_requested" v-if="inspector.queue?.paused">Paused</span>
+                </div>
                 <div class="lf-insp-meta">
                     <span class="lf-insp-kind">{{ nodeKind(inspector.node) }}</span>
                     <span class="lf-insp-conn">{{ inspector.queue ? inspector.queue.connection + ' · ' + inspector.queue.name : inspector.node.id }}</span>
+                </div>
+                <div class="lf-insp-controls" v-if="inspector.queue?.driver === 'redis'">
+                    <button
+                        v-if="!inspector.queue.paused"
+                        class="lf-mini-btn lf-mini-btn-danger"
+                        type="button"
+                        :disabled="queueControlling"
+                        @click="$emit('pause-queue', inspector.queue)"
+                    >{{ queueControlling ? 'pausing…' : 'pause queue' }}</button>
+                    <button
+                        v-else
+                        class="lf-mini-btn lf-mini-btn-safe"
+                        type="button"
+                        :disabled="queueControlling"
+                        @click="$emit('resume-queue', inspector.queue)"
+                    >{{ queueControlling ? 'resuming…' : 'resume queue' }}</button>
+                    <span class="lf-insp-control-help">
+                        {{ inspector.queue.paused ? 'Jobs remain queued until resumed.' : 'Current work finishes; no new jobs will start.' }}
+                    </span>
                 </div>
             </div>
 
@@ -210,8 +243,8 @@
                         </div>
                         <div class="lf-job-error" v-if="job.exception" :title="job.exception">{{ job.exception }}</div>
                     </div>
-                    <div class="lf-job-actions" v-if="job.status === 'failed'">
-                        <button class="lf-mini-btn" type="button" @click="$emit('open-failed', job)">View</button>
+                    <div class="lf-job-actions" v-if="job.status === 'failed' || job.cancellable">
+                        <button class="lf-mini-btn" type="button" v-if="job.status === 'failed'" @click="$emit('open-failed', job)">View</button>
                         <button
                             class="lf-mini-btn"
                             type="button"
@@ -219,6 +252,19 @@
                             :disabled="isRetrying(job)"
                             @click="$emit('retry', job)"
                         >{{ isRetrying(job) ? 'retrying' : 'retry' }}</button>
+                        <button
+                            class="lf-mini-btn lf-mini-btn-danger"
+                            type="button"
+                            v-if="job.cancellable && job.status !== 'cancellation_requested'"
+                            :disabled="isControllingJob(job)"
+                            @click="$emit('cancel-job', job)"
+                        >{{ isControllingJob(job) ? 'working…' : (job.status === 'pending' ? 'cancel' : 'request cancel') }}</button>
+                        <button
+                            class="lf-mini-btn"
+                            type="button"
+                            v-else-if="job.status === 'cancellation_requested'"
+                            disabled
+                        >requested</button>
                     </div>
                 </div>
                 <div class="lf-empty-sm" v-if="inspector.jobs.length === 0">No recent jobs captured for this queue.</div>

@@ -170,7 +170,7 @@
                         <td class="r num" :class="{ crit: queueFailedInWindow(queue) > 0 }" :title="formatNumber(queue.failed ?? 0) + ' all-time'">{{ formatNumber(queueFailedInWindow(queue)) }}</td>
                         <td class="r num" :class="{ warn: (queue.failure_rate ?? 0) > 0 }">{{ formatPercent(queue.failure_rate) }}</td>
                         <td class="r">
-                            <span class="lf-status" :class="'lf-status-' + queueStatus(queue)">{{ statusLabel(queueStatus(queue)) }}</span>
+                            <span class="lf-status" :class="'lf-status-' + queueStatus(queue)">{{ queue.paused ? 'paused' : statusLabel(queueStatus(queue)) }}</span>
                         </td>
                     </tr>
                     <tr v-if="queues.length === 0">

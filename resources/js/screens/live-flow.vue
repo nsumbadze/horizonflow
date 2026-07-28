@@ -52,6 +52,8 @@
                 selectedId: typeof query.node === 'string' && query.node !== '' ? query.node : null,
                 isDark: this.sniffDark(),
                 retryingJobs: [],
+                controllingJobs: [],
+                controllingQueues: [],
                 selectedJob: null,
                 selectedJobDetails: null,
                 loadingJobDetails: false,
@@ -774,6 +776,7 @@
                 }
 
                 this.controlConfirmation = {
+                    kind: 'masters',
                     action,
                     title: 'Pause all Horizon supervisors?',
                     text: 'Queued jobs will remain in place, but no new work will be processed until the supervisors are resumed.',
@@ -786,9 +789,17 @@
             },
 
             confirmControlAction() {
-                const action = this.controlConfirmation?.action;
+                const confirmation = this.controlConfirmation;
                 this.controlConfirmation = null;
-                if (action) this.controlMasters(action);
+                if (!confirmation) return;
+
+                if (confirmation.kind === 'masters') {
+                    this.controlMasters(confirmation.action);
+                } else if (confirmation.kind === 'queue') {
+                    this.controlQueue(confirmation.queue, confirmation.action);
+                } else if (confirmation.kind === 'job') {
+                    this.controlJob(confirmation.job);
+                }
             },
 
             showControlNotice(type, message) {
@@ -848,6 +859,123 @@
                     .finally(() => {
                         this.controllingHorizon = this.controllingHorizon.filter(item => item !== key);
                     });
+            },
+
+            queueControlKey(queue) {
+                return `${queue?.storage_connection ?? queue?.connection}:${queue?.name}`;
+            },
+
+            isControllingQueue(queue) {
+                return this.controllingQueues.includes(this.queueControlKey(queue));
+            },
+
+            requestQueuePause(queue) {
+                if (!queue || this.isControllingQueue(queue)) return;
+
+                this.controlConfirmation = {
+                    kind: 'queue',
+                    action: 'pause',
+                    queue,
+                    title: `Pause ${queue.name}?`,
+                    text: 'Any job already running will finish. Pending and newly dispatched jobs will remain queued and no new jobs will start until this queue is resumed.',
+                    confirmLabel: 'Pause queue',
+                    tone: 'warning',
+                };
+            },
+
+            controlQueue(queue, action) {
+                if (!queue || !['pause', 'resume'].includes(action)) return;
+
+                const key = this.queueControlKey(queue);
+                if (this.controllingQueues.includes(key)) return;
+                this.controllingQueues = [...this.controllingQueues, key];
+
+                const body = {
+                    connection: queue.storage_connection ?? queue.connection,
+                    queue: queue.name,
+                };
+
+                return this.$http.post(`${Horizon.basePath}/api/flow/queues/${action}`, body)
+                    .then(() => {
+                        const paused = action === 'pause';
+                        this.mergeFlow({
+                            queues: this.queues.map(item => this.queueControlKey(item) === key
+                                ? { ...item, paused }
+                                : item),
+                        });
+                        this.showControlNotice('success', `${queue.name} was ${paused ? 'paused' : 'resumed'}.`);
+                        this.recordControlEvent(
+                            `queue-${queue.name}-${action}`,
+                            `${queue.name} ${paused ? 'paused' : 'resumed'}`,
+                            paused ? 'Queued jobs are being retained until this queue is resumed.' : 'Workers may reserve new jobs again.'
+                        );
+                        setTimeout(() => this.refreshFlowPeriodically(), 1200);
+                    })
+                    .catch(error => {
+                        const message = error?.response?.data?.message;
+                        this.showControlNotice('error', message || `${queue.name} could not be ${action === 'pause' ? 'paused' : 'resumed'}.`);
+                    })
+                    .finally(() => {
+                        this.controllingQueues = this.controllingQueues.filter(item => item !== key);
+                    });
+            },
+
+            requestJobCancellation(job) {
+                if (!job?.id || this.controllingJobs.includes(job.id)) return;
+
+                const pending = job.status === 'pending';
+                this.controlConfirmation = {
+                    kind: 'job',
+                    job,
+                    title: pending ? `Cancel ${this.shortJobName(job.name)}?` : `Request cancellation of ${this.shortJobName(job.name)}?`,
+                    text: pending
+                        ? 'If the job is still waiting, it will be atomically removed and retained as cancelled. If a worker reserves it first, this becomes a cooperative cancellation request.'
+                        : 'The worker will not be killed. The job will stop only at a cancellation checkpoint; side effects already performed cannot be undone.',
+                    confirmLabel: pending ? 'Cancel job' : 'Request cancellation',
+                    tone: 'danger',
+                };
+            },
+
+            controlJob(job) {
+                if (!job?.id || this.controllingJobs.includes(job.id)) return;
+                this.controllingJobs = [...this.controllingJobs, job.id];
+
+                return this.$http.post(`${Horizon.basePath}/api/jobs/${encodeURIComponent(job.id)}/cancel`)
+                    .then(response => {
+                        const action = response.data?.action;
+                        const status = action === 'cancelled' ? 'cancelled' : 'cancellation_requested';
+                        this.replaceQueueJob(job.id, {
+                            ...response.data,
+                            status,
+                            cancellable: status === 'cancellation_requested',
+                        });
+                        this.showControlNotice(
+                            'success',
+                            action === 'cancelled'
+                                ? `${this.shortJobName(job.name)} was cancelled before it started.`
+                                : `Cancellation was requested for ${this.shortJobName(job.name)}.`
+                        );
+                        setTimeout(() => this.refreshFlowPeriodically(), 1200);
+                    })
+                    .catch(error => {
+                        const message = error?.response?.data?.message;
+                        this.showControlNotice('error', message || `${this.shortJobName(job.name)} could not be cancelled.`);
+                    })
+                    .finally(() => {
+                        this.controllingJobs = this.controllingJobs.filter(id => id !== job.id);
+                    });
+            },
+
+            replaceQueueJob(id, changes) {
+                this.queueJobDetails = Object.fromEntries(
+                    Object.entries(this.queueJobDetails).map(([key, detail]) => [
+                        key,
+                        {
+                            ...detail,
+                            jobs: (detail.jobs ?? []).map(job => job.id === id ? { ...job, ...changes } : job),
+                        },
+                    ])
+                );
             },
 
             selectNode(id) { this.selectedId = id; },
@@ -1088,6 +1216,7 @@
             },
 
             queueStatus(queue) {
+                if (queue.paused) return 'warning';
                 if (this.queueFailedInWindow(queue) > 0) return 'critical';
                 if (queue.wait_seconds >= 30 || queue.pending >= 500) return 'critical';
                 if (queue.wait_seconds >= 10 || queue.pending >= 100 || queue.delayed > 0) return 'warning';
@@ -1095,6 +1224,7 @@
             },
 
             queueSubLabel(queue) {
+                if (queue.paused) return `${queue.connection} · paused`;
                 const failed = this.queueFailedInWindow(queue);
                 if (failed > 0) return `${queue.connection} · ${this.formatNumber(failed)} failed`;
                 return `${queue.driver} · ${queue.connection} · ${this.formatNumber(queue.pending)} pending`;
@@ -1367,10 +1497,15 @@
                             :inspector="selectedInspector"
                             :graph-node-lookup="graphNodeLookup"
                             :retrying-ids="retryingJobs"
+                            :controlling-job-ids="controllingJobs"
+                            :queue-controlling="selectedInspector.queue ? isControllingQueue(selectedInspector.queue) : false"
                             :nodes="graphNodes"
                             :selected-id="selectedId"
                             :mode="flowMode"
                             @retry="retryJob"
+                            @cancel-job="requestJobCancellation"
+                            @pause-queue="requestQueuePause"
+                            @resume-queue="queue => controlQueue(queue, 'resume')"
                             @open-failed="openJobModal"
                             @open-activity="selectWorkspaceTab('activity')"
                             @open-graph="flowMode = 'graph'"
@@ -1413,7 +1548,12 @@
                 </div>
                 <div class="lf-confirm-actions">
                     <button class="lf-control-btn" type="button" @click="cancelControlConfirmation">Cancel</button>
-                    <button class="lf-control-btn lf-control-btn-warning" type="button" @click="confirmControlAction">{{ controlConfirmation.confirmLabel }}</button>
+                    <button
+                        class="lf-control-btn"
+                        :class="controlConfirmation.tone === 'danger' ? 'lf-control-btn-danger' : 'lf-control-btn-warning'"
+                        type="button"
+                        @click="confirmControlAction"
+                    >{{ controlConfirmation.confirmLabel }}</button>
                 </div>
             </div>
         </div>
@@ -2127,10 +2267,14 @@
     .lf-jstate::before { font-size: 11px; line-height: 1; font-weight: 800; }
     .lf-jstate-pending::before   { content: '\25F7'; }
     .lf-jstate-reserved::before  { content: '\25B6'; font-size: 8px; }
+    .lf-jstate-cancellation_requested::before { content: '!'; }
+    .lf-jstate-cancelled::before { content: '\2212'; }
     .lf-jstate-completed::before { content: '\2713'; }
     .lf-jstate-failed::before    { content: '\00D7'; font-size: 12px; }
     .lf-jstate-pending   { color: var(--lf-muted); border-color: var(--lf-border);        background: var(--lf-hover); }
     .lf-jstate-reserved  { color: var(--lf-blue);  border-color: var(--lf-blue-edge);     background: var(--lf-blue-bg); }
+    .lf-jstate-cancellation_requested { color: var(--lf-amber); border-color: rgba(217, 119, 6, .35); background: rgba(217, 119, 6, .08); }
+    .lf-jstate-cancelled { color: var(--lf-muted); border-color: var(--lf-border); background: var(--lf-hover); }
     .lf-jstate-completed { color: var(--lf-green); border-color: var(--lf-green-edge);    background: var(--lf-green-bg); }
     .lf-jstate-failed    { color: var(--lf-red);   border-color: var(--lf-red-edge);      background: var(--lf-red-bg); }
 
@@ -2252,6 +2396,9 @@
     .lf-inspector-picker select:focus-visible { outline: 2px solid var(--lf-violet); outline-offset: 2px; }
 
     .lf-insp-top { padding: 10px 12px; border-bottom: 1px solid var(--lf-border); }
+    .lf-insp-title-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .lf-insp-controls { display: flex; align-items: center; gap: 8px; margin-top: 9px; }
+    .lf-insp-control-help { color: var(--lf-dim); font-size: 10px; line-height: 1.35; }
     .lf-insp-name { font-size: 13.5px; font-weight: 600; color: var(--lf-text); margin-bottom: 4px; }
     .lf-insp-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
     .lf-insp-kind {
@@ -2453,6 +2600,7 @@
     }
     .lf-control-btn:hover:not(:disabled) { background: var(--lf-hover); }
     .lf-control-btn-warning:hover:not(:disabled) { color: var(--lf-amber); border-color: var(--lf-amber); }
+    .lf-control-btn-danger:hover:not(:disabled) { color: var(--lf-red); border-color: var(--lf-red); }
     .lf-control-btn-primary { color: var(--lf-violet); border-color: rgba(119,70,236,.35); }
     .lf-control-btn-primary:hover:not(:disabled) { border-color: var(--lf-violet); }
     .lf-control-btn:focus-visible { outline: 2px solid var(--lf-violet); outline-offset: 2px; }

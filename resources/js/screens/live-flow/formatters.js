@@ -66,7 +66,9 @@ export default {
             return {
                 failed: 'critical',
                 reserved: 'warning',
+                cancellation_requested: 'warning',
                 pending: 'warning',
+                cancelled: 'healthy',
                 completed: 'healthy',
             }[status] ?? 'healthy';
         },
@@ -78,13 +80,15 @@ export default {
          */
         jobStateKey(state) {
             const key = String(state ?? '').toLowerCase();
-            return ['pending', 'reserved', 'completed', 'failed'].includes(key) ? key : 'pending';
+            return ['pending', 'reserved', 'cancellation_requested', 'cancelled', 'completed', 'failed'].includes(key) ? key : 'pending';
         },
 
         jobCounts(jobClass) {
             const parts = [
                 ['pending', jobClass.pending],
                 ['reserved', jobClass.reserved],
+                ['cancel requested', jobClass.cancellation_requested],
+                ['cancelled', jobClass.cancelled],
                 ['ok', jobClass.completed],
                 ['failed', jobClass.failed],
             ].filter(([, value]) => Number(value ?? 0) > 0);
