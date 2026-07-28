@@ -5,6 +5,7 @@ namespace Laravel\Horizon;
 use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Queue\RedisQueue as BaseQueue;
 use Illuminate\Support\Str;
+use Laravel\Horizon\Contracts\JobControlRepository;
 use Laravel\Horizon\Events\JobDeleted;
 use Laravel\Horizon\Events\JobPending;
 use Laravel\Horizon\Events\JobPushed;
@@ -147,11 +148,51 @@ class RedisQueue extends BaseQueue
     #[\Override]
     public function pop($queue = null, $index = 0)
     {
-        return tap(parent::pop($queue, $index), function ($result) use ($queue) {
-            if ($result) {
-                $this->event($this->getQueue($queue), new JobReserved($result->getReservedJob()));
-            }
-        });
+        $queueName = $this->controlQueueName($queue);
+        $controls = $this->jobControls();
+
+        if ($controls?->pausedQueue((string) $this->getConnectionName(), $queueName) !== null) {
+            return null;
+        }
+
+        $result = parent::pop($queue, $index);
+
+        if (! $result) {
+            return null;
+        }
+
+        $this->event($this->getQueue($queue), new JobReserved($result->getReservedJob()));
+
+        // A cancellation may have lost the ready-list reservation race. Honor
+        // its request before user code starts whenever the marker is already
+        // visible at this boundary.
+        if ($controls?->cancellationRequested((string) $result->getJobId())) {
+            $controls->acknowledgeCancellation((string) $result->getJobId());
+            $result->delete();
+
+            return null;
+        }
+
+        return $result;
+    }
+
+    /**
+     * Atomically remove an exact payload while it is still ready or delayed.
+     */
+    public function removePending(string $queue, string $payload): bool
+    {
+        $key = method_exists(parent::class, 'getQueueRedisKey')
+            ? $this->getQueueRedisKey($queue)
+            : $this->getQueue($queue);
+
+        return (int) $this->getConnection()->eval(
+            LuaScripts::cancelPending(),
+            3,
+            $key,
+            $key.':delayed',
+            $key.':notify',
+            $payload
+        ) > 0;
     }
 
     /**
@@ -216,5 +257,19 @@ class RedisQueue extends BaseQueue
                 $event->connection($this->getConnectionName())->queue($queue)
             );
         }
+    }
+
+    protected function jobControls(): ?JobControlRepository
+    {
+        if (! $this->container || ! $this->container->bound(JobControlRepository::class)) {
+            return null;
+        }
+
+        return $this->container->make(JobControlRepository::class);
+    }
+
+    protected function controlQueueName(?string $queue): string
+    {
+        return Str::replaceFirst('queues:', '', $this->getQueue($queue));
     }
 }

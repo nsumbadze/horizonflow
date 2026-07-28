@@ -29,7 +29,9 @@ class RedisJobRepository implements JobRepository
     public $keys = [
         'id', 'connection', 'queue', 'name', 'status', 'payload',
         'exception', 'context', 'failed_at', 'completed_at', 'retried_by',
-        'reserved_at', 'delay',
+        'reserved_at', 'delay', 'cancelled_at', 'cancelled_by',
+        'cancellation_requested_at', 'cancellation_requested_by',
+        'cancellation_acknowledged_at',
     ];
 
     /**
@@ -177,6 +179,17 @@ class RedisJobRepository implements JobRepository
     }
 
     /**
+     * Get a chunk of cancelled jobs.
+     *
+     * @param  string|null  $afterIndex
+     * @return \Illuminate\Support\Collection
+     */
+    public function getCancelled($afterIndex = null)
+    {
+        return $this->getJobsByType('cancelled_jobs', $afterIndex);
+    }
+
+    /**
      * Get the count of recent jobs.
      *
      * @return int
@@ -224,6 +237,16 @@ class RedisJobRepository implements JobRepository
     public function countSilenced()
     {
         return $this->countJobsByType('silenced_jobs');
+    }
+
+    /**
+     * Get the count of cancelled jobs.
+     *
+     * @return int
+     */
+    public function countCancelled()
+    {
+        return $this->countJobsByType('cancelled_jobs');
     }
 
     /**
@@ -281,6 +304,7 @@ class RedisJobRepository implements JobRepository
             'pending_jobs' => $this->pendingJobExpires,
             'completed_jobs' => $this->completedJobExpires,
             'silenced_jobs' => $this->completedJobExpires,
+            'cancelled_jobs' => $this->completedJobExpires,
             default => $this->recentJobExpires,
         };
     }
@@ -468,6 +492,37 @@ class RedisJobRepository implements JobRepository
      */
     public function completed(JobPayload $payload, $failed = false, $silenced = false)
     {
+        if ($acknowledgedAt = $this->connection()->hget($payload->id(), 'cancellation_acknowledged_at')) {
+            if ($payload->isRetry()) {
+                $this->updateRetryInformationOnParent($payload, false, 'cancelled');
+            }
+
+            $cancelledBy = $this->connection()->hget($payload->id(), 'cancellation_requested_by');
+
+            $this->pipeline(function ($pipe) use ($payload, $acknowledgedAt, $cancelledBy) {
+                $this->storeJobReference($pipe, 'cancelled_jobs', $payload);
+                $this->removeJobReference($pipe, 'pending_jobs', $payload);
+
+                $attributes = [
+                    'status' => 'cancelled',
+                    'cancelled_at' => $acknowledgedAt,
+                    'completed_at' => $acknowledgedAt,
+                ];
+
+                if (is_string($cancelledBy) && $cancelledBy !== '') {
+                    $attributes['cancelled_by'] = $cancelledBy;
+                }
+
+                $pipe->hmset($payload->id(), $attributes);
+                $pipe->expireat(
+                    $payload->id(),
+                    CarbonImmutable::now()->addMinutes($this->completedJobExpires)->getTimestamp()
+                );
+            });
+
+            return;
+        }
+
         if ($payload->isRetry()) {
             $this->updateRetryInformationOnParent($payload, $failed);
         }
@@ -494,11 +549,11 @@ class RedisJobRepository implements JobRepository
      * @param  bool  $failed
      * @return void
      */
-    protected function updateRetryInformationOnParent(JobPayload $payload, $failed)
+    protected function updateRetryInformationOnParent(JobPayload $payload, $failed, ?string $status = null)
     {
         if ($retries = $this->connection()->hget($payload->retryOf(), 'retried_by')) {
             $retries = $this->updateRetryStatus(
-                $payload, json_decode($retries, true), $failed
+                $payload, json_decode($retries, true), $failed, $status
             );
 
             $this->connection()->hset(
@@ -515,12 +570,12 @@ class RedisJobRepository implements JobRepository
      * @param  bool  $failed
      * @return array
      */
-    protected function updateRetryStatus(JobPayload $payload, $retries, $failed)
+    protected function updateRetryStatus(JobPayload $payload, $retries, $failed, ?string $status = null)
     {
         return collect($retries)
-            ->map(function ($retry) use ($payload, $failed) {
+            ->map(function ($retry) use ($payload, $failed, $status) {
                 return $retry['id'] === $payload->id()
-                    ? Arr::set($retry, 'status', $failed ? 'failed' : 'completed')
+                    ? Arr::set($retry, 'status', $status ?? ($failed ? 'failed' : 'completed'))
                     : $retry;
             })
             ->all();
@@ -575,6 +630,12 @@ class RedisJobRepository implements JobRepository
 
             $pipe->zremrangebyscore(
                 'silenced_jobs',
+                CarbonImmutable::now()->subMinutes($this->completedJobExpires)->getTimestamp() * -1,
+                '+inf'
+            );
+
+            $pipe->zremrangebyscore(
+                'cancelled_jobs',
                 CarbonImmutable::now()->subMinutes($this->completedJobExpires)->getTimestamp() * -1,
                 '+inf'
             );

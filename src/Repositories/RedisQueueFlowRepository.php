@@ -6,6 +6,7 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Contracts\Redis\Factory as RedisFactory;
 use Illuminate\Support\Str;
+use Laravel\Horizon\Contracts\JobControlRepository;
 use Laravel\Horizon\Contracts\JobRepository;
 use Laravel\Horizon\Contracts\MetricsRepository;
 use Laravel\Horizon\Contracts\QueueFlowRepository;
@@ -43,6 +44,7 @@ class RedisQueueFlowRepository implements QueueFlowRepository
         protected MetricsRepository $metrics,
         protected SupervisorRepository $supervisors,
         protected ?RedisFactory $redis = null,
+        protected ?JobControlRepository $controls = null,
     ) {
         //
     }
@@ -419,6 +421,11 @@ class RedisQueueFlowRepository implements QueueFlowRepository
      */
     protected function queue(array $queue): array
     {
+        $pause = $this->controls?->pausedQueue(
+            (string) $queue['storage_connection'],
+            (string) $queue['name']
+        );
+
         return [
             'connection' => 'redis',
             'storage_connection' => $queue['storage_connection'],
@@ -446,6 +453,9 @@ class RedisQueueFlowRepository implements QueueFlowRepository
             'job_classes' => array_values($queue['job_classes']),
             'driver' => 'redis',
             'source' => 'redis',
+            'paused' => $pause !== null,
+            'paused_at' => $pause['paused_at'] ?? null,
+            'paused_by' => $pause['paused_by'] ?? null,
         ];
     }
 
@@ -648,6 +658,7 @@ class RedisQueueFlowRepository implements QueueFlowRepository
             'pending' => fn (): Collection => $this->jobs->getPending(-1),
             'completed' => fn (): Collection => $this->jobs->getCompleted(-1),
             'failed' => fn (): Collection => $this->jobs->getFailed(-1),
+            'cancelled' => fn (): Collection => $this->jobs->getCancelled(-1),
         ] as $status => $resolver) {
             try {
                 foreach ($resolver()->take($limit) as $job) {
@@ -720,6 +731,10 @@ class RedisQueueFlowRepository implements QueueFlowRepository
                         if ($this->isRecentJobActivity($job)) {
                             $observations[$name]['recent_activity']++;
                         }
+                    }
+
+                    if ($status === 'cancelled' && $this->isRecentJobActivity($job)) {
+                        $observations[$name]['recent_activity']++;
                     }
                 }
             } catch (Throwable) {
@@ -832,6 +847,8 @@ class RedisQueueFlowRepository implements QueueFlowRepository
             'name' => $class,
             'pending' => 0,
             'reserved' => 0,
+            'cancellation_requested' => 0,
+            'cancelled' => 0,
             'completed' => 0,
             'failed' => 0,
             'attempts' => 0,
@@ -839,7 +856,9 @@ class RedisQueueFlowRepository implements QueueFlowRepository
         ];
 
         $state = (string) $summary['status'];
-        $state = in_array($state, ['reserved', 'completed', 'failed'], true) ? $state : 'pending';
+        $state = in_array($state, ['reserved', 'cancellation_requested', 'cancelled', 'completed', 'failed'], true)
+            ? $state
+            : 'pending';
         $observation['job_classes'][$class][$state]++;
         $observation['job_classes'][$class]['attempts'] = max(
             (int) $observation['job_classes'][$class]['attempts'],
@@ -860,9 +879,16 @@ class RedisQueueFlowRepository implements QueueFlowRepository
     {
         $status = (string) ($job->status ?? $bucket);
         $status = match ($status) {
-            'completed', 'failed', 'reserved' => $status,
+            'completed', 'failed', 'reserved', 'cancelled' => $status,
             default => $bucket === 'completed' || $bucket === 'failed' ? $bucket : 'pending',
         };
+
+        if (
+            ! in_array($status, ['completed', 'failed', 'cancelled'], true)
+            && ! empty($job->cancellation_requested_at)
+        ) {
+            $status = 'cancellation_requested';
+        }
 
         $id = (string) ($job->id ?? sha1(implode('|', [
             (string) ($job->connection ?? 'redis'),
@@ -884,6 +910,11 @@ class RedisQueueFlowRepository implements QueueFlowRepository
             'timestamp' => $this->jobActivityTimestamp($job),
             'exception' => $this->jobExceptionSummary($job),
             'retryable' => $status === 'failed',
+            'cancellable' => in_array($status, ['pending', 'reserved', 'cancellation_requested'], true),
+            'cancelled_at' => $job->cancelled_at ?? null,
+            'cancelled_by' => $job->cancelled_by ?? null,
+            'cancellation_requested_at' => $job->cancellation_requested_at ?? null,
+            'cancellation_requested_by' => $job->cancellation_requested_by ?? null,
         ];
     }
 
@@ -931,13 +962,15 @@ class RedisQueueFlowRepository implements QueueFlowRepository
                     'name' => $name,
                     'pending' => 0,
                     'reserved' => 0,
+                    'cancellation_requested' => 0,
+                    'cancelled' => 0,
                     'completed' => 0,
                     'failed' => 0,
                     'attempts' => 0,
                     'latest_error' => null,
                 ];
 
-                foreach (['pending', 'reserved', 'completed', 'failed'] as $state) {
+                foreach (['pending', 'reserved', 'cancellation_requested', 'cancelled', 'completed', 'failed'] as $state) {
                     $classes[$name][$state] += (int) ($class[$state] ?? 0);
                 }
 
@@ -947,7 +980,14 @@ class RedisQueueFlowRepository implements QueueFlowRepository
         }
 
         return collect($classes)
-            ->sortByDesc(fn (array $class): int => (int) $class['failed'] + (int) $class['pending'] + (int) $class['reserved'] + (int) $class['completed'])
+            ->sortByDesc(fn (array $class): int => collect([
+                'failed',
+                'pending',
+                'reserved',
+                'cancellation_requested',
+                'cancelled',
+                'completed',
+            ])->sum(fn (string $state): int => (int) $class[$state]))
             ->take(8)
             ->values()
             ->all();
@@ -1013,7 +1053,7 @@ class RedisQueueFlowRepository implements QueueFlowRepository
 
     protected function jobActivityTimestamp(object $job): ?int
     {
-        foreach (['completed_at', 'failed_at', 'updated_at', 'reserved_at', 'created_at'] as $field) {
+        foreach (['cancelled_at', 'completed_at', 'failed_at', 'updated_at', 'reserved_at', 'created_at'] as $field) {
             $timestamp = (float) ($job->{$field} ?? 0);
 
             if ($timestamp > 0) {
