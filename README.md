@@ -117,6 +117,8 @@ Place checkpoints before idempotent units of work. A cancellation requested whil
 
 Queue and job controls currently support Redis queues. Database queues remain observable in Live Flow but do not expose these mutation controls.
 
+When `flow.source` is `mock`, the Inspector exposes the same controls as a session-only visual simulation. Pausing, cancelling, and retrying update only the browser state and never call a mutation endpoint or change Redis. Mock failures are available from Live Flow's queue Inspector and Activity workspace; Horizon's separate Failed Jobs page continues to show only real failed jobs.
+
 ## Retry With Parameters
 
 A failed job usually fails because of what it was handed: a wrong path, a batch size that was too large, a flag left on. Horizon can only push that same job back onto the queue unchanged, so the normal fix is a tinker session or a one-off command. HorizonXFlow lets you change the arguments and retry from the dashboard instead.

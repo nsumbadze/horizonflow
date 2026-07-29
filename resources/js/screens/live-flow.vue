@@ -70,6 +70,8 @@
                 controlConfirmation: null,
                 controlNotice: null,
                 controlHistory: [],
+                mockQueueStates: {},
+                mockJobStates: {},
             };
         },
 
@@ -363,12 +365,18 @@
                 const failedSub = windowed !== null && windowed !== undefined
                     ? `in ${this.timeRange.replace(/^Last /i, '').toLowerCase()}`
                     : 'all-time';
+                const pendingDestination = this.isMock
+                    ? { tab: 'flow', mode: 'queues' }
+                    : { to: { name: 'jobs', params: { type: 'pending' } } };
+                const failedDestination = this.isMock
+                    ? { tab: 'activity' }
+                    : { to: { name: 'failed-jobs' } };
 
                 return [
-                    { key: 'pending', label: 'PENDING', value: this.metricValue(this.summary.pending), sub: this.formatNumber(this.queues.length) + ' queues', cls: 'primary', to: { name: 'jobs', params: { type: 'pending' } } },
+                    { key: 'pending', label: 'PENDING', value: this.metricValue(this.summary.pending), sub: this.formatNumber(this.queues.length) + ' queues', cls: 'primary', ...pendingDestination },
                     { key: 'processing', label: 'WORKERS', value: this.metricValue(this.summary.processing), sub: 'active', cls: '', tab: 'controls' },
                     { key: 'delayed', label: 'DELAYED', value: this.metricValue(this.summary.delayed), sub: 'scheduled', cls: (this.summary.delayed ?? 0) > 0 ? 'warn' : '', tab: 'flow', mode: 'queues' },
-                    { key: 'failed', label: 'FAILED', value: this.metricValue(failedValue), sub: failedSub, cls: (failedValue ?? 0) > 0 ? 'danger' : '', to: { name: 'failed-jobs' } },
+                    { key: 'failed', label: 'FAILED', value: this.metricValue(failedValue), sub: failedSub, cls: (failedValue ?? 0) > 0 ? 'danger' : '', ...failedDestination },
                     { key: 'flow', label: 'THROUGHPUT', value: this.metricValue(this.summary.current_throughput_per_minute ?? this.summary.throughput_per_minute), sub: 'jobs / min', cls: 'ok', to: { name: 'metrics-queues' } },
                     { key: 'wait', label: 'AVG WAIT', value: this.metricValue(this.summary.average_wait_seconds, 's'), sub: 'latency', cls: '', to: { name: 'metrics-queues' } },
                 ];
@@ -689,7 +697,9 @@
                     params: { window: this.timeRangeSeconds() },
                 })
                     .then(response => {
-                        this.mergeFlow({ queues: response.data.queues ?? [] });
+                        this.mergeFlow({
+                            queues: (response.data.queues ?? []).map(queue => this.applyMockQueueState(queue)),
+                        });
                         const selected = this.selectedQueue();
                         if (selected) {
                             this.fetchQueueJobs(selected);
@@ -865,6 +875,32 @@
                 return `${queue?.storage_connection ?? queue?.connection}:${queue?.name}`;
             },
 
+            isMockQueue(queue) {
+                return queue?.source === 'mock';
+            },
+
+            isMockJob(job) {
+                return job?.source === 'mock';
+            },
+
+            applyMockQueueState(queue) {
+                if (!this.isMockQueue(queue)) return queue;
+
+                return {
+                    ...queue,
+                    ...(this.mockQueueStates[this.queueControlKey(queue)] ?? {}),
+                };
+            },
+
+            applyMockJobState(job) {
+                if (!this.isMockJob(job)) return job;
+
+                return {
+                    ...job,
+                    ...(this.mockJobStates[job.id] ?? {}),
+                };
+            },
+
             isControllingQueue(queue) {
                 return this.controllingQueues.includes(this.queueControlKey(queue));
             },
@@ -885,6 +921,10 @@
 
             controlQueue(queue, action) {
                 if (!queue || !['pause', 'resume'].includes(action)) return;
+
+                if (this.isMockQueue(queue)) {
+                    return this.controlMockQueue(queue, action);
+                }
 
                 const key = this.queueControlKey(queue);
                 if (this.controllingQueues.includes(key)) return;
@@ -920,6 +960,37 @@
                     });
             },
 
+            controlMockQueue(queue, action) {
+                const key = this.queueControlKey(queue);
+                const paused = action === 'pause';
+                const state = {
+                    paused,
+                    paused_at: paused ? Math.floor(Date.now() / 1000) : null,
+                    paused_by: paused ? 'mock operator' : null,
+                };
+
+                this.mockQueueStates = {
+                    ...this.mockQueueStates,
+                    [key]: state,
+                };
+                this.mergeFlow({
+                    queues: this.queues.map(item => this.queueControlKey(item) === key
+                        ? { ...item, ...state }
+                        : item),
+                });
+                this.showControlNotice(
+                    'success',
+                    `${queue.name} was ${paused ? 'paused' : 'resumed'} in this demo only.`
+                );
+                this.recordControlEvent(
+                    `mock-queue-${queue.name}-${action}`,
+                    `${queue.name} ${paused ? 'paused' : 'resumed'}`,
+                    'Mock visualization only — Redis was not changed.'
+                );
+
+                return Promise.resolve();
+            },
+
             requestJobCancellation(job) {
                 if (!job?.id || this.controllingJobs.includes(job.id)) return;
 
@@ -938,6 +1009,11 @@
 
             controlJob(job) {
                 if (!job?.id || this.controllingJobs.includes(job.id)) return;
+
+                if (this.isMockJob(job)) {
+                    return this.controlMockJob(job);
+                }
+
                 this.controllingJobs = [...this.controllingJobs, job.id];
 
                 return this.$http.post(`${Horizon.basePath}/api/jobs/${encodeURIComponent(job.id)}/cancel`)
@@ -966,6 +1042,37 @@
                     });
             },
 
+            controlMockJob(job) {
+                const cancelled = job.status === 'pending';
+                const state = {
+                    status: cancelled ? 'cancelled' : 'cancellation_requested',
+                    cancellable: !cancelled,
+                    cancelled_at: cancelled ? Date.now() / 1000 : null,
+                    cancelled_by: cancelled ? 'mock operator' : null,
+                    cancellation_requested_at: cancelled ? null : Date.now() / 1000,
+                    cancellation_requested_by: cancelled ? null : 'mock operator',
+                };
+
+                this.mockJobStates = {
+                    ...this.mockJobStates,
+                    [job.id]: state,
+                };
+                this.replaceQueueJob(job.id, state);
+                this.showControlNotice(
+                    'success',
+                    cancelled
+                        ? `${this.shortJobName(job.name)} was cancelled in this demo only.`
+                        : `Cancellation was requested in this demo only for ${this.shortJobName(job.name)}.`
+                );
+                this.recordControlEvent(
+                    `mock-job-${job.id}-cancel`,
+                    cancelled ? `${this.shortJobName(job.name)} cancelled` : `${this.shortJobName(job.name)} cancellation requested`,
+                    'Mock visualization only — no queued job or worker was changed.'
+                );
+
+                return Promise.resolve();
+            },
+
             replaceQueueJob(id, changes) {
                 this.queueJobDetails = Object.fromEntries(
                     Object.entries(this.queueJobDetails).map(([key, detail]) => [
@@ -976,6 +1083,12 @@
                         },
                     ])
                 );
+                this.mergeFlow({
+                    queues: this.queues.map(queue => ({
+                        ...queue,
+                        jobs: (queue.jobs ?? []).map(job => job.id === id ? { ...job, ...changes } : job),
+                    })),
+                });
             },
 
             selectNode(id) { this.selectedId = id; },
@@ -1059,7 +1172,7 @@
                         this.queueJobDetails = {
                             ...this.queueJobDetails,
                             [key]: {
-                                jobs: response.data.jobs ?? [],
+                                jobs: (response.data.jobs ?? []).map(job => this.applyMockJobState(job)),
                                 job_classes: response.data.job_classes ?? [],
                             },
                         };
@@ -1151,6 +1264,26 @@
 
             retryJob(job) {
                 if (!job?.id || this.isRetryingJob(job)) return;
+
+                if (this.isMockJob(job)) {
+                    const state = {
+                        status: 'pending',
+                        attempts: Number(job.attempts ?? 0) + 1,
+                        exception: null,
+                        retryable: false,
+                        cancellable: true,
+                    };
+
+                    this.mockJobStates = {
+                        ...this.mockJobStates,
+                        [job.id]: state,
+                    };
+                    this.replaceQueueJob(job.id, state);
+                    this.closeJobModal();
+                    this.showControlNotice('success', `${this.shortJobName(job.name)} was retried in this demo only.`);
+
+                    return Promise.resolve();
+                }
 
                 this.retryingJobs = [...this.retryingJobs, job.id];
 
@@ -1403,7 +1536,7 @@
             <svg width="12" height="12" viewBox="0 0 20 20" fill="currentColor" style="flex-shrink:0;opacity:.8">
                 <path fill-rule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd"/>
             </svg>
-            Demo data — configure a Redis or database connection to see live telemetry.
+            Demo data — queue and job controls change this visualization only. Select a queue to try them; mock failures open in the Inspector rather than Horizon's Failed Jobs page.
         </div>
 
         <FlowKpis :metrics="kpiMetrics" @navigate="navigateFromMetric" />

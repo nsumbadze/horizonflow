@@ -160,7 +160,9 @@
                         @click="$emit('resume-queue', inspector.queue)"
                     >{{ queueControlling ? 'resuming…' : 'resume queue' }}</button>
                     <span class="lf-insp-control-help">
-                        {{ inspector.queue.paused ? 'Jobs remain queued until resumed.' : 'Current work finishes; no new jobs will start.' }}
+                        {{ inspector.queue.source === 'mock'
+                            ? 'Demo only; Redis and workers are never changed.'
+                            : (inspector.queue.paused ? 'Jobs remain queued until resumed.' : 'Current work finishes; no new jobs will start.') }}
                     </span>
                 </div>
             </div>
