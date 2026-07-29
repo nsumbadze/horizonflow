@@ -14,6 +14,7 @@ trait ServiceBindings
         AutoScaler::class,
         Contracts\HorizonCommandQueue::class => RedisHorizonCommandQueue::class,
         Contracts\IncidentRepository::class => Repositories\RedisIncidentRepository::class,
+        Contracts\JobControlRepository::class => Repositories\RedisJobControlRepository::class,
         Listeners\TrimRecentJobs::class,
         Listeners\TrimFailedJobs::class,
         Listeners\TrimMonitoredJobs::class,

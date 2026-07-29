@@ -4,6 +4,7 @@ namespace Laravel\Horizon\Tests\Unit;
 
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
+use Laravel\Horizon\Contracts\JobControlRepository;
 use Laravel\Horizon\Contracts\JobRepository;
 use Laravel\Horizon\Contracts\MetricsRepository;
 use Laravel\Horizon\Contracts\SupervisorRepository;
@@ -430,6 +431,57 @@ class RedisQueueFlowRepositoryTest extends UnitTest
         $this->assertCount(2, $payload['jobs']);
     }
 
+    public function test_it_exposes_cancelled_jobs_for_queue_auditing(): void
+    {
+        $repository = $this->repository(
+            [],
+            collect(),
+            cancelledJobs: collect([
+                (object) [
+                    'id' => 'cancelled-1',
+                    'name' => 'App\\Jobs\\SendWelcomeEmail',
+                    'connection' => 'redis',
+                    'queue' => 'default',
+                    'status' => 'cancelled',
+                    'payload' => json_encode(['attempts' => 0, 'pushedAt' => 980]),
+                    'cancelled_at' => 995,
+                    'cancelled_by' => 'operator:1',
+                ],
+            ])
+        );
+
+        $payload = $repository->exposedQueuePayload($repository->exposedQueues()[0]);
+
+        $this->assertSame('cancelled', $payload['jobs'][0]['status']);
+        $this->assertSame('operator:1', $payload['jobs'][0]['cancelled_by']);
+        $this->assertFalse($payload['jobs'][0]['cancellable']);
+        $this->assertSame(1, $payload['job_classes'][0]['cancelled']);
+    }
+
+    public function test_it_exposes_queue_pause_metadata(): void
+    {
+        $controls = Mockery::mock(JobControlRepository::class);
+        $controls->shouldReceive('pausedQueue')
+            ->with('redis', 'default')
+            ->andReturn([
+                'paused_at' => 1_700_000_000,
+                'paused_by' => 'operator:1',
+            ]);
+
+        $repository = $this->repository(
+            [],
+            collect(),
+            configuredQueues: ['redis:default'],
+            controls: $controls,
+        );
+
+        $payload = $repository->exposedQueuePayload($repository->exposedQueues()[0]);
+
+        $this->assertTrue($payload['paused']);
+        $this->assertSame(1_700_000_000, $payload['paused_at']);
+        $this->assertSame('operator:1', $payload['paused_by']);
+    }
+
     public function test_it_caches_discovered_redis_queue_keys_within_ttl(): void
     {
         $repository = $this->repository([], collect());
@@ -461,7 +513,7 @@ class RedisQueueFlowRepositoryTest extends UnitTest
      * @param  array<string, array{length: int, delayed: int, reserved: int}>  $discoveredQueues
      * @param  array<int, string>  $configuredQueues
      */
-    protected function repository(array $workloadQueues, Collection $pendingJobs, ?Collection $failedJobs = null, int $throughput = 0, array $discoveredQueues = [], array $configuredQueues = [], ?Collection $completedJobs = null, array $measuredQueues = []): RedisQueueFlowRepository
+    protected function repository(array $workloadQueues, Collection $pendingJobs, ?Collection $failedJobs = null, int $throughput = 0, array $discoveredQueues = [], array $configuredQueues = [], ?Collection $completedJobs = null, array $measuredQueues = [], ?Collection $cancelledJobs = null, ?JobControlRepository $controls = null): RedisQueueFlowRepository
     {
         $workload = Mockery::mock(WorkloadRepository::class);
         $workload->shouldReceive('get')->byDefault()->andReturn($workloadQueues);
@@ -470,6 +522,7 @@ class RedisQueueFlowRepositoryTest extends UnitTest
         $jobs->shouldReceive('getPending')->byDefault()->with(-1)->andReturn($pendingJobs);
         $jobs->shouldReceive('getCompleted')->byDefault()->with(-1)->andReturn($completedJobs ?? collect());
         $jobs->shouldReceive('getFailed')->byDefault()->with(-1)->andReturn($failedJobs ?? collect());
+        $jobs->shouldReceive('getCancelled')->byDefault()->with(-1)->andReturn($cancelledJobs ?? collect());
 
         $metrics = Mockery::mock(MetricsRepository::class);
         $metrics->shouldReceive('throughputForQueue')->byDefault()->andReturn($throughput);
@@ -479,7 +532,9 @@ class RedisQueueFlowRepositoryTest extends UnitTest
             $workload,
             $jobs,
             $metrics,
-            Mockery::mock(SupervisorRepository::class)
+            Mockery::mock(SupervisorRepository::class),
+            null,
+            $controls,
         ) extends RedisQueueFlowRepository {
             public array $discoveredQueues = [];
             public array $configuredQueues = [];

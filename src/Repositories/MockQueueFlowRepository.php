@@ -203,6 +203,9 @@ class MockQueueFlowRepository implements QueueFlowRepository
             'job_classes' => $this->jobClasses($blueprint),
             'driver' => 'redis',
             'source' => 'mock',
+            'paused' => false,
+            'paused_at' => null,
+            'paused_by' => null,
         ];
     }
 
@@ -258,6 +261,8 @@ class MockQueueFlowRepository implements QueueFlowRepository
                     'timestamp' => $now->copy()->subSeconds($age)->timestamp,
                     'exception' => $status === 'failed' ? (self::EXCEPTIONS[$name] ?? null) : null,
                     'retryable' => $status === 'failed',
+                    'cancellable' => in_array($status, ['pending', 'reserved'], true),
+                    'source' => 'mock',
                     // Demo ids do not exist in Horizon's job repository, so the
                     // UI must not link them to the job detail screens.
                     'inspectable' => false,

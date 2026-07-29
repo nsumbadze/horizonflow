@@ -70,6 +70,20 @@ class ConfiguredQueueFlowRepositoryTest extends TestCase
         $this->resolveRepositoryClass();
     }
 
+    public function test_mock_payload_exposes_visual_only_job_and_queue_controls(): void
+    {
+        $payload = $this->app->make(MockQueueFlowRepository::class)->get();
+        $queue = collect($payload['queues'])->firstWhere('name', 'default');
+        $jobs = collect($queue['jobs']);
+
+        $this->assertSame('mock', $queue['source']);
+        $this->assertFalse($queue['paused']);
+        $this->assertTrue($jobs->firstWhere('status', 'pending')['cancellable']);
+        $this->assertTrue($jobs->firstWhere('status', 'reserved')['cancellable']);
+        $this->assertSame('mock', $jobs->firstWhere('status', 'pending')['source']);
+        $this->assertFalse($jobs->firstWhere('status', 'completed')['cancellable']);
+    }
+
     protected function resolveRepositoryClass(): string
     {
         $repository = new class($this->app) extends ConfiguredQueueFlowRepository {

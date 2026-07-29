@@ -5,6 +5,36 @@ namespace Laravel\Horizon;
 class LuaScripts
 {
     /**
+     * Remove one exact payload from a queue before it is reserved.
+     *
+     * KEYS[1] - The ready queue list
+     * KEYS[2] - The delayed queue sorted set
+     * KEYS[3] - The ready queue notification list
+     * ARGV[1] - The exact serialized payload
+     *
+     * @return string
+     */
+    public static function cancelPending()
+    {
+        return <<<'LUA'
+            local removed = redis.call('lrem', KEYS[1], 1, ARGV[1])
+
+            if removed == 1 then
+                redis.call('lpop', KEYS[3])
+                return 1
+            end
+
+            removed = redis.call('zrem', KEYS[2], ARGV[1])
+
+            if removed == 1 then
+                return 2
+            end
+
+            return 0
+LUA;
+    }
+
+    /**
      * Update the metrics for a job.
      *
      * KEYS[1] - The name of the key being updated

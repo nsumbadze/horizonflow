@@ -52,6 +52,8 @@
                 selectedId: typeof query.node === 'string' && query.node !== '' ? query.node : null,
                 isDark: this.sniffDark(),
                 retryingJobs: [],
+                controllingJobs: [],
+                controllingQueues: [],
                 selectedJob: null,
                 selectedJobDetails: null,
                 loadingJobDetails: false,
@@ -68,6 +70,8 @@
                 controlConfirmation: null,
                 controlNotice: null,
                 controlHistory: [],
+                mockQueueStates: {},
+                mockJobStates: {},
             };
         },
 
@@ -361,12 +365,18 @@
                 const failedSub = windowed !== null && windowed !== undefined
                     ? `in ${this.timeRange.replace(/^Last /i, '').toLowerCase()}`
                     : 'all-time';
+                const pendingDestination = this.isMock
+                    ? { tab: 'flow', mode: 'queues' }
+                    : { to: { name: 'jobs', params: { type: 'pending' } } };
+                const failedDestination = this.isMock
+                    ? { tab: 'activity' }
+                    : { to: { name: 'failed-jobs' } };
 
                 return [
-                    { key: 'pending', label: 'PENDING', value: this.metricValue(this.summary.pending), sub: this.formatNumber(this.queues.length) + ' queues', cls: 'primary', to: { name: 'jobs', params: { type: 'pending' } } },
+                    { key: 'pending', label: 'PENDING', value: this.metricValue(this.summary.pending), sub: this.formatNumber(this.queues.length) + ' queues', cls: 'primary', ...pendingDestination },
                     { key: 'processing', label: 'WORKERS', value: this.metricValue(this.summary.processing), sub: 'active', cls: '', tab: 'controls' },
                     { key: 'delayed', label: 'DELAYED', value: this.metricValue(this.summary.delayed), sub: 'scheduled', cls: (this.summary.delayed ?? 0) > 0 ? 'warn' : '', tab: 'flow', mode: 'queues' },
-                    { key: 'failed', label: 'FAILED', value: this.metricValue(failedValue), sub: failedSub, cls: (failedValue ?? 0) > 0 ? 'danger' : '', to: { name: 'failed-jobs' } },
+                    { key: 'failed', label: 'FAILED', value: this.metricValue(failedValue), sub: failedSub, cls: (failedValue ?? 0) > 0 ? 'danger' : '', ...failedDestination },
                     { key: 'flow', label: 'THROUGHPUT', value: this.metricValue(this.summary.current_throughput_per_minute ?? this.summary.throughput_per_minute), sub: 'jobs / min', cls: 'ok', to: { name: 'metrics-queues' } },
                     { key: 'wait', label: 'AVG WAIT', value: this.metricValue(this.summary.average_wait_seconds, 's'), sub: 'latency', cls: '', to: { name: 'metrics-queues' } },
                 ];
@@ -687,7 +697,9 @@
                     params: { window: this.timeRangeSeconds() },
                 })
                     .then(response => {
-                        this.mergeFlow({ queues: response.data.queues ?? [] });
+                        this.mergeFlow({
+                            queues: (response.data.queues ?? []).map(queue => this.applyMockQueueState(queue)),
+                        });
                         const selected = this.selectedQueue();
                         if (selected) {
                             this.fetchQueueJobs(selected);
@@ -774,6 +786,7 @@
                 }
 
                 this.controlConfirmation = {
+                    kind: 'masters',
                     action,
                     title: 'Pause all Horizon supervisors?',
                     text: 'Queued jobs will remain in place, but no new work will be processed until the supervisors are resumed.',
@@ -786,9 +799,17 @@
             },
 
             confirmControlAction() {
-                const action = this.controlConfirmation?.action;
+                const confirmation = this.controlConfirmation;
                 this.controlConfirmation = null;
-                if (action) this.controlMasters(action);
+                if (!confirmation) return;
+
+                if (confirmation.kind === 'masters') {
+                    this.controlMasters(confirmation.action);
+                } else if (confirmation.kind === 'queue') {
+                    this.controlQueue(confirmation.queue, confirmation.action);
+                } else if (confirmation.kind === 'job') {
+                    this.controlJob(confirmation.job);
+                }
             },
 
             showControlNotice(type, message) {
@@ -848,6 +869,226 @@
                     .finally(() => {
                         this.controllingHorizon = this.controllingHorizon.filter(item => item !== key);
                     });
+            },
+
+            queueControlKey(queue) {
+                return `${queue?.storage_connection ?? queue?.connection}:${queue?.name}`;
+            },
+
+            isMockQueue(queue) {
+                return queue?.source === 'mock';
+            },
+
+            isMockJob(job) {
+                return job?.source === 'mock';
+            },
+
+            applyMockQueueState(queue) {
+                if (!this.isMockQueue(queue)) return queue;
+
+                return {
+                    ...queue,
+                    ...(this.mockQueueStates[this.queueControlKey(queue)] ?? {}),
+                };
+            },
+
+            applyMockJobState(job) {
+                if (!this.isMockJob(job)) return job;
+
+                return {
+                    ...job,
+                    ...(this.mockJobStates[job.id] ?? {}),
+                };
+            },
+
+            isControllingQueue(queue) {
+                return this.controllingQueues.includes(this.queueControlKey(queue));
+            },
+
+            requestQueuePause(queue) {
+                if (!queue || this.isControllingQueue(queue)) return;
+
+                this.controlConfirmation = {
+                    kind: 'queue',
+                    action: 'pause',
+                    queue,
+                    title: `Pause ${queue.name}?`,
+                    text: 'Any job already running will finish. Pending and newly dispatched jobs will remain queued and no new jobs will start until this queue is resumed.',
+                    confirmLabel: 'Pause queue',
+                    tone: 'warning',
+                };
+            },
+
+            controlQueue(queue, action) {
+                if (!queue || !['pause', 'resume'].includes(action)) return;
+
+                if (this.isMockQueue(queue)) {
+                    return this.controlMockQueue(queue, action);
+                }
+
+                const key = this.queueControlKey(queue);
+                if (this.controllingQueues.includes(key)) return;
+                this.controllingQueues = [...this.controllingQueues, key];
+
+                const body = {
+                    connection: queue.storage_connection ?? queue.connection,
+                    queue: queue.name,
+                };
+
+                return this.$http.post(`${Horizon.basePath}/api/flow/queues/${action}`, body)
+                    .then(() => {
+                        const paused = action === 'pause';
+                        this.mergeFlow({
+                            queues: this.queues.map(item => this.queueControlKey(item) === key
+                                ? { ...item, paused }
+                                : item),
+                        });
+                        this.showControlNotice('success', `${queue.name} was ${paused ? 'paused' : 'resumed'}.`);
+                        this.recordControlEvent(
+                            `queue-${queue.name}-${action}`,
+                            `${queue.name} ${paused ? 'paused' : 'resumed'}`,
+                            paused ? 'Queued jobs are being retained until this queue is resumed.' : 'Workers may reserve new jobs again.'
+                        );
+                        setTimeout(() => this.refreshFlowPeriodically(), 1200);
+                    })
+                    .catch(error => {
+                        const message = error?.response?.data?.message;
+                        this.showControlNotice('error', message || `${queue.name} could not be ${action === 'pause' ? 'paused' : 'resumed'}.`);
+                    })
+                    .finally(() => {
+                        this.controllingQueues = this.controllingQueues.filter(item => item !== key);
+                    });
+            },
+
+            controlMockQueue(queue, action) {
+                const key = this.queueControlKey(queue);
+                const paused = action === 'pause';
+                const state = {
+                    paused,
+                    paused_at: paused ? Math.floor(Date.now() / 1000) : null,
+                    paused_by: paused ? 'mock operator' : null,
+                };
+
+                this.mockQueueStates = {
+                    ...this.mockQueueStates,
+                    [key]: state,
+                };
+                this.mergeFlow({
+                    queues: this.queues.map(item => this.queueControlKey(item) === key
+                        ? { ...item, ...state }
+                        : item),
+                });
+                this.showControlNotice(
+                    'success',
+                    `${queue.name} was ${paused ? 'paused' : 'resumed'} in this demo only.`
+                );
+                this.recordControlEvent(
+                    `mock-queue-${queue.name}-${action}`,
+                    `${queue.name} ${paused ? 'paused' : 'resumed'}`,
+                    'Mock visualization only — Redis was not changed.'
+                );
+
+                return Promise.resolve();
+            },
+
+            requestJobCancellation(job) {
+                if (!job?.id || this.controllingJobs.includes(job.id)) return;
+
+                const pending = job.status === 'pending';
+                this.controlConfirmation = {
+                    kind: 'job',
+                    job,
+                    title: pending ? `Cancel ${this.shortJobName(job.name)}?` : `Request cancellation of ${this.shortJobName(job.name)}?`,
+                    text: pending
+                        ? 'If the job is still waiting, it will be atomically removed and retained as cancelled. If a worker reserves it first, this becomes a cooperative cancellation request.'
+                        : 'The worker will not be killed. The job will stop only at a cancellation checkpoint; side effects already performed cannot be undone.',
+                    confirmLabel: pending ? 'Cancel job' : 'Request cancellation',
+                    tone: 'danger',
+                };
+            },
+
+            controlJob(job) {
+                if (!job?.id || this.controllingJobs.includes(job.id)) return;
+
+                if (this.isMockJob(job)) {
+                    return this.controlMockJob(job);
+                }
+
+                this.controllingJobs = [...this.controllingJobs, job.id];
+
+                return this.$http.post(`${Horizon.basePath}/api/jobs/${encodeURIComponent(job.id)}/cancel`)
+                    .then(response => {
+                        const action = response.data?.action;
+                        const status = action === 'cancelled' ? 'cancelled' : 'cancellation_requested';
+                        this.replaceQueueJob(job.id, {
+                            ...response.data,
+                            status,
+                            cancellable: status === 'cancellation_requested',
+                        });
+                        this.showControlNotice(
+                            'success',
+                            action === 'cancelled'
+                                ? `${this.shortJobName(job.name)} was cancelled before it started.`
+                                : `Cancellation was requested for ${this.shortJobName(job.name)}.`
+                        );
+                        setTimeout(() => this.refreshFlowPeriodically(), 1200);
+                    })
+                    .catch(error => {
+                        const message = error?.response?.data?.message;
+                        this.showControlNotice('error', message || `${this.shortJobName(job.name)} could not be cancelled.`);
+                    })
+                    .finally(() => {
+                        this.controllingJobs = this.controllingJobs.filter(id => id !== job.id);
+                    });
+            },
+
+            controlMockJob(job) {
+                const cancelled = job.status === 'pending';
+                const state = {
+                    status: cancelled ? 'cancelled' : 'cancellation_requested',
+                    cancellable: !cancelled,
+                    cancelled_at: cancelled ? Date.now() / 1000 : null,
+                    cancelled_by: cancelled ? 'mock operator' : null,
+                    cancellation_requested_at: cancelled ? null : Date.now() / 1000,
+                    cancellation_requested_by: cancelled ? null : 'mock operator',
+                };
+
+                this.mockJobStates = {
+                    ...this.mockJobStates,
+                    [job.id]: state,
+                };
+                this.replaceQueueJob(job.id, state);
+                this.showControlNotice(
+                    'success',
+                    cancelled
+                        ? `${this.shortJobName(job.name)} was cancelled in this demo only.`
+                        : `Cancellation was requested in this demo only for ${this.shortJobName(job.name)}.`
+                );
+                this.recordControlEvent(
+                    `mock-job-${job.id}-cancel`,
+                    cancelled ? `${this.shortJobName(job.name)} cancelled` : `${this.shortJobName(job.name)} cancellation requested`,
+                    'Mock visualization only — no queued job or worker was changed.'
+                );
+
+                return Promise.resolve();
+            },
+
+            replaceQueueJob(id, changes) {
+                this.queueJobDetails = Object.fromEntries(
+                    Object.entries(this.queueJobDetails).map(([key, detail]) => [
+                        key,
+                        {
+                            ...detail,
+                            jobs: (detail.jobs ?? []).map(job => job.id === id ? { ...job, ...changes } : job),
+                        },
+                    ])
+                );
+                this.mergeFlow({
+                    queues: this.queues.map(queue => ({
+                        ...queue,
+                        jobs: (queue.jobs ?? []).map(job => job.id === id ? { ...job, ...changes } : job),
+                    })),
+                });
             },
 
             selectNode(id) { this.selectedId = id; },
@@ -931,7 +1172,7 @@
                         this.queueJobDetails = {
                             ...this.queueJobDetails,
                             [key]: {
-                                jobs: response.data.jobs ?? [],
+                                jobs: (response.data.jobs ?? []).map(job => this.applyMockJobState(job)),
                                 job_classes: response.data.job_classes ?? [],
                             },
                         };
@@ -1024,6 +1265,26 @@
             retryJob(job) {
                 if (!job?.id || this.isRetryingJob(job)) return;
 
+                if (this.isMockJob(job)) {
+                    const state = {
+                        status: 'pending',
+                        attempts: Number(job.attempts ?? 0) + 1,
+                        exception: null,
+                        retryable: false,
+                        cancellable: true,
+                    };
+
+                    this.mockJobStates = {
+                        ...this.mockJobStates,
+                        [job.id]: state,
+                    };
+                    this.replaceQueueJob(job.id, state);
+                    this.closeJobModal();
+                    this.showControlNotice('success', `${this.shortJobName(job.name)} was retried in this demo only.`);
+
+                    return Promise.resolve();
+                }
+
                 this.retryingJobs = [...this.retryingJobs, job.id];
 
                 return this.$http.post(Horizon.basePath + '/api/jobs/retry/' + job.id)
@@ -1088,6 +1349,7 @@
             },
 
             queueStatus(queue) {
+                if (queue.paused) return 'warning';
                 if (this.queueFailedInWindow(queue) > 0) return 'critical';
                 if (queue.wait_seconds >= 30 || queue.pending >= 500) return 'critical';
                 if (queue.wait_seconds >= 10 || queue.pending >= 100 || queue.delayed > 0) return 'warning';
@@ -1095,6 +1357,7 @@
             },
 
             queueSubLabel(queue) {
+                if (queue.paused) return `${queue.connection} · paused`;
                 const failed = this.queueFailedInWindow(queue);
                 if (failed > 0) return `${queue.connection} · ${this.formatNumber(failed)} failed`;
                 return `${queue.driver} · ${queue.connection} · ${this.formatNumber(queue.pending)} pending`;
@@ -1273,7 +1536,7 @@
             <svg width="12" height="12" viewBox="0 0 20 20" fill="currentColor" style="flex-shrink:0;opacity:.8">
                 <path fill-rule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd"/>
             </svg>
-            Demo data — configure a Redis or database connection to see live telemetry.
+            Demo data — queue and job controls change this visualization only. Select a queue to try them; mock failures open in the Inspector rather than Horizon's Failed Jobs page.
         </div>
 
         <FlowKpis :metrics="kpiMetrics" @navigate="navigateFromMetric" />
@@ -1367,10 +1630,15 @@
                             :inspector="selectedInspector"
                             :graph-node-lookup="graphNodeLookup"
                             :retrying-ids="retryingJobs"
+                            :controlling-job-ids="controllingJobs"
+                            :queue-controlling="selectedInspector.queue ? isControllingQueue(selectedInspector.queue) : false"
                             :nodes="graphNodes"
                             :selected-id="selectedId"
                             :mode="flowMode"
                             @retry="retryJob"
+                            @cancel-job="requestJobCancellation"
+                            @pause-queue="requestQueuePause"
+                            @resume-queue="queue => controlQueue(queue, 'resume')"
                             @open-failed="openJobModal"
                             @open-activity="selectWorkspaceTab('activity')"
                             @open-graph="flowMode = 'graph'"
@@ -1413,7 +1681,12 @@
                 </div>
                 <div class="lf-confirm-actions">
                     <button class="lf-control-btn" type="button" @click="cancelControlConfirmation">Cancel</button>
-                    <button class="lf-control-btn lf-control-btn-warning" type="button" @click="confirmControlAction">{{ controlConfirmation.confirmLabel }}</button>
+                    <button
+                        class="lf-control-btn"
+                        :class="controlConfirmation.tone === 'danger' ? 'lf-control-btn-danger' : 'lf-control-btn-warning'"
+                        type="button"
+                        @click="confirmControlAction"
+                    >{{ controlConfirmation.confirmLabel }}</button>
                 </div>
             </div>
         </div>
@@ -2127,10 +2400,14 @@
     .lf-jstate::before { font-size: 11px; line-height: 1; font-weight: 800; }
     .lf-jstate-pending::before   { content: '\25F7'; }
     .lf-jstate-reserved::before  { content: '\25B6'; font-size: 8px; }
+    .lf-jstate-cancellation_requested::before { content: '!'; }
+    .lf-jstate-cancelled::before { content: '\2212'; }
     .lf-jstate-completed::before { content: '\2713'; }
     .lf-jstate-failed::before    { content: '\00D7'; font-size: 12px; }
     .lf-jstate-pending   { color: var(--lf-muted); border-color: var(--lf-border);        background: var(--lf-hover); }
     .lf-jstate-reserved  { color: var(--lf-blue);  border-color: var(--lf-blue-edge);     background: var(--lf-blue-bg); }
+    .lf-jstate-cancellation_requested { color: var(--lf-amber); border-color: rgba(217, 119, 6, .35); background: rgba(217, 119, 6, .08); }
+    .lf-jstate-cancelled { color: var(--lf-muted); border-color: var(--lf-border); background: var(--lf-hover); }
     .lf-jstate-completed { color: var(--lf-green); border-color: var(--lf-green-edge);    background: var(--lf-green-bg); }
     .lf-jstate-failed    { color: var(--lf-red);   border-color: var(--lf-red-edge);      background: var(--lf-red-bg); }
 
@@ -2252,6 +2529,9 @@
     .lf-inspector-picker select:focus-visible { outline: 2px solid var(--lf-violet); outline-offset: 2px; }
 
     .lf-insp-top { padding: 10px 12px; border-bottom: 1px solid var(--lf-border); }
+    .lf-insp-title-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .lf-insp-controls { display: flex; align-items: center; gap: 8px; margin-top: 9px; }
+    .lf-insp-control-help { color: var(--lf-dim); font-size: 10px; line-height: 1.35; }
     .lf-insp-name { font-size: 13.5px; font-weight: 600; color: var(--lf-text); margin-bottom: 4px; }
     .lf-insp-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
     .lf-insp-kind {
@@ -2453,6 +2733,7 @@
     }
     .lf-control-btn:hover:not(:disabled) { background: var(--lf-hover); }
     .lf-control-btn-warning:hover:not(:disabled) { color: var(--lf-amber); border-color: var(--lf-amber); }
+    .lf-control-btn-danger:hover:not(:disabled) { color: var(--lf-red); border-color: var(--lf-red); }
     .lf-control-btn-primary { color: var(--lf-violet); border-color: rgba(119,70,236,.35); }
     .lf-control-btn-primary:hover:not(:disabled) { border-color: var(--lf-violet); }
     .lf-control-btn:focus-visible { outline: 2px solid var(--lf-violet); outline-offset: 2px; }

@@ -69,6 +69,14 @@ interface JobRepository
     public function getSilenced($afterIndex = null);
 
     /**
+     * Get a chunk of cancelled jobs.
+     *
+     * @param  string|null  $afterIndex
+     * @return \Illuminate\Support\Collection
+     */
+    public function getCancelled($afterIndex = null);
+
+    /**
      * Get the count of recent jobs.
      *
      * @return int
@@ -102,6 +110,13 @@ interface JobRepository
      * @return int
      */
     public function countSilenced();
+
+    /**
+     * Get the count of cancelled jobs.
+     *
+     * @return int
+     */
+    public function countCancelled();
 
     /**
      * Get the count of the recently failed jobs.

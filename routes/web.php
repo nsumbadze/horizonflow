@@ -17,6 +17,8 @@ Route::prefix('api')->group(function () {
     Route::get('/flow/queue-jobs', 'QueueFlowController@queueJobs')->name('horizonxflow.flow.queue-jobs');
     Route::get('/flow/events', 'QueueFlowController@events')->name('horizonxflow.flow.events');
     Route::get('/flow/incidents', 'IncidentController@index')->name('horizonxflow.flow.incidents');
+    Route::post('/flow/queues/pause', 'QueueControlController@pause')->name('horizonxflow.flow.queues.pause');
+    Route::post('/flow/queues/resume', 'QueueControlController@resume')->name('horizonxflow.flow.queues.resume');
 
     // Master Supervisor Routes...
     Route::get('/masters', 'MasterSupervisorController@index')->name('horizon.masters.index');
@@ -54,6 +56,7 @@ Route::prefix('api')->group(function () {
     Route::get('/jobs/failed/{id}', 'FailedJobsController@show')->name('horizon.failed-jobs.show');
     Route::get('/jobs/failed/{id}/parameters', 'RetryController@parameters')->name('horizonxflow.retry-jobs.parameters');
     Route::post('/jobs/retry/{id}', 'RetryController@store')->name('horizon.retry-jobs.show');
+    Route::post('/jobs/{id}/cancel', 'JobControlController@cancel')->name('horizonxflow.jobs.cancel');
     Route::get('/jobs/{id}', 'JobsController@show')->name('horizon.jobs.show');
 });
 
