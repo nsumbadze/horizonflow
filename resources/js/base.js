@@ -51,6 +51,50 @@ export default {
         },
 
         /**
+         * Convert a `datetime-local` input value to a unix timestamp.
+         *
+         * The inputs carry minute precision, so the upper bound covers the
+         * whole minute the user picked rather than cutting it off at :00.
+         */
+        inputTimestamp(value, endOfMinute = false) {
+            if (! value) {
+                return null;
+            }
+
+            let parsed = new Date(value).getTime();
+
+            if (Number.isNaN(parsed)) {
+                return null;
+            }
+
+            return parsed / 1000 + (endOfMinute ? 59 : 0);
+        },
+
+        /**
+         * Determine whether a unix timestamp falls inside the given range.
+         */
+        withinDateRange(timestamp, from, to) {
+            let after = this.inputTimestamp(from);
+            let before = this.inputTimestamp(to, true);
+
+            if (after === null && before === null) {
+                return true;
+            }
+
+            let ts = Number(timestamp ?? 0);
+
+            if (! ts) {
+                return false;
+            }
+
+            if (after !== null && ts < after) {
+                return false;
+            }
+
+            return before === null || ts <= before;
+        },
+
+        /**
          * Uppercase the first character of the string.
          */
         upperFirst(string) {

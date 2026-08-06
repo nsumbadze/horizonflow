@@ -50,6 +50,51 @@ export default {
             return this.formatDuration(delta);
         },
 
+        /**
+         * Wall-clock date for a unix timestamp, in the viewer's own timezone.
+         * Live-flow shows absolute times rather than "11s ago" so a row still
+         * means something once the poll has moved on or the tab was left open.
+         */
+        clockDate(timestamp) {
+            const ts = Number(timestamp ?? 0);
+            if (!ts) return '—';
+
+            const date = new Date(ts * 1000);
+            const pad = value => String(value).padStart(2, '0');
+
+            return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+        },
+
+        clockTime(timestamp) {
+            const ts = Number(timestamp ?? 0);
+            if (!ts) return '—';
+
+            const date = new Date(ts * 1000);
+            const pad = value => String(value).padStart(2, '0');
+
+            return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+        },
+
+        absoluteTime(timestamp) {
+            const ts = Number(timestamp ?? 0);
+            if (!ts) return '—';
+
+            return `${this.clockDate(ts)} ${this.clockTime(ts)}`;
+        },
+
+        /**
+         * Absolute timestamp with the relative age appended, for `title`
+         * tooltips where "how long ago" is still the quicker read.
+         */
+        absoluteTimeWithAge(timestamp) {
+            const ts = Number(timestamp ?? 0);
+            if (!ts) return 'No timestamp recorded';
+
+            const relative = this.relativeTime({ timestamp: ts });
+
+            return `${this.absoluteTime(ts)} (${relative === 'now' ? 'just now' : relative + ' ago'})`;
+        },
+
         shortJobName(name) {
             return String(name ?? 'Queued job').split('\\').pop();
         },

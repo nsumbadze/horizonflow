@@ -13,7 +13,12 @@
                 page: 1,
                 perPage: 50,
                 totalPages: 1,
-                jobs: []
+                jobs: [],
+                searchPhrase: '',
+                queueFilter: 'all',
+                statusFilter: 'all',
+                dateFrom: '',
+                dateTo: '',
             };
         },
 
@@ -23,6 +28,71 @@
          */
         components: {
             JobRow,
+        },
+
+
+        computed: {
+            /**
+             * The queues present in the currently loaded page of jobs.
+             */
+            queueOptions() {
+                return [...new Set(this.jobs.map(job => job.queue).filter(Boolean))].sort();
+            },
+
+
+            /**
+             * The statuses present in the currently loaded page of jobs.
+             */
+            statusOptions() {
+                return [...new Set(this.jobs.map(job => job.status).filter(Boolean))]
+                    .sort()
+                    .map(status => ({ value: status, label: this.upperFirst(status) }));
+            },
+
+
+            /**
+             * The timestamp the date range filters against: when a job
+             * finished on the completed screens, when it was queued otherwise.
+             */
+            dateField() {
+                return this.$route.params.type === 'pending' ? 'queued' : 'completed';
+            },
+
+
+            dateLabel() {
+                return this.upperFirst(this.dateField);
+            },
+
+
+            /**
+             * Jobs on this page matching the search phrase and filters.
+             */
+            filteredJobs() {
+                let phrase = this.searchPhrase.trim().toLowerCase();
+
+                return this.jobs.filter(job => {
+                    if (this.queueFilter !== 'all' && job.queue !== this.queueFilter) {
+                        return false;
+                    }
+
+                    if (this.statusFilter !== 'all' && job.status !== this.statusFilter) {
+                        return false;
+                    }
+
+                    let timestamp = this.dateField === 'queued' ? job.payload?.pushedAt : job.completed_at;
+
+                    if (! this.withinDateRange(timestamp, this.dateFrom, this.dateTo)) {
+                        return false;
+                    }
+
+                    if (! phrase) {
+                        return true;
+                    }
+
+                    return [job.name, job.queue, job.id, ...(job.payload?.tags ?? [])]
+                        .some(field => String(field ?? '').toLowerCase().includes(phrase));
+                });
+            },
         },
 
 
@@ -45,6 +115,8 @@
 
                 this.page = 1;
 
+                this.resetFilters();
+
                 this.loadJobs();
             },
 
@@ -57,6 +129,18 @@
 
 
         methods: {
+            /**
+             * Clear the search phrase and filters.
+             */
+            resetFilters() {
+                this.searchPhrase = '';
+                this.queueFilter = 'all';
+                this.statusFilter = 'all';
+                this.dateFrom = '';
+                this.dateTo = '';
+            },
+
+
             /**
              * Load the jobs of the given tag.
              */
@@ -156,6 +240,21 @@
                 <h2 class="h6 m-0" v-if="$route.params.type == 'silenced'">Silenced Jobs</h2>
             </div>
 
+            <job-filters
+                v-if="ready && jobs.length > 0"
+                v-model:search="searchPhrase"
+                v-model:queue="queueFilter"
+                v-model:status="statusFilter"
+                v-model:from="dateFrom"
+                v-model:to="dateTo"
+                :queues="queueOptions"
+                :statuses="statusOptions"
+                :date-label="dateLabel"
+                :matched="filteredJobs.length"
+                :total="jobs.length"
+                placeholder="Search job, queue, or tag"
+            />
+
             <div v-if="!ready"
                  class="d-flex align-items-center justify-content-center card-bg-secondary p-5 bottom-radius">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" class="icon spin me-2 fill-text-color">
@@ -178,8 +277,10 @@
                 <thead>
                     <tr>
                         <th>Job</th>
-                        <th v-if="$route.params.type=='pending'" class="text-end">Queued</th>
+                        <th v-if="$route.params.type=='pending'">Queued</th>
+                        <th v-if="$route.params.type=='pending'" class="text-end">Started</th>
                         <th v-if="$route.params.type=='completed' || $route.params.type=='silenced'">Queued</th>
+                        <th v-if="$route.params.type=='completed' || $route.params.type=='silenced'">Started</th>
                         <th v-if="$route.params.type=='completed' || $route.params.type=='silenced'">Completed</th>
                         <th v-if="$route.params.type=='completed' || $route.params.type=='silenced'" class="text-end">Runtime</th>
                     </tr>
@@ -194,7 +295,13 @@
                         </td>
                     </tr>
 
-                    <component v-for="job in jobs" :key="job.id" :job="job" is="job-row">
+                    <tr v-if="filteredJobs.length == 0" key="noMatches" class="dontanimate">
+                        <td colspan="100" class="text-center card-bg-secondary py-3">
+                            <small class="text-muted">No jobs on this page match your search.</small>
+                        </td>
+                    </tr>
+
+                    <component v-for="job in filteredJobs" :key="job.id" :job="job" is="job-row">
                     </component>
                 </tbody>
             </table>

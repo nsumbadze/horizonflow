@@ -26,6 +26,11 @@
             {{ readableTimestamp(job.payload.pushedAt) }}
         </td>
 
+        <td class="table-fit text-muted" :class="{ 'text-end': $route.params.type == 'pending' }">
+            <span v-if="job.reserved_at">{{ readableTimestamp(job.reserved_at) }}</span>
+            <span v-else>-</span>
+        </td>
+
         <td v-if="$route.params.type=='completed' || $route.params.type=='silenced'" class="table-fit text-muted">
             {{ readableTimestamp(job.completed_at) }}
         </td>

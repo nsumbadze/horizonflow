@@ -55,6 +55,11 @@ $card-bg-secondary: $gray-800;
 $card-bg: $gray-800;
 $card-border-radius: $border-radius-lg;
 
+// Recessed surface inside a popover. $card-bg-secondary matches $card-bg in
+// this theme, so the preset rail needs its own darker step to read as one.
+$picker-surface: $gray-900;
+$picker-shadow: 0 16px 40px -10px rgba($black, 0.65);
+
 $code-bg: #292d3e;
 
 $modal-content-bg: $table-headers-color;
@@ -110,4 +115,11 @@ $container-max-widths: (
 
 .btn-primary {
     color: rgb(255, 255, 255);
+}
+
+// The native clock glyph is a dark bitmap, invisible against a dark input.
+.hf-dr-times input::-webkit-calendar-picker-indicator {
+    filter: invert(1);
+    opacity: 0.6;
+    cursor: pointer;
 }

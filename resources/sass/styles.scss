@@ -54,6 +54,10 @@ $card-bg-secondary: $gray-100;
 $card-bg: $white;
 $card-border-radius: $border-radius-lg;
 
+// Recessed surface inside a popover, one step away from its own background.
+$picker-surface: $gray-50;
+$picker-shadow: 0 12px 32px -8px rgba($black, 0.28);
+
 $code-bg: #292d3e;
 
 $new-entries-bg: $violet-50;
