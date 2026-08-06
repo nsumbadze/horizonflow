@@ -87,29 +87,13 @@
             <option v-for="option in statuses" :key="option.value" :value="option.value">{{ option.label }}</option>
         </select>
 
-        <div class="job-filters-dates d-flex align-items-center gap-1">
-            <small class="text-muted text-nowrap">{{ dateLabel }}</small>
-
-            <input
-                type="datetime-local"
-                class="form-control form-control-sm job-filters-date"
-                :aria-label="dateLabel + ' after'"
-                :value="from"
-                :max="to || null"
-                @input="$emit('update:from', $event.target.value)"
-            >
-
-            <small class="text-muted">–</small>
-
-            <input
-                type="datetime-local"
-                class="form-control form-control-sm job-filters-date"
-                :aria-label="dateLabel + ' before'"
-                :value="to"
-                :min="from || null"
-                @input="$emit('update:to', $event.target.value)"
-            >
-        </div>
+        <date-range-picker
+            :from="from"
+            :to="to"
+            :label="dateLabel + ': any time'"
+            @update:from="$emit('update:from', $event)"
+            @update:to="$emit('update:to', $event)"
+        />
 
         <slot></slot>
 

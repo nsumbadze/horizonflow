@@ -2480,27 +2480,27 @@
         font-family: inherit;
         font-size: 10.5px;
     }
-    .lf-activity-dates { display: flex; align-items: center; gap: 5px; }
-    .lf-activity-dates-label {
-        color: var(--lf-dim);
-        font-size: 9px;
-        font-weight: 700;
-        letter-spacing: .09em;
-        text-transform: uppercase;
+    /* Repaint the shared range picker in live-flow's denser palette. It sits
+       in this subtree, so the tokens reach the fixed popover by inheritance. */
+    .lf .hf-dr {
+        --hf-dr-bg: var(--lf-panel);
+        --hf-dr-surface: var(--lf-hover);
+        --hf-dr-border: var(--lf-border);
+        --hf-dr-text: var(--lf-text);
+        --hf-dr-muted: var(--lf-muted);
+        --hf-dr-accent: var(--lf-violet);
+        --hf-dr-accent-soft: rgba(119, 70, 236, .16);
+        --hf-dr-on-accent: #ffffff;
+        --hf-dr-shadow: 0 14px 34px -10px rgba(0, 0, 0, .45);
     }
-    .lf-activity-dates-sep { color: var(--lf-dim); font-size: 11px; }
-    .lf-activity-dates input {
-        height: 28px;
-        padding: 0 6px;
-        border: 1px solid var(--lf-border);
-        border-radius: 4px;
-        background: var(--lf-panel);
-        color: var(--lf-text);
-        font-family: ui-monospace, Consolas, monospace;
-        font-size: 10px;
+    .lf.lf-dark .hf-dr {
+        --hf-dr-accent-soft: rgba(167, 139, 250, .18);
+        --hf-dr-on-accent: #111827;
     }
-    .lf-activity-dates input:focus-visible { outline: 2px solid var(--lf-violet); outline-offset: 1px; }
-    .lf-activity-dates input::-webkit-calendar-picker-indicator { filter: invert(.5); cursor: pointer; }
+    .lf .hf-dr-trigger { height: 28px; font-size: 10.5px; border-radius: 4px; }
+    .lf .hf-dr-pop { font-size: 11px; border-radius: 6px; }
+    .lf.lf-dark .hf-dr-times input::-webkit-calendar-picker-indicator { filter: invert(1); opacity: .6; }
+
     .lf-activity-reset {
         height: 28px;
         padding: 0 9px;

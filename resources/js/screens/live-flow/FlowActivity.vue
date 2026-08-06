@@ -124,12 +124,7 @@
                     <option v-for="queue in queueOptions" :key="queue" :value="queue">{{ queue }}</option>
                 </select>
             </label>
-            <div class="lf-activity-dates">
-                <span class="lf-activity-dates-label">When</span>
-                <input type="datetime-local" v-model="dateFrom" :max="dateTo || null" aria-label="Events after">
-                <span class="lf-activity-dates-sep">–</span>
-                <input type="datetime-local" v-model="dateTo" :min="dateFrom || null" aria-label="Events before">
-            </div>
+            <date-range-picker v-model:from="dateFrom" v-model:to="dateTo" label="Any time"/>
             <button class="lf-activity-reset" type="button" v-if="isFiltered" @click="resetFilters">Clear</button>
         </div>
         <div class="lf-activity-filters" role="group" aria-label="Filter activity by state">

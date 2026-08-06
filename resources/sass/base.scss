@@ -171,10 +171,18 @@ svg.icon {
             border-radius: 9999px;
         }
 
-        .job-filters-date {
-            width: auto;
-            border-radius: 9999px;
-            font-size: 0.8125rem;
+        // The picker paints itself from these tokens, so the same component
+        // themes correctly here and inside the live-flow panels.
+        .hf-dr {
+            --hf-dr-bg: #{$card-bg};
+            --hf-dr-surface: #{$picker-surface};
+            --hf-dr-border: #{$border-color};
+            --hf-dr-text: #{$body-color};
+            --hf-dr-muted: #{$text-muted};
+            --hf-dr-accent: #{$primary};
+            --hf-dr-accent-soft: #{rgba($primary, 0.18)};
+            --hf-dr-on-accent: #{$white};
+            --hf-dr-shadow: #{$picker-shadow};
         }
 
         .job-filters-count {
