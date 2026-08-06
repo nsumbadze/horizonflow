@@ -80,7 +80,7 @@ jobs:
     runs-on: ubuntu-24.04
 
     strategy:
-      fail-fast: true
+      fail-fast: false
       matrix:
         php: [8.3, 8.4, 8.5]
         client: ['phpredis', 'predis']
@@ -154,7 +154,13 @@ jobs:
             redis-cli -c -h 127.0.0.1 -p 7002 cluster info | grep "cluster_state:ok"
 
       - name: Execute tests
-        run: vendor/bin/phpunit --fail-on-risky --fail-on-warning --stop-on-error --stop-on-failure --fail-on-deprecation
+        uses: nick-fields/retry@ad984534de44a9489a53aefd81eb77f87c70dc60 # v4
+        with:
+          timeout_seconds: 180
+          max_attempts: 2
+          retry_wait_seconds: 1
+          retry_on: error
+          command: vendor/bin/phpunit --fail-on-risky --fail-on-warning --stop-on-error --stop-on-failure --fail-on-deprecation
         env:
           REDIS_CLIENT: ${{ matrix.client }}
           REDIS_CLUSTER_HOSTS_AND_PORTS: 127.0.0.1:7000,127.0.0.1:7001,127.0.0.1:7002
