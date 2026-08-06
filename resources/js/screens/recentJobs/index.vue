@@ -17,6 +17,8 @@
                 searchPhrase: '',
                 queueFilter: 'all',
                 statusFilter: 'all',
+                dateFrom: '',
+                dateTo: '',
             };
         },
 
@@ -49,6 +51,20 @@
 
 
             /**
+             * The timestamp the date range filters against: when a job
+             * finished on the completed screens, when it was queued otherwise.
+             */
+            dateField() {
+                return this.$route.params.type === 'pending' ? 'queued' : 'completed';
+            },
+
+
+            dateLabel() {
+                return this.upperFirst(this.dateField);
+            },
+
+
+            /**
              * Jobs on this page matching the search phrase and filters.
              */
             filteredJobs() {
@@ -60,6 +76,12 @@
                     }
 
                     if (this.statusFilter !== 'all' && job.status !== this.statusFilter) {
+                        return false;
+                    }
+
+                    let timestamp = this.dateField === 'queued' ? job.payload?.pushedAt : job.completed_at;
+
+                    if (! this.withinDateRange(timestamp, this.dateFrom, this.dateTo)) {
                         return false;
                     }
 
@@ -114,6 +136,8 @@
                 this.searchPhrase = '';
                 this.queueFilter = 'all';
                 this.statusFilter = 'all';
+                this.dateFrom = '';
+                this.dateTo = '';
             },
 
 
@@ -221,8 +245,11 @@
                 v-model:search="searchPhrase"
                 v-model:queue="queueFilter"
                 v-model:status="statusFilter"
+                v-model:from="dateFrom"
+                v-model:to="dateTo"
                 :queues="queueOptions"
                 :statuses="statusOptions"
+                :date-label="dateLabel"
                 :matched="filteredJobs.length"
                 :total="jobs.length"
                 placeholder="Search job, queue, or tag"

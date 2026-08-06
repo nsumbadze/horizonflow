@@ -17,6 +17,8 @@
                 retryingJobs: [],
                 searchPhrase: '',
                 queueFilter: 'all',
+                dateFrom: '',
+                dateTo: '',
             };
         },
 
@@ -38,6 +40,10 @@
 
                 return this.jobs.filter(job => {
                     if (this.queueFilter !== 'all' && job.queue !== this.queueFilter) {
+                        return false;
+                    }
+
+                    if (! this.withinDateRange(job.failed_at, this.dateFrom, this.dateTo)) {
                         return false;
                     }
 
@@ -252,9 +258,12 @@
                 v-if="ready && jobs.length > 0"
                 v-model:search="searchPhrase"
                 v-model:queue="queueFilter"
+                v-model:from="dateFrom"
+                v-model:to="dateTo"
                 :queues="queueOptions"
                 :matched="filteredJobs.length"
                 :total="jobs.length"
+                date-label="Failed"
                 placeholder="Search job, queue, or exception"
             />
 

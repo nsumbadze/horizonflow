@@ -2480,6 +2480,27 @@
         font-family: inherit;
         font-size: 10.5px;
     }
+    .lf-activity-dates { display: flex; align-items: center; gap: 5px; }
+    .lf-activity-dates-label {
+        color: var(--lf-dim);
+        font-size: 9px;
+        font-weight: 700;
+        letter-spacing: .09em;
+        text-transform: uppercase;
+    }
+    .lf-activity-dates-sep { color: var(--lf-dim); font-size: 11px; }
+    .lf-activity-dates input {
+        height: 28px;
+        padding: 0 6px;
+        border: 1px solid var(--lf-border);
+        border-radius: 4px;
+        background: var(--lf-panel);
+        color: var(--lf-text);
+        font-family: ui-monospace, Consolas, monospace;
+        font-size: 10px;
+    }
+    .lf-activity-dates input:focus-visible { outline: 2px solid var(--lf-violet); outline-offset: 1px; }
+    .lf-activity-dates input::-webkit-calendar-picker-indicator { filter: invert(.5); cursor: pointer; }
     .lf-activity-reset {
         height: 28px;
         padding: 0 9px;

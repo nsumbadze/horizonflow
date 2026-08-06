@@ -13,6 +13,8 @@
                 stateFilter: 'all',
                 searchText: '',
                 queueFilter: 'all',
+                dateFrom: '',
+                dateTo: '',
             };
         },
 
@@ -24,6 +26,7 @@
 
                 return this.events.filter(event => {
                     if (this.queueFilter !== 'all' && String(event.queue ?? '') !== this.queueFilter) return false;
+                    if (!this.withinDateRange(event.timestamp, this.dateFrom, this.dateTo)) return false;
                     if (!search) return true;
 
                     return [event.job, event.queue, event.label, event.state]
@@ -57,7 +60,11 @@
             },
 
             isFiltered() {
-                return this.stateFilter !== 'all' || this.queueFilter !== 'all' || this.searchText.trim() !== '';
+                return this.stateFilter !== 'all'
+                    || this.queueFilter !== 'all'
+                    || this.searchText.trim() !== ''
+                    || this.dateFrom !== ''
+                    || this.dateTo !== '';
             },
         },
 
@@ -86,6 +93,8 @@
                 this.stateFilter = 'all';
                 this.queueFilter = 'all';
                 this.searchText = '';
+                this.dateFrom = '';
+                this.dateTo = '';
             },
         },
     };
@@ -115,6 +124,12 @@
                     <option v-for="queue in queueOptions" :key="queue" :value="queue">{{ queue }}</option>
                 </select>
             </label>
+            <div class="lf-activity-dates">
+                <span class="lf-activity-dates-label">When</span>
+                <input type="datetime-local" v-model="dateFrom" :max="dateTo || null" aria-label="Events after">
+                <span class="lf-activity-dates-sep">–</span>
+                <input type="datetime-local" v-model="dateTo" :min="dateFrom || null" aria-label="Events before">
+            </div>
             <button class="lf-activity-reset" type="button" v-if="isFiltered" @click="resetFilters">Clear</button>
         </div>
         <div class="lf-activity-filters" role="group" aria-label="Filter activity by state">

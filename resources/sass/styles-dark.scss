@@ -111,3 +111,10 @@ $container-max-widths: (
 .btn-primary {
     color: rgb(255, 255, 255);
 }
+
+// The native calendar glyph is a dark bitmap, invisible against a dark input.
+.job-filters-date::-webkit-calendar-picker-indicator {
+    filter: invert(1);
+    opacity: 0.6;
+    cursor: pointer;
+}

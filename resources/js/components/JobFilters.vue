@@ -16,13 +16,20 @@
             placeholder: { type: String, default: 'Search jobs…' },
             matched: { type: Number, default: 0 },
             total: { type: Number, default: 0 },
+            from: { type: String, default: '' },
+            to: { type: String, default: '' },
+            dateLabel: { type: String, default: 'Between' },
         },
 
-        emits: ['update:search', 'update:queue', 'update:status', 'reset'],
+        emits: ['update:search', 'update:queue', 'update:status', 'update:from', 'update:to', 'reset'],
 
         computed: {
             isFiltering() {
-                return this.search.trim() !== '' || this.queue !== 'all' || this.status !== 'all';
+                return this.search.trim() !== ''
+                    || this.queue !== 'all'
+                    || this.status !== 'all'
+                    || this.from !== ''
+                    || this.to !== '';
             },
         },
 
@@ -31,6 +38,8 @@
                 this.$emit('update:search', '');
                 this.$emit('update:queue', 'all');
                 this.$emit('update:status', 'all');
+                this.$emit('update:from', '');
+                this.$emit('update:to', '');
                 this.$emit('reset');
             },
         },
@@ -77,6 +86,30 @@
             <option value="all">All statuses</option>
             <option v-for="option in statuses" :key="option.value" :value="option.value">{{ option.label }}</option>
         </select>
+
+        <div class="job-filters-dates d-flex align-items-center gap-1">
+            <small class="text-muted text-nowrap">{{ dateLabel }}</small>
+
+            <input
+                type="datetime-local"
+                class="form-control form-control-sm job-filters-date"
+                :aria-label="dateLabel + ' after'"
+                :value="from"
+                :max="to || null"
+                @input="$emit('update:from', $event.target.value)"
+            >
+
+            <small class="text-muted">–</small>
+
+            <input
+                type="datetime-local"
+                class="form-control form-control-sm job-filters-date"
+                :aria-label="dateLabel + ' before'"
+                :value="to"
+                :min="from || null"
+                @input="$emit('update:to', $event.target.value)"
+            >
+        </div>
 
         <slot></slot>
 
