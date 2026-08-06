@@ -1,6 +1,6 @@
 # Contribution Guide
 
-Contributions to HorizonXFlow are welcome through issues and pull requests in this repository.
+Contributions to HorizonFlow are welcome through issues and pull requests in this repository.
 
 Before submitting a pull request:
 

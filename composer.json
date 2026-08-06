@@ -1,8 +1,9 @@
 {
-    "name": "horizonxflow/horizonxflow",
-    "description": "Live queue-flow visualization and operational insights for Laravel Horizon.",
-    "keywords": ["horizon", "laravel", "monitoring", "queue", "redis"],
-    "homepage": "https://github.com/nsumbadze/horizonxflow",
+    "name": "nsumbadze/horizonflow",
+    "description": "An independently maintained Laravel Horizon fork with live queue-flow visualization and operational controls.",
+    "keywords": ["dashboard", "horizon", "laravel", "monitoring", "queue", "redis", "workers"],
+    "type": "library",
+    "homepage": "https://github.com/nsumbadze/horizonflow",
     "license": "MIT",
     "authors": [
         {
@@ -11,8 +12,9 @@
         }
     ],
     "support": {
-        "issues": "https://github.com/nsumbadze/horizonxflow/issues",
-        "source": "https://github.com/nsumbadze/horizonxflow"
+        "issues": "https://github.com/nsumbadze/horizonflow/issues",
+        "security": "https://github.com/nsumbadze/horizonflow/security/advisories/new",
+        "source": "https://github.com/nsumbadze/horizonflow"
     },
     "require": {
         "php": "^8.0",
@@ -36,6 +38,9 @@
         "phpstan/phpstan": "^1.10|^2.0",
         "predis/predis": "^1.1|^2.0|^3.0"
     },
+    "replace": {
+        "laravel/horizon": "self.version"
+    },
     "suggest": {
         "ext-redis": "Required to use the Redis PHP driver.",
         "predis/predis": "Required when not using the Redis PHP driver (^1.1|^2.0|^3.0)."
@@ -55,7 +60,7 @@
     },
     "extra": {
         "branch-alias": {
-            "dev-master": "6.x-dev"
+            "dev-main": "0.x-dev"
         },
         "laravel": {
             "providers": [
