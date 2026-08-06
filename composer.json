@@ -7,13 +7,17 @@
     "license": "MIT",
     "authors": [
         {
+            "name": "Nika Sumbadze",
+            "role": "Maintainer"
+        },
+        {
             "name": "Taylor Otwell",
             "role": "Original Author"
         }
     ],
     "support": {
         "issues": "https://github.com/nsumbadze/horizonflow/issues",
-        "security": "https://github.com/nsumbadze/horizonflow/security/advisories/new",
+        "security": "https://github.com/nsumbadze/horizonflow/security/policy",
         "source": "https://github.com/nsumbadze/horizonflow"
     },
     "require": {
@@ -39,7 +43,7 @@
         "predis/predis": "^1.1|^2.0|^3.0"
     },
     "replace": {
-        "laravel/horizon": "self.version"
+        "laravel/horizon": "^5.0"
     },
     "suggest": {
         "ext-redis": "Required to use the Redis PHP driver.",

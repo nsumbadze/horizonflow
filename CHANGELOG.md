@@ -1,4 +1,6 @@
-# Release Notes
+# Upstream Laravel Horizon Release Notes
+
+This file preserves Laravel Horizon release history imported into HorizonFlow. The versions below are official upstream Laravel Horizon versions, not HorizonFlow releases. HorizonFlow uses independent release numbers; synchronization state is recorded in [UPSTREAM.md](UPSTREAM.md).
 
 ## [Unreleased](https://github.com/laravel/horizon/compare/v5.48.1...5.x)
 
