@@ -1,20 +1,58 @@
-<h1 align="center">HorizonXFlow</h1>
+<h1 align="center">HorizonFlow</h1>
 
 <p align="center">Live queue-flow visibility and operational insights for Laravel Horizon.</p>
 
 <p align="center">
-<a href="https://github.com/nsumbadze/horizonxflow/actions/workflows/tests.yml"><img src="https://github.com/nsumbadze/horizonxflow/actions/workflows/tests.yml/badge.svg?branch=main" alt="Build Status"></a>
+<a href="https://github.com/nsumbadze/horizonflow/actions/workflows/tests.yml"><img src="https://github.com/nsumbadze/horizonflow/actions/workflows/tests.yml/badge.svg?branch=main" alt="Build Status"></a>
 <a href="LICENSE.md"><img src="https://img.shields.io/badge/license-MIT-green" alt="License"></a>
 </p>
 
-HorizonXFlow is an independently maintained project based on [Laravel Horizon](https://github.com/laravel/horizon). It retains Horizon's dashboard and code-driven worker configuration while adding a live operational workspace for understanding how jobs move through queues. It is not an official Laravel product.
+HorizonFlow is an independently maintained fork of [Laravel Horizon](https://github.com/laravel/horizon). It retains Horizon's dashboard and code-driven worker configuration while adding a live operational workspace for understanding how jobs move through queues. HorizonFlow is not an official Laravel product.
+
+## Installation
+
+HorizonFlow is installed instead of `laravel/horizon`; the two packages must not be installed together.
+
+For a new installation, require HorizonFlow and publish Horizon's application service provider and configuration:
+
+```bash
+composer require nsumbadze/horizonflow
+php artisan horizon:install
+```
+
+Laravel package discovery registers `Laravel\Horizon\HorizonServiceProvider`. The install command publishes `config/horizon.php` and creates `app/Providers/HorizonServiceProvider.php`, where dashboard authorization is configured. HorizonFlow's additional settings have working defaults; publish them only when you need to customize Live Flow:
+
+```bash
+php artisan vendor:publish --tag=horizonxflow-config
+```
+
+Run Horizon as you would the upstream package:
+
+```bash
+php artisan horizon
+```
+
+### Replacing Laravel Horizon
+
+Applications already using `laravel/horizon` should preserve their `config/horizon.php` and `app/Providers/HorizonServiceProvider.php`, remove the upstream package requirement, and then install HorizonFlow with dependency updates allowed:
+
+```bash
+composer remove laravel/horizon --no-update
+composer require nsumbadze/horizonflow --with-all-dependencies
+```
+
+The fork intentionally retains the `Laravel\Horizon` PHP namespace, service providers, Artisan commands, configuration shape, dashboard routes, and Redis data conventions. Composer declares that HorizonFlow replaces `laravel/horizon`, preventing both implementations from being installed together. Review [UPGRADE.md](UPGRADE.md) and test the change in a non-production environment before deployment; HorizonFlow uses its own versioning and does not claim the same version numbers as upstream Horizon.
+
+### Compatibility
+
+HorizonFlow requires PHP 8.0 or later, Laravel 9.21 through 13, the JSON, PCNTL, and POSIX PHP extensions, and a Redis connection supported by Laravel. Install either the PhpRedis extension or `predis/predis`. PCNTL and POSIX are not available on Windows, so HorizonFlow should run in a Linux environment or a compatible container/virtual machine.
 
 ## Live Flow
 
 **Live Flow** is available at `/horizon/live-flow`. It visualises producers, queues, jobs, workers, and results in real time across Redis and database queue drivers.
 
 <p align="center">
-<img src="art/live-flow.png" alt="HorizonXFlow Live Flow workspace">
+<img src="art/live-flow.png" alt="HorizonFlow Live Flow workspace">
 </p>
 
 Under a row of queue KPIs, the workspace is organised into four areas:
@@ -80,8 +118,8 @@ Live-flow behaviour is configured via `config/horizonxflow.php`:
 The Live Flow Inspector can pause an individual Redis queue and cancel one pending or running job. These controls deliberately preserve Laravel's queue safety boundaries:
 
 - Pausing a queue does not reject dispatches or kill workers. A job already running finishes, while pending and newly dispatched jobs remain queued until the queue is resumed.
-- Cancelling a pending job atomically removes its exact payload from the ready list or delayed set. If a worker reserves it first, HorizonXFlow records a cooperative cancellation request instead of reporting a false success.
-- A running worker process is never force-killed. Side effects already performed by a job cannot be rolled back by HorizonXFlow.
+- Cancelling a pending job atomically removes its exact payload from the ready list or delayed set. If a worker reserves it first, HorizonFlow records a cooperative cancellation request instead of reporting a false success.
+- A running worker process is never force-killed. Side effects already performed by a job cannot be rolled back by HorizonFlow.
 - Cancelled jobs remain visible in the Inspector with their cancellation time and operator identifier. Repeated requests are idempotent, and completed or failed jobs return `409 Conflict`.
 
 Mutation routes use the `controlHorizon` ability described above. Queue connection and queue names are validated server-side, raw job payloads are never accepted from or returned to the control UI, and every destructive action has an explicit confirmation step.
@@ -121,9 +159,9 @@ When `flow.source` is `mock`, the Inspector exposes the same controls as a sessi
 
 ## Retry With Parameters
 
-A failed job usually fails because of what it was handed: a wrong path, a batch size that was too large, a flag left on. Horizon can only push that same job back onto the queue unchanged, so the normal fix is a tinker session or a one-off command. HorizonXFlow lets you change the arguments and retry from the dashboard instead.
+A failed job usually fails because of what it was handed: a wrong path, a batch size that was too large, a flag left on. Horizon can only push that same job back onto the queue unchanged, so the normal fix is a tinker session or a one-off command. HorizonFlow lets you change the arguments and retry from the dashboard instead.
 
-Open a failed job and press **Edit Parameters**. HorizonXFlow reads the job class constructor and lists every parameter it accepts, prefilled with the values the failed job was queued with:
+Open a failed job and press **Edit Parameters**. HorizonFlow reads the job class constructor and lists every parameter it accepts, prefilled with the values the failed job was queued with:
 
 <p align="center">
 <img src="art/retry-parameters.png" alt="Editing a failed job's parameters before retrying it">
@@ -160,9 +198,9 @@ php artisan horizonxflow:demo-jobs --clear
 
 ## Upstream Horizon
 
-HorizonXFlow is based on Laravel Horizon and keeps its existing dashboard, queue supervision, metrics, and worker configuration. Refer to the [Laravel Horizon documentation](https://laravel.com/docs/horizon) for inherited Horizon behaviour.
+HorizonFlow is derived from Laravel Horizon and keeps its existing dashboard, queue supervision, metrics, and worker configuration. Refer to the [Laravel Horizon documentation](https://laravel.com/docs/horizon) for inherited Horizon behaviour.
 
-Issues caused by HorizonXFlow changes should be reported in this repository. Upstream Laravel Horizon maintains its own issue tracker and release process.
+Laravel Horizon was created by Taylor Otwell and is maintained by Laravel and its contributors. HorizonFlow retains Laravel Horizon's original copyright and license notices. Issues caused by HorizonFlow changes should be reported in this repository; upstream Laravel Horizon has its own issue tracker and release process.
 
 ## Contributing
 
@@ -174,4 +212,4 @@ Do not disclose security vulnerabilities in public issues. Follow this repositor
 
 ## License
 
-HorizonXFlow is released under the [MIT license](LICENSE.md). The original Laravel Horizon copyright and license notice are retained.
+HorizonFlow is released under the [MIT license](LICENSE.md). The original Laravel Horizon copyright and license notice are retained.
