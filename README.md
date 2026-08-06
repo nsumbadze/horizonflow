@@ -41,7 +41,7 @@ composer remove laravel/horizon --no-update
 composer require nsumbadze/horizonflow --with-all-dependencies
 ```
 
-The fork intentionally retains the `Laravel\Horizon` PHP namespace, service providers, Artisan commands, configuration shape, dashboard routes, and Redis data conventions. Composer declares that HorizonFlow replaces `laravel/horizon`, preventing both implementations from being installed together. Review [UPGRADE.md](UPGRADE.md) and test the change in a non-production environment before deployment; HorizonFlow uses its own versioning and does not claim the same version numbers as upstream Horizon.
+The fork intentionally retains the `Laravel\Horizon` PHP namespace, service providers, Artisan commands, configuration shape, dashboard routes, and Redis data conventions. Composer declares that HorizonFlow replaces the Laravel Horizon `5.x` line, preventing both implementations from being installed together. Review [UPGRADE.md](UPGRADE.md) and test the change in a non-production environment before deployment; HorizonFlow has its own releases and version numbers and does not claim the same versions as upstream Horizon.
 
 ### Compatibility
 
@@ -200,7 +200,7 @@ php artisan horizonxflow:demo-jobs --clear
 
 HorizonFlow is derived from Laravel Horizon and keeps its existing dashboard, queue supervision, metrics, and worker configuration. Refer to the [Laravel Horizon documentation](https://laravel.com/docs/horizon) for inherited Horizon behaviour.
 
-Laravel Horizon was created by Taylor Otwell and is maintained by Laravel and its contributors. HorizonFlow retains Laravel Horizon's original copyright and license notices. Issues caused by HorizonFlow changes should be reported in this repository; upstream Laravel Horizon has its own issue tracker and release process.
+Laravel Horizon was created by Taylor Otwell and is maintained by Laravel and its contributors. HorizonFlow retains Laravel Horizon's original copyright and license notices. Issues caused by HorizonFlow changes should be reported in this repository; bugs that also exist in unmodified Laravel Horizon may belong in the upstream issue tracker. Upstream Laravel Horizon has its own release process.
 
 ## Contributing
 

@@ -3,6 +3,7 @@
 namespace Laravel\Horizon\Tests\Feature;
 
 use Carbon\CarbonImmutable;
+use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Redis;
@@ -39,6 +40,18 @@ class QueueProcessingTest extends IntegrationTest
         $id = Queue::later(1, new Jobs\BasicJob);
         $this->assertSame(1, $this->recentJobs());
         $this->assertSame('pending', Redis::connection('horizon')->hget($id, 'status'));
+    }
+
+    public function test_pending_delayed_jobs_store_the_delay_in_their_payload()
+    {
+        if (version_compare(Application::VERSION, '12.11.0', '<')) {
+            $this->markTestSkipped('Delay metadata requires Laravel 12.11 or newer.');
+        }
+
+        $id = Queue::later(5, new Jobs\BasicJob);
+        $payload = json_decode(Redis::connection('horizon')->hget($id, 'payload'), true);
+
+        $this->assertSame(5, $payload['delay']);
     }
 
     public function test_pending_jobs_are_stored_with_their_tags()
