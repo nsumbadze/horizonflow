@@ -6,6 +6,7 @@ import 'vue-json-pretty/lib/styles.css';
 import Base from './base';
 import Routes from './routes';
 import Alert from './components/Alert.vue';
+import JobFilters from './components/JobFilters.vue';
 import SchemeToggler from './components/SchemeToggler.vue';
 import Poll from './components/Poll.vue';
 
@@ -55,6 +56,7 @@ app.use(router);
 
 app.component('vue-json-pretty', VueJsonPretty);
 app.component('alert', Alert);
+app.component('job-filters', JobFilters);
 app.component('scheme-toggler', SchemeToggler);
 app.component('poll', Poll);
 

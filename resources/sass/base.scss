@@ -131,6 +131,51 @@ svg.icon {
         }
     }
 
+    // Search and filter bar that sits between a listing's header and its
+    // table. Filters the loaded page, so the match count lives here too.
+    .job-filters {
+        background-color: $table-headers-color;
+        border-top: 1px solid $table-border-color;
+        border-bottom: 1px solid $table-border-color;
+
+        .job-filters-search {
+            position: relative;
+            flex: 1 1 16rem;
+            min-width: 0;
+            max-width: 24rem;
+
+            .icon-wrapper {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                position: absolute;
+                top: 0;
+                left: 0.75rem;
+                bottom: 0;
+
+                .icon {
+                    fill: $text-muted;
+                }
+            }
+
+            .form-control {
+                padding-left: 2.25rem;
+                font-size: 0.875rem;
+                border-radius: 9999px;
+            }
+        }
+
+        .job-filters-select {
+            width: auto;
+            max-width: 12rem;
+            border-radius: 9999px;
+        }
+
+        .job-filters-count {
+            white-space: nowrap;
+        }
+    }
+
     .table {
         th,
         td {

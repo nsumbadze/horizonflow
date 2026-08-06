@@ -15,7 +15,40 @@
                 totalPages: 1,
                 jobs: [],
                 retryingJobs: [],
+                searchPhrase: '',
+                queueFilter: 'all',
             };
+        },
+
+
+        computed: {
+            /**
+             * The queues present in the currently loaded page of jobs.
+             */
+            queueOptions() {
+                return [...new Set(this.jobs.map(job => job.queue).filter(Boolean))].sort();
+            },
+
+
+            /**
+             * Jobs on this page matching the search phrase and queue filter.
+             */
+            filteredJobs() {
+                let phrase = this.searchPhrase.trim().toLowerCase();
+
+                return this.jobs.filter(job => {
+                    if (this.queueFilter !== 'all' && job.queue !== this.queueFilter) {
+                        return false;
+                    }
+
+                    if (! phrase) {
+                        return true;
+                    }
+
+                    return [job.name, job.queue, job.id, job.exception, ...(job.payload?.tags ?? [])]
+                        .some(field => String(field ?? '').toLowerCase().includes(phrase));
+                });
+            },
         },
 
 
@@ -215,6 +248,16 @@
                 </div>
             </div>
 
+            <job-filters
+                v-if="ready && jobs.length > 0"
+                v-model:search="searchPhrase"
+                v-model:queue="queueFilter"
+                :queues="queueOptions"
+                :matched="filteredJobs.length"
+                :total="jobs.length"
+                placeholder="Search job, queue, or exception"
+            />
+
             <div v-if="!ready" class="d-flex align-items-center justify-content-center card-bg-secondary p-5 bottom-radius">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" class="icon spin me-2 fill-text-color">
                     <path d="M12 10a2 2 0 0 1-3.41 1.41A2 2 0 0 1 10 8V0a9.97 9.97 0 0 1 10 10h-8zm7.9 1.41A10 10 0 1 1 8.59.1v2.03a8 8 0 1 0 9.29 9.29h2.02zm-4.07 0a6 6 0 1 1-7.25-7.25v2.1a3.99 3.99 0 0 0-1.4 6.57 4 4 0 0 0 6.56-1.42h2.1z"></path>
@@ -233,6 +276,7 @@
                 <tr>
                     <th>Job</th>
                     <th class="text-end">Runtime</th>
+                    <th>Started</th>
                     <th>Failed</th>
                     <th class="text-end">Retry</th>
                 </tr>
@@ -247,7 +291,13 @@
                     </td>
                 </tr>
 
-                <tr v-for="job in jobs" :key="job.id">
+                <tr v-if="filteredJobs.length == 0" key="noMatches" class="dontanimate">
+                    <td colspan="100" class="text-center card-bg-secondary py-3">
+                        <small class="text-muted">No jobs on this page match your search.</small>
+                    </td>
+                </tr>
+
+                <tr v-for="job in filteredJobs" :key="job.id">
                     <td>
                         <router-link :title="job.name" :to="{ name: 'failed-jobs-preview', params: { jobId: job.id }}">{{ jobBaseName(job.name) }}</router-link>
 
@@ -276,6 +326,11 @@
 
                     <td class="table-fit text-muted text-end">
                         <span>{{ job.failed_at ? String((job.failed_at - job.reserved_at).toFixed(2))+'s' : '-' }}</span>
+                    </td>
+
+                    <td class="table-fit text-muted">
+                        <span v-if="job.reserved_at">{{ readableTimestamp(job.reserved_at) }}</span>
+                        <span v-else>-</span>
                     </td>
 
                     <td class="table-fit text-muted">
