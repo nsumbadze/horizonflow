@@ -20,6 +20,24 @@
 
         emits: ['retry', 'cancel-job', 'pause-queue', 'resume-queue', 'open-failed', 'open-graph', 'open-activity', 'select'],
 
+        data() {
+            return {
+                jobStateFilter: 'all',
+                jobSearchText: '',
+                showAllJobs: false,
+            };
+        },
+
+        watch: {
+            // A different queue brings a different job set; carrying a stale
+            // filter over reads as "this queue has no jobs".
+            'inspector.node.id'() {
+                this.jobStateFilter = 'all';
+                this.jobSearchText = '';
+                this.showAllJobs = false;
+            },
+        },
+
         computed: {
             nodeGroups() {
                 return ['producer', 'queue', 'job', 'worker', 'result']
@@ -52,8 +70,41 @@
                 ];
             },
 
+            jobSearchMatches() {
+                const search = this.jobSearchText.trim().toLowerCase();
+                if (!search) return this.inspector.jobs;
+
+                return this.inspector.jobs.filter(job => [job.name, job.queue, job.status, job.exception]
+                    .some(field => String(field ?? '').toLowerCase().includes(search)));
+            },
+
+            jobStateFilters() {
+                const counts = this.jobSearchMatches.reduce((result, job) => {
+                    const state = this.jobStateKey(job.status);
+                    result[state] = (result[state] ?? 0) + 1;
+                    return result;
+                }, {});
+
+                return [
+                    { key: 'all', label: 'All', count: this.jobSearchMatches.length },
+                    { key: 'pending', label: 'Pending', count: counts.pending ?? 0 },
+                    { key: 'reserved', label: 'Running', count: counts.reserved ?? 0 },
+                    { key: 'completed', label: 'Succeeded', count: counts.completed ?? 0 },
+                    { key: 'failed', label: 'Failed', count: counts.failed ?? 0 },
+                ].filter(filter => filter.key === 'all' || filter.count > 0);
+            },
+
+            filteredJobs() {
+                if (this.jobStateFilter === 'all') return this.jobSearchMatches;
+                return this.jobSearchMatches.filter(job => this.jobStateKey(job.status) === this.jobStateFilter);
+            },
+
             visibleJobs() {
-                return this.inspector.jobs.slice(0, 5);
+                return this.showAllJobs ? this.filteredJobs : this.filteredJobs.slice(0, 5);
+            },
+
+            jobsAreFiltered() {
+                return this.jobStateFilter !== 'all' || this.jobSearchText.trim() !== '';
             },
         },
 
@@ -79,6 +130,19 @@
                     cancelled: 'Cancelled',
                     completed: 'Succeeded',
                 }[this.jobStateKey(state)] ?? state;
+            },
+
+            // The job timestamp marks the last state change, so what it means
+            // depends on which state the job landed in.
+            whenLabel(job) {
+                return {
+                    pending: 'queued',
+                    reserved: 'started',
+                    cancellation_requested: 'cancel requested',
+                    cancelled: 'cancelled',
+                    completed: 'finished',
+                    failed: 'failed',
+                }[this.jobStateKey(job.status)] ?? 'updated';
             },
 
             isLongMetric(metric) {
@@ -228,10 +292,39 @@
                 <div class="lf-insp-sec-heading">
                     <div class="lf-insp-sec-title">Recent Jobs</div>
                     <div class="lf-insp-sec-actions">
-                        <span>Latest {{ Math.min(5, inspector.jobs.length) }} of {{ inspector.jobs.length }}</span>
-                        <button type="button" v-if="inspector.jobs.length > 5" @click="$emit('open-activity')">Activity →</button>
+                        <span>{{ visibleJobs.length }} of {{ filteredJobs.length }}<template v-if="jobsAreFiltered"> matched</template></span>
+                        <button type="button" v-if="filteredJobs.length > 5" @click="showAllJobs = !showAllJobs">{{ showAllJobs ? 'Show less' : 'Show all' }}</button>
+                        <button type="button" @click="$emit('open-activity')">Activity →</button>
                     </div>
                 </div>
+
+                <div class="lf-job-filters" v-if="inspector.jobs.length">
+                    <label class="lf-job-search">
+                        <span class="visually-hidden">Search recent jobs</span>
+                        <svg viewBox="0 0 20 20" aria-hidden="true">
+                            <path fill-rule="evenodd" d="M9 3.5a5.5 5.5 0 100 11 5.5 5.5 0 000-11zM2 9a7 7 0 1112.452 4.391l3.328 3.329a.75.75 0 11-1.06 1.06l-3.329-3.328A7 7 0 012 9z" clip-rule="evenodd"/>
+                        </svg>
+                        <input type="search" v-model="jobSearchText" placeholder="Search job or error…">
+                    </label>
+                    <div class="lf-job-state-filters" role="group" aria-label="Filter recent jobs by state">
+                        <button
+                            v-for="filter in jobStateFilters"
+                            :key="filter.key"
+                            class="lf-activity-filter"
+                            :class="[
+                                'lf-activity-filter-' + filter.key,
+                                { 'lf-activity-filter-active': jobStateFilter === filter.key },
+                            ]"
+                            type="button"
+                            :aria-pressed="jobStateFilter === filter.key"
+                            @click="jobStateFilter = filter.key"
+                        >
+                            <span>{{ filter.label }}</span>
+                            <span class="lf-activity-filter-count">{{ formatCount(filter.count) }}</span>
+                        </button>
+                    </div>
+                </div>
+
                 <div
                     class="lf-job-row"
                     v-for="job in visibleJobs"
@@ -241,7 +334,12 @@
                         <div class="lf-job-name">{{ shortJobName(job.name) }}</div>
                         <div class="lf-job-sub">
                             <span class="lf-jstate" :class="'lf-jstate-' + jobStateKey(job.status)">{{ stateLabel(job.status) }}</span>
-                            <span class="lf-job-meta">attempts {{ formatNumber(job.attempts ?? 0) }} · age {{ formatDuration(job.age_seconds) }}</span>
+                            <span class="lf-job-meta">attempts {{ formatNumber(job.attempts ?? 0) }}</span>
+                        </div>
+                        <div class="lf-job-when" :title="absoluteTimeWithAge(job.timestamp)">
+                            <span class="lf-job-when-label">{{ whenLabel(job) }}</span>
+                            <span class="lf-job-when-value">{{ absoluteTime(job.timestamp) }}</span>
+                            <span class="lf-job-when-runtime" v-if="job.runtime_seconds !== null && job.runtime_seconds !== undefined">· ran {{ formatDuration(job.runtime_seconds) }}</span>
                         </div>
                         <div class="lf-job-error" v-if="job.exception" :title="job.exception">{{ job.exception }}</div>
                     </div>
@@ -270,6 +368,7 @@
                     </div>
                 </div>
                 <div class="lf-empty-sm" v-if="inspector.jobs.length === 0">No recent jobs captured for this queue.</div>
+                <div class="lf-empty-sm" v-else-if="filteredJobs.length === 0">No recent jobs match these filters.</div>
             </div>
 
             <div class="lf-insp-connections">

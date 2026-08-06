@@ -2432,6 +2432,67 @@
     .lf-status-critical { background: rgba(220,38,38,.10);  color: var(--lf-red); }
 
     /* ── ACTIVITY ────────────────────────────────────────────────────────── */
+    .lf-activity-search {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 12px;
+        border-bottom: 1px solid var(--lf-border);
+        flex-wrap: wrap;
+    }
+    .lf-activity-search-field {
+        position: relative;
+        display: flex;
+        align-items: center;
+        flex: 1 1 220px;
+        min-width: 0;
+    }
+    .lf-activity-search-field svg {
+        position: absolute;
+        left: 8px;
+        width: 12px;
+        height: 12px;
+        fill: var(--lf-dim);
+        pointer-events: none;
+    }
+    .lf-activity-search-field input {
+        width: 100%;
+        height: 28px;
+        padding: 0 8px 0 25px;
+        border: 1px solid var(--lf-border);
+        border-radius: 4px;
+        background: var(--lf-panel);
+        color: var(--lf-text);
+        font-family: inherit;
+        font-size: 11px;
+    }
+    .lf-activity-search-field input::placeholder { color: var(--lf-dim); }
+    .lf-activity-search-field input:focus-visible,
+    .lf-activity-queue-filter select:focus-visible { outline: 2px solid var(--lf-violet); outline-offset: 1px; }
+    .lf-activity-queue-filter select {
+        height: 28px;
+        max-width: 200px;
+        padding: 0 8px;
+        border: 1px solid var(--lf-border);
+        border-radius: 4px;
+        background: var(--lf-panel);
+        color: var(--lf-text);
+        font-family: inherit;
+        font-size: 10.5px;
+    }
+    .lf-activity-reset {
+        height: 28px;
+        padding: 0 9px;
+        border: 1px solid var(--lf-border);
+        border-radius: 4px;
+        background: var(--lf-panel);
+        color: var(--lf-muted);
+        font-family: inherit;
+        font-size: 10.5px;
+        font-weight: 600;
+        cursor: pointer;
+    }
+    .lf-activity-reset:hover { background: var(--lf-hover); color: var(--lf-text); }
     .lf-activity-filters {
         display: flex;
         align-items: center;
@@ -2471,7 +2532,7 @@
     .lf-activity-columns,
     .lf-event {
         display: grid;
-        grid-template-columns: 54px minmax(180px, 1fr) minmax(100px, .45fr) 112px;
+        grid-template-columns: 88px minmax(180px, 1fr) minmax(100px, .45fr) 112px;
         gap: 12px;
     }
     .lf-activity-columns {
@@ -2495,13 +2556,20 @@
         transition: background .08s;
     }
     .lf-event:hover { background: var(--lf-hover); }
+    /* Absolute clock over date: the exact instant an event happened stays
+       readable long after a relative "11s ago" would have gone stale. */
     .lf-event-time {
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
         font-size: 10px;
-        color: var(--lf-dim);
-        text-align: right;
+        color: var(--lf-muted);
+        text-align: left;
         font-family: ui-monospace, Consolas, monospace;
         font-variant-numeric: tabular-nums;
+        white-space: nowrap;
     }
+    .lf-event-date { font-size: 9px; color: var(--lf-dim); }
     .lf-event-job   { font-size: 11.5px; color: var(--lf-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .lf-event-queue { font-size: 11px; color: var(--lf-dim); white-space: nowrap; }
     .lf-event .lf-jstate { justify-self: end; min-width: 86px; justify-content: center; }
@@ -2676,6 +2744,54 @@
         font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
         line-height: 1.35;
     }
+    .lf-job-filters { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
+    .lf-job-search { position: relative; display: flex; align-items: center; }
+    .lf-job-search svg {
+        position: absolute;
+        left: 7px;
+        width: 11px;
+        height: 11px;
+        fill: var(--lf-dim);
+        pointer-events: none;
+    }
+    .lf-job-search input {
+        width: 100%;
+        height: 26px;
+        padding: 0 8px 0 23px;
+        border: 1px solid var(--lf-border);
+        border-radius: 4px;
+        background: var(--lf-panel);
+        color: var(--lf-text);
+        font-family: inherit;
+        font-size: 10.5px;
+    }
+    .lf-job-search input::placeholder { color: var(--lf-dim); }
+    .lf-job-search input:focus-visible { outline: 2px solid var(--lf-violet); outline-offset: 1px; }
+    .lf-job-state-filters { display: flex; align-items: center; gap: 4px; overflow-x: auto; padding-bottom: 2px; }
+    .lf-job-state-filters .lf-activity-filter { min-height: 24px; padding: 0 7px; font-size: 10px; }
+
+    /* Exact instant of the job's last state change, since a queue can sit
+       untouched for hours and "age 11s" tells you nothing about when. */
+    .lf-job-when {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        gap: 5px;
+        margin-top: 2px;
+        font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+        font-size: 10px;
+        line-height: 1.35;
+    }
+    .lf-job-when-label {
+        color: var(--lf-dim);
+        font-size: 9px;
+        font-weight: 700;
+        letter-spacing: .05em;
+        text-transform: uppercase;
+    }
+    .lf-job-when-value { color: var(--lf-muted); font-variant-numeric: tabular-nums; }
+    .lf-job-when-runtime { color: var(--lf-dim); }
+
     .lf-job-error {
         margin-top: 4px;
         color: var(--lf-red);
