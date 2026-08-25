@@ -89,7 +89,7 @@
                         return true;
                     }
 
-                    return [job.name, job.queue, job.id, ...(job.payload?.tags ?? [])]
+                    return [job.name, job.queue, job.id, ...this.jobTags(job)]
                         .some(field => String(field ?? '').toLowerCase().includes(phrase));
                 });
             },

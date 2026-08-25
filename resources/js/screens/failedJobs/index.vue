@@ -51,7 +51,7 @@
                         return true;
                     }
 
-                    return [job.name, job.queue, job.id, job.exception, ...(job.payload?.tags ?? [])]
+                    return [job.name, job.queue, job.id, job.exception, ...this.jobTags(job)]
                         .some(field => String(field ?? '').toLowerCase().includes(phrase));
                 });
             },
