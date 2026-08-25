@@ -75,7 +75,7 @@
             </div>
         </div>
 
-        <div class="card overflow-hidden mt-4" v-if="ready && job.payload.tags.length">
+        <div class="card overflow-hidden mt-4" v-if="ready && tags.length">
             <div class="card-header d-flex align-items-center justify-content-between">
                 <h2 class="h6 m-0">Tags</h2>
 
@@ -85,7 +85,7 @@
             </div>
 
             <div class="card-body code-bg text-white collapse show" id="collapseTags">
-                <vue-json-pretty :data="job.payload.tags"></vue-json-pretty>
+                <vue-json-pretty :data="tags"></vue-json-pretty>
             </div>
         </div>
     </div>
@@ -109,6 +109,10 @@
         },
 
         computed: {
+            tags() {
+                return this.jobTags(this.job);
+            },
+
             unserialized() {
                 return phpunserialize(this.job.payload.data.command);
             },

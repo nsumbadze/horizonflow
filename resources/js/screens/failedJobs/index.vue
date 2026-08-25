@@ -327,8 +327,8 @@
                                 {{ job.payload.retry_of.split('-')[0] }}
                             </router-link>
                             </span>
-                            <span v-if="job.payload.tags && job.payload.tags.length" class="text-break">
-                            | Tags: {{ job.payload.tags && job.payload.tags.length ? job.payload.tags.join(', ') : '' }}
+                            <span v-if="jobTags(job).length" class="text-break">
+                            | Tags: {{ jobTags(job).join(', ') }}
                             </span>
                         </small>
                     </td>
