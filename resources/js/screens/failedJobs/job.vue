@@ -326,7 +326,7 @@
                 </div>
                 <div class="row mb-2">
                     <div class="col-md-2 text-muted">Tags</div>
-                    <div class="col">{{ job.payload.tags && job.payload.tags.length ? job.payload.tags.join(', ') : '' }}</div>
+                    <div class="col">{{ jobTags(job).join(', ') }}</div>
                 </div>
                 <div class="row mb-2" v-if="prettyPrintJob(job.payload.data).batchId">
                     <div class="col-md-2 text-muted">Batch</div>

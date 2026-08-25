@@ -16,8 +16,8 @@
             <small class="text-muted">
                 Queue: {{job.queue}}
 
-                <span v-if="job.payload.tags && job.payload.tags.length" class="text-break">
-                    | Tags: {{ job.payload.tags && job.payload.tags.length ? job.payload.tags.slice(0,3).join(', ') : '' }}<span class="text-secondary" v-if="job.payload.tags.length > 3"> +{{ job.payload.tags.length - 3 }} more</span>
+                <span v-if="tags.length" class="text-break">
+                    | Tags: {{ tags.slice(0, 3).join(', ') }}<span class="text-secondary" v-if="tags.length > 3"> +{{ tags.length - 3 }} more</span>
                 </span>
             </small>
         </td>
@@ -54,6 +54,10 @@
         },
 
         computed: {
+            tags() {
+                return this.jobTags(this.job);
+            },
+
             unserialized() {
                 try {
                     return phpunserialize(this.job.payload.data.command);

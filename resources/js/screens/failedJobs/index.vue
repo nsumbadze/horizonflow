@@ -51,7 +51,7 @@
                         return true;
                     }
 
-                    return [job.name, job.queue, job.id, job.exception, ...(job.payload?.tags ?? [])]
+                    return [job.name, job.queue, job.id, job.exception, ...this.jobTags(job)]
                         .some(field => String(field ?? '').toLowerCase().includes(phrase));
                 });
             },
@@ -327,8 +327,8 @@
                                 {{ job.payload.retry_of.split('-')[0] }}
                             </router-link>
                             </span>
-                            <span v-if="job.payload.tags && job.payload.tags.length" class="text-break">
-                            | Tags: {{ job.payload.tags && job.payload.tags.length ? job.payload.tags.join(', ') : '' }}
+                            <span v-if="jobTags(job).length" class="text-break">
+                            | Tags: {{ jobTags(job).join(', ') }}
                             </span>
                         </small>
                     </td>

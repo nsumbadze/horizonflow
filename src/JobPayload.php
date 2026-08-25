@@ -56,7 +56,7 @@ class JobPayload implements ArrayAccess
      */
     public function tags()
     {
-        return Arr::get($this->decoded, 'tags', []);
+        return array_values((array) Arr::get($this->decoded, 'tags', []));
     }
 
     /**
@@ -130,10 +130,10 @@ class JobPayload implements ArrayAccess
      */
     protected function determineTags($job)
     {
-        return array_merge(
-            $this->decoded['tags'] ?? [],
+        return array_values(array_merge(
+            (array) ($this->decoded['tags'] ?? []),
             ! $job || is_string($job) ? [] : Tags::for($job)
-        );
+        ));
     }
 
     /**

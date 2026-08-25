@@ -95,6 +95,31 @@ export default {
         },
 
         /**
+         * Normalize the tags of a job payload into an array.
+         *
+         * Tags usually reach the client as a JSON array, but a job exposing
+         * associative tags is encoded as an object instead, so anything that
+         * spreads or joins them has to normalize first.
+         */
+        jobTags(job) {
+            let tags = job?.payload?.tags;
+
+            if (Array.isArray(tags)) {
+                return tags;
+            }
+
+            if (typeof tags === 'string') {
+                return [tags];
+            }
+
+            if (tags && typeof tags === 'object') {
+                return Object.values(tags);
+            }
+
+            return [];
+        },
+
+        /**
          * Uppercase the first character of the string.
          */
         upperFirst(string) {
