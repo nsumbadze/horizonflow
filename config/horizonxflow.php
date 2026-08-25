@@ -14,7 +14,7 @@ return [
     */
 
     'flow' => [
-        'source' => env('HORIZONXFLOW_FLOW_SOURCE', 'redis'),
+        'source' => env('HORIZONXFLOW_FLOW_SOURCE', 'mock'),
 
         'sources' => array_values(array_filter(array_map(
             'trim',
