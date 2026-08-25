@@ -135,6 +135,12 @@ abstract class IntegrationTest extends TestCase
     {
         $app['config']->set('queue.default', 'redis');
 
+        // The master supervisor measures the memory of the whole PHP process,
+        // which during a test run is PHPUnit itself. Left at the 64MB default,
+        // the first loop after PHPUnit crosses that limit terminates the test
+        // runner with exit(12) and the suite dies mid-test.
+        $app['config']->set('horizon.memory_limit', 4096);
+
         RedisClusterHelper::configure($app);
 
         Redis::clearResolvedInstances();
