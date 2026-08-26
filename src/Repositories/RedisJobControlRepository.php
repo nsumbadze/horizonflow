@@ -2,6 +2,7 @@
 
 namespace Laravel\Horizon\Repositories;
 
+use Carbon\Carbon;
 use Illuminate\Contracts\Redis\Factory as RedisFactory;
 use Illuminate\Queue\QueueManager;
 use Laravel\Horizon\Contracts\JobControlRepository;
@@ -334,9 +335,9 @@ LUA,
 
         $metadata = [
             'group' => $group,
-            'cancelled_at' => $existing['cancelled_at'] ?? time(),
+            'cancelled_at' => $existing['cancelled_at'] ?? $this->now(),
             'cancelled_by' => $existing['cancelled_by'] ?? $operator,
-            'expires_at' => time() + $ttl,
+            'expires_at' => $this->now() + $ttl,
             'purged' => (int) ($existing['purged'] ?? 0),
             'dropped' => (int) ($existing['dropped'] ?? 0),
         ];
@@ -398,7 +399,7 @@ LUA,
             return null;
         }
 
-        if ((int) ($metadata['expires_at'] ?? 0) <= time()) {
+        if ((int) ($metadata['expires_at'] ?? 0) <= $this->now()) {
             $this->connection()->hdel(self::CANCELLED_RUNS, $group);
 
             return null;
@@ -429,7 +430,7 @@ LUA,
         foreach ($entries as $group => $value) {
             $metadata = is_string($value) ? json_decode($value, true) : null;
 
-            if (! is_array($metadata) || (int) ($metadata['expires_at'] ?? 0) <= time()) {
+            if (! is_array($metadata) || (int) ($metadata['expires_at'] ?? 0) <= $this->now()) {
                 $expired[] = (string) $group;
 
                 continue;
@@ -473,6 +474,14 @@ LUA,
         if ($id !== null && preg_match('/\A[A-Za-z0-9-]{1,128}\z/', $id)) {
             $this->markCancelled($id, $metadata['cancelled_by'] ?? null);
         }
+    }
+
+    /**
+     * Get the current timestamp.
+     */
+    protected function now(): int
+    {
+        return Carbon::now()->getTimestamp();
     }
 
     /**

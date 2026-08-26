@@ -31,16 +31,23 @@ trait InteractsWithCancellation
      */
     public function cancellationRequested(): bool
     {
-        $controls = app(JobControlRepository::class);
         $id = $this->horizonJobId();
+        $group = $this->cancellationGroup();
+        $group = is_string($group) && $group !== '' ? $group : null;
+
+        // Nothing to look up, so nothing is resolved. A job running outside a
+        // worker has neither an id nor, usually, a run.
+        if ($id === null && $group === null) {
+            return false;
+        }
+
+        $controls = app(JobControlRepository::class);
 
         if ($id !== null && $controls->cancellationRequested($id)) {
             return true;
         }
 
-        $group = $this->cancellationGroup();
-
-        return is_string($group) && $group !== '' && $controls->runCancelled($group);
+        return $group !== null && $controls->runCancelled($group);
     }
 
     /**
