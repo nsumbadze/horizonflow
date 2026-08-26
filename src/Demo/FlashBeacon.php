@@ -8,7 +8,6 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Str;
 use Laravel\Horizon\Concerns\InteractsWithCancellation;
 
 class FlashBeacon implements ShouldQueue
@@ -37,7 +36,9 @@ class FlashBeacon implements ShouldQueue
      */
     public function cancellationGroup(): ?string
     {
-        $key = Str::slug((string) $this->beaconId);
+        // Sanitized to the characters a group may contain, rather than with
+        // Str::slug, which also strips dots the registry would have accepted.
+        $key = trim((string) preg_replace('/[^A-Za-z0-9._-]+/', '-', (string) $this->beaconId), '-');
 
         return $key === '' ? null : 'demo-beacon:'.$key;
     }

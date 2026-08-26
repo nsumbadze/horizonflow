@@ -327,7 +327,9 @@ A job that *requires* something HorizonFlow cannot build — an Eloquent model, 
 
 Dispatching is gated by `controlHorizon`, the same ability pausing a queue needs. When Live Flow is showing demo data (`flow.source = mock`), dispatching is simulated in the browser and no job reaches Redis.
 
-To try it locally, `composer serve:demo` points discovery at HorizonFlow's own demo jobs. `AssembleSprocket` and `PingSatellite` cover every editable parameter type, and `FlashBeacon` shows what a job that requires a `DateTimeImmutable` looks like when it cannot be dispatched.
+To try it locally, `composer serve` points discovery at HorizonFlow's own demo jobs. `AssembleSprocket` and `PingSatellite` cover every editable parameter type, and `FlashBeacon` shows what a job that requires a `DateTimeImmutable` looks like when it cannot be dispatched.
+
+The demo jobs also declare a run, derived from a value they were queued with, so the two features can be exercised together: dispatch `AssembleSprocket` twice with the same `blueprint` — say `nightly.json` — and both land in `demo-assembly:nightly.json`. Open either one and **cancel run** stops both. Run `composer serve` rather than `serve:demo` for this: run cancellation acts on real Redis, and the demo flow source has no Redis behind it.
 
 ## Upstream Horizon
 
