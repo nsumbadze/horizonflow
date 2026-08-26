@@ -118,6 +118,8 @@ Live-flow behaviour is configured via `config/horizonxflow.php`:
 - `viewHorizon` — required to enter the dashboard (existing Horizon gate).
 - `controlHorizon` — required for mutation endpoints (`POST /jobs/retry/{id}`, `POST /jobs/{id}/cancel`, `POST /jobs/dispatch`, `POST /flow/queues/{action}`, `POST /flow/runs/{action}`, `POST /masters/{action}`, `POST /supervisors/{name}/{action}`) and for the reads that back them: `GET /jobs/failed/{id}/parameters`, `GET /jobs/dispatchable`, `GET /jobs/dispatchable/parameters`, `GET /jobs/{id}/run`, and `GET /flow/runs`. When the gate is undefined, mutations are only allowed in `local` and `testing` environments; everywhere else, define the gate in `HorizonApplicationServiceProvider::gate()` to enable destructive actions for a trusted subset of users.
 
+Dispatching a job is the most powerful control on the dashboard: it constructs and queues an application job with operator-supplied arguments. Treat `controlHorizon` as the boundary that protects it, and define the gate explicitly rather than relying on the `local` / `testing` fallback — an application deployed with `APP_ENV=local` would otherwise expose dispatch to anyone who can reach the dashboard. Set `dispatch.enabled` to `false` to remove the capability entirely.
+
 ### Environment Variables
 
 - `HORIZONXFLOW_FLOW_SOURCE` — overrides `flow.source`.
@@ -224,7 +226,9 @@ A cancellation is a standing block, not a one-off sweep, so a run cannot re-seed
 
 Groups may contain letters, numbers, dashes, underscores, dots, and colons, and are rejected otherwise so a group can never address unrelated Redis keys. Purging walks at most `cancellation.purge_limit` pending jobs; when it hits that limit the response says so rather than reporting a clean sweep.
 
-Reading a job's run means unserializing its command, so workers do no payload work at all unless some run is actually cancelled.
+Reading a job's run means unserializing its command, so workers do no payload work unless some run is actually cancelled — and even then, only payloads whose job class declares `cancellationGroup()` are unserialized at all.
+
+The pickup check is deliberately fail-open: if the cancellation lookup itself errors, the job runs as it would have without the feature. A Redis blip silently discarding jobs would be the worse failure. Run cancellation is therefore best-effort, not a guarantee.
 
 Queue and job controls currently support Redis queues. Database queues remain observable in Live Flow but do not expose these mutation controls.
 
