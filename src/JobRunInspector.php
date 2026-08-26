@@ -34,9 +34,36 @@ class JobRunInspector
      */
     public function groupForPayload(array $payload)
     {
+        // The class name is plain JSON, so it can be checked without touching
+        // the serialized command. Only a class that opted into run
+        // cancellation is ever unserialized, which keeps payloads for
+        // unrelated jobs out of this process entirely.
+        if (! $this->declaresGroup($payload['data']['commandName'] ?? null)) {
+            return null;
+        }
+
         $command = $this->unserializeCommand($payload);
 
         return is_null($command) ? null : $this->groupForCommand($command);
+    }
+
+    /**
+     * Determine if the named class opts into run cancellation.
+     *
+     * @param  mixed  $class
+     * @return bool
+     */
+    protected function declaresGroup($class)
+    {
+        if (! is_string($class) || $class === '') {
+            return false;
+        }
+
+        try {
+            return class_exists($class) && method_exists($class, 'cancellationGroup');
+        } catch (Throwable $e) {
+            return false;
+        }
     }
 
     /**
