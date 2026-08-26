@@ -88,6 +88,8 @@ Live-flow behaviour is configured via `config/horizonxflow.php`:
 | `dispatch.allowed`                      | `[]`         | Class names or `Str::is` patterns an operator may dispatch. Empty means every discovered job. |
 | `dispatch.denied`                       | `[]`         | Class names or patterns that may never be dispatched. Takes precedence over `dispatch.allowed`. |
 | `dispatch.max_delay`                    | `86400`      | Largest delay, in seconds, an operator may ask for. |
+| `cancellation.run_ttl`                  | `3600`       | Seconds a cancelled run keeps blocking its jobs before lifting on its own. |
+| `cancellation.purge_limit`              | `5000`       | Most pending jobs walked when purging a cancelled run. |
 
 ### Routes
 
@@ -106,11 +108,15 @@ Live-flow behaviour is configured via `config/horizonxflow.php`:
 | `GET /horizon/api/jobs/dispatchable`   | The job classes an operator may dispatch, plus the configured queue connections. |
 | `GET /horizon/api/jobs/dispatchable/parameters` | The constructor parameters of one dispatchable job class (`?class=App\Jobs\Example`). |
 | `POST /horizon/api/jobs/dispatch`      | Dispatch a job with the given constructor arguments and queue options. |
+| `GET /horizon/api/flow/runs`           | The runs that are currently cancelled, with their counters and expiry. |
+| `POST /horizon/api/flow/runs/cancel`   | Cancel a whole run, by `group` or by a `job` that belongs to it. |
+| `POST /horizon/api/flow/runs/release`  | Lift a run cancellation. |
+| `GET /horizon/api/jobs/{id}/run`       | The run a job belongs to, and whether that run is cancelled. |
 
 ### Abilities
 
 - `viewHorizon` — required to enter the dashboard (existing Horizon gate).
-- `controlHorizon` — required for mutation endpoints (`POST /jobs/retry/{id}`, `POST /jobs/{id}/cancel`, `POST /jobs/dispatch`, `POST /flow/queues/{action}`, `POST /masters/{action}`, `POST /supervisors/{name}/{action}`) and for the reads that back them: `GET /jobs/failed/{id}/parameters`, `GET /jobs/dispatchable`, and `GET /jobs/dispatchable/parameters`. When the gate is undefined, mutations are only allowed in `local` and `testing` environments; everywhere else, define the gate in `HorizonApplicationServiceProvider::gate()` to enable destructive actions for a trusted subset of users.
+- `controlHorizon` — required for mutation endpoints (`POST /jobs/retry/{id}`, `POST /jobs/{id}/cancel`, `POST /jobs/dispatch`, `POST /flow/queues/{action}`, `POST /flow/runs/{action}`, `POST /masters/{action}`, `POST /supervisors/{name}/{action}`) and for the reads that back them: `GET /jobs/failed/{id}/parameters`, `GET /jobs/dispatchable`, `GET /jobs/dispatchable/parameters`, `GET /jobs/{id}/run`, and `GET /flow/runs`. When the gate is undefined, mutations are only allowed in `local` and `testing` environments; everywhere else, define the gate in `HorizonApplicationServiceProvider::gate()` to enable destructive actions for a trusted subset of users.
 
 ### Environment Variables
 
@@ -124,6 +130,8 @@ Live-flow behaviour is configured via `config/horizonxflow.php`:
 - `HORIZONXFLOW_DISPATCH_ENABLED` — overrides `dispatch.enabled`.
 - `HORIZONXFLOW_DISPATCH_DISCOVER` — overrides `dispatch.discover`.
 - `HORIZONXFLOW_DISPATCH_MAX_DELAY` — overrides `dispatch.max_delay`.
+- `HORIZONXFLOW_CANCELLED_RUN_TTL` — overrides `cancellation.run_ttl`.
+- `HORIZONXFLOW_CANCELLED_RUN_PURGE_LIMIT` — overrides `cancellation.purge_limit`.
 
 ## Job and Queue Controls
 
@@ -164,6 +172,59 @@ class SendCampaignMail implements ShouldQueue
 ```
 
 Place checkpoints before idempotent units of work. A cancellation requested while a single non-interruptible call is executing—for example, an SMTP hand-off—takes effect only after that call returns and the next checkpoint is reached.
+
+### Cancelling a whole run
+
+Cancelling one job stops one job. That is rarely what you want when a job chains its own successor or fans work out: kill page 6 and the walk carries on from page 7. HorizonFlow can stop the whole run instead.
+
+A run is whatever a job says it is. Jobs that belong together return the same key:
+
+```php
+use Laravel\Horizon\Concerns\InteractsWithCancellation;
+
+final class FetchCitrusPageJob implements ShouldQueue
+{
+    use InteractsWithCancellation;
+
+    public function __construct(
+        public readonly int $companyId,
+        public readonly int $page = 1,
+    ) {
+    }
+
+    public function cancellationGroup(): ?string
+    {
+        return "citrus-sync:{$this->companyId}";
+    }
+
+    public function handle(): void
+    {
+        foreach ($this->pageOfProducts() as $product) {
+            if ($this->cancelIfRequested()) {
+                return;
+            }
+
+            $this->process($product);
+        }
+
+        self::dispatch($this->companyId, $this->page + 1);
+    }
+}
+```
+
+Give the jobs it fans out to the same key and one cancellation covers all of them.
+
+Open any job in Live Flow and it now shows the run it belongs to, with **cancel run** next to the usual per-job actions. Cancelling has three effects, and they do not all land at once:
+
+- **Pending jobs are purged now.** Matching payloads are removed from the ready list and delayed set and retained as cancelled, exactly as a single cancellation would.
+- **Queued jobs are dropped at pickup.** A worker refuses a job whose run is cancelled before `handle()` runs. This is what ends a self-chained walk: the job in flight may still queue its successor, but that successor never starts.
+- **A running job stops at its next checkpoint.** Only if it calls `cancelIfRequested()`. Without checkpoints, the job in flight finishes its work; the run still stops at the next link.
+
+A cancellation is a standing block, not a one-off sweep, so a run cannot re-seed itself while it stands. It lifts on its own after `cancellation.run_ttl`, and the Inspector lists every active cancellation with how many jobs were purged, how many have been dropped since, and how long is left — with **lift** to end it early.
+
+Groups may contain letters, numbers, dashes, underscores, dots, and colons, and are rejected otherwise so a group can never address unrelated Redis keys. Purging walks at most `cancellation.purge_limit` pending jobs; when it hits that limit the response says so rather than reporting a clean sweep.
+
+Reading a job's run means unserializing its command, so workers do no payload work at all unless some run is actually cancelled.
 
 Queue and job controls currently support Redis queues. Database queues remain observable in Live Flow but do not expose these mutation controls.
 
