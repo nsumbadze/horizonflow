@@ -8,10 +8,13 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Str;
+use Laravel\Horizon\Concerns\InteractsWithCancellation;
 
 class FlashBeacon implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+    use InteractsWithCancellation;
 
     /**
      * Create a new demo job instance.
@@ -24,6 +27,19 @@ class FlashBeacon implements ShouldQueue
         public int $priority,
         public DateTimeImmutable $expiresAt,
     ) {
+    }
+
+    /**
+     * The run this job belongs to.
+     *
+     * Deriving a group from a value the job was queued with is the usual
+     * shape: two jobs built from the same beaconId belong to the same run.
+     */
+    public function cancellationGroup(): ?string
+    {
+        $key = Str::slug((string) $this->beaconId);
+
+        return $key === '' ? null : 'demo-beacon:'.$key;
     }
 
     /**
