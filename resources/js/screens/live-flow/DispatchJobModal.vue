@@ -585,7 +585,7 @@
                     Reset
                 </button>
                 <button
-                    class="lf-control-btn lf-control-btn-primary"
+                    class="lf-control-btn lf-dispatch-go"
                     type="button"
                     :disabled="!readyToDispatch"
                     @click="dispatch"

@@ -3776,6 +3776,16 @@
     .lf-run-figure span { color: var(--lf-dim); font-size: 9px; letter-spacing: .04em; }
     .lf-run-figure-clock b { color: var(--lf-amber); }
 
+    /* dispatch is the constructive pole, so its commit reads as one */
+    .lf-dispatch-go {
+        border-color: var(--lf-violet);
+        background: var(--lf-violet);
+        color: #fff;
+    }
+    .lf-dispatch-go:hover:not(:disabled) { background: var(--lf-violet); border-color: var(--lf-violet); filter: brightness(1.08); }
+    .lf-dispatch-go:disabled { opacity: .42; }
+    .lf-dark .lf-dispatch-go { color: #10121a; }
+
     /* ── MOBILE ──────────────────────────────────────────────────────────── */
     @media (max-width: 680px) {
         .lf-pane-head { flex-wrap: wrap; row-gap: 5px; }
