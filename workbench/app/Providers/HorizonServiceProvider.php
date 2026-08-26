@@ -9,6 +9,21 @@ use Laravel\Horizon\HorizonApplicationServiceProvider;
 class HorizonServiceProvider extends HorizonApplicationServiceProvider
 {
     /**
+     * Register any application services.
+     */
+    public function register(): void
+    {
+        parent::register();
+
+        // The workbench has no app/Jobs directory, so point job discovery at
+        // the demo jobs instead. `composer serve` and `composer serve:demo`
+        // can then dispatch them from Live Flow.
+        $this->app['config']->set('horizonxflow.dispatch.paths', [
+            dirname(__DIR__, 3).'/src/Demo',
+        ]);
+    }
+
+    /**
      * Bootstrap any application services.
      */
     public function boot(): void

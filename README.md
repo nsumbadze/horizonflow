@@ -249,6 +249,8 @@ A job that *requires* something HorizonFlow cannot build — an Eloquent model, 
 
 Dispatching is gated by `controlHorizon`, the same ability pausing a queue needs. When Live Flow is showing demo data (`flow.source = mock`), dispatching is simulated in the browser and no job reaches Redis.
 
+To try it locally, `composer serve:demo` points discovery at HorizonFlow's own demo jobs. `AssembleSprocket` and `PingSatellite` cover every editable parameter type, and `FlashBeacon` shows what a job that requires a `DateTimeImmutable` looks like when it cannot be dispatched.
+
 ## Upstream Horizon
 
 HorizonFlow is derived from Laravel Horizon and keeps its existing dashboard, queue supervision, metrics, and worker configuration. Refer to the [Laravel Horizon documentation](https://laravel.com/docs/horizon) for inherited Horizon behaviour.
