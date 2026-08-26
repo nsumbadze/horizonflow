@@ -20,6 +20,11 @@ Route::prefix('api')->group(function () {
     Route::post('/flow/queues/pause', 'QueueControlController@pause')->name('horizonxflow.flow.queues.pause');
     Route::post('/flow/queues/resume', 'QueueControlController@resume')->name('horizonxflow.flow.queues.resume');
 
+    // Run Control Routes...
+    Route::get('/flow/runs', 'RunControlController@index')->name('horizonxflow.flow.runs.index');
+    Route::post('/flow/runs/cancel', 'RunControlController@store')->name('horizonxflow.flow.runs.cancel');
+    Route::post('/flow/runs/release', 'RunControlController@release')->name('horizonxflow.flow.runs.release');
+
     // Master Supervisor Routes...
     Route::get('/masters', 'MasterSupervisorController@index')->name('horizon.masters.index');
     Route::post('/masters/pause', 'SupervisorControlController@pauseMasters')->name('horizonxflow.masters.pause');
@@ -57,6 +62,7 @@ Route::prefix('api')->group(function () {
     Route::get('/jobs/failed/{id}/parameters', 'RetryController@parameters')->name('horizonxflow.retry-jobs.parameters');
     Route::post('/jobs/retry/{id}', 'RetryController@store')->name('horizon.retry-jobs.show');
     Route::post('/jobs/{id}/cancel', 'JobControlController@cancel')->name('horizonxflow.jobs.cancel');
+    Route::get('/jobs/{id}/run', 'RunControlController@show')->name('horizonxflow.jobs.run');
 
     // Job Dispatch Routes...
     Route::get('/jobs/dispatchable', 'JobDispatchController@index')->name('horizonxflow.jobs.dispatchable');
