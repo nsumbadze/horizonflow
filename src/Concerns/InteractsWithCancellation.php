@@ -7,14 +7,40 @@ use Laravel\Horizon\Contracts\JobControlRepository;
 trait InteractsWithCancellation
 {
     /**
+     * The run this job belongs to, if any.
+     *
+     * Jobs that are part of one logical run — a chained walk, or a fan-out of
+     * related work — should return the same key here so an operator can stop
+     * all of them at once:
+     *
+     * public function cancellationGroup(): ?string
+     * {
+     *     return "citrus-sync:{$this->companyId}";
+     * }
+     */
+    public function cancellationGroup(): ?string
+    {
+        return null;
+    }
+
+    /**
      * Determine whether an operator requested cancellation of this job.
+     *
+     * True when this job was cancelled on its own, or when the run it belongs
+     * to was cancelled.
      */
     public function cancellationRequested(): bool
     {
+        $controls = app(JobControlRepository::class);
         $id = $this->horizonJobId();
 
-        return $id !== null
-            && app(JobControlRepository::class)->cancellationRequested($id);
+        if ($id !== null && $controls->cancellationRequested($id)) {
+            return true;
+        }
+
+        $group = $this->cancellationGroup();
+
+        return is_string($group) && $group !== '' && $controls->runCancelled($group);
     }
 
     /**
@@ -28,13 +54,13 @@ trait InteractsWithCancellation
      */
     public function cancelIfRequested(): bool
     {
-        $id = $this->horizonJobId();
-
-        if ($id === null || ! app(JobControlRepository::class)->cancellationRequested($id)) {
+        if (! $this->cancellationRequested()) {
             return false;
         }
 
-        app(JobControlRepository::class)->acknowledgeCancellation($id);
+        if (($id = $this->horizonJobId()) !== null) {
+            app(JobControlRepository::class)->acknowledgeCancellation($id);
+        }
 
         return true;
     }
