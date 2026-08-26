@@ -62,7 +62,7 @@ Under a row of queue KPIs, the workspace is organised into four areas:
 - **Insights** — an incident timeline (long waits, job failures, supervisor deployments), monitored tags, and recent batches.
 - **Horizon controls** — pause and continue the master supervisors or an individual supervisor.
 
-Selecting a Redis queue in the Inspector also exposes queue pause/resume controls and safe cancellation actions for its pending or running jobs.
+Selecting a Redis queue in the Inspector also exposes queue pause/resume controls and safe cancellation actions for its pending or running jobs. The toolbar and the Inspector can also dispatch a job onto a queue; see [Dispatching Jobs](#dispatching-jobs).
 
 The active workspace, graph/table mode, time window, queue filter, and selected node are reflected in the query string, so operational views can be shared directly.
 
@@ -82,6 +82,12 @@ Live-flow behaviour is configured via `config/horizonxflow.php`:
 | `flow.database.connections`             | `[]`         | Explicit list of connections for the database driver. Empty means auto-discover from `queue.connections`. |
 | `flow.database.discover_connections`    | `false`      | When `true` the database driver also walks `database.connections` (driver: mysql/pgsql/sqlite/sqlsrv) to find candidate `jobs` tables. |
 | `flow.database.failed_table`            | `failed_jobs`| Table that holds failed-jobs entries. |
+| `dispatch.enabled`                      | `true`       | Whether jobs may be dispatched from the dashboard at all. |
+| `dispatch.discover`                     | `true`       | Whether `dispatch.paths` are walked for job classes. |
+| `dispatch.paths`                        | `[]`         | Directories searched for job classes. Empty means `app/Jobs`. |
+| `dispatch.allowed`                      | `[]`         | Class names or `Str::is` patterns an operator may dispatch. Empty means every discovered job. |
+| `dispatch.denied`                       | `[]`         | Class names or patterns that may never be dispatched. Takes precedence over `dispatch.allowed`. |
+| `dispatch.max_delay`                    | `86400`      | Largest delay, in seconds, an operator may ask for. |
 
 ### Routes
 
@@ -97,11 +103,14 @@ Live-flow behaviour is configured via `config/horizonxflow.php`:
 | `POST /horizon/api/flow/queues/pause`  | Pause one Redis queue while retaining pending and newly dispatched jobs. |
 | `POST /horizon/api/flow/queues/resume` | Resume processing one paused Redis queue. |
 | `POST /horizon/api/jobs/{id}/cancel`   | Cancel a pending job or request cooperative cancellation of a running job. |
+| `GET /horizon/api/jobs/dispatchable`   | The job classes an operator may dispatch, plus the configured queue connections. |
+| `GET /horizon/api/jobs/dispatchable/parameters` | The constructor parameters of one dispatchable job class (`?class=App\Jobs\Example`). |
+| `POST /horizon/api/jobs/dispatch`      | Dispatch a job with the given constructor arguments and queue options. |
 
 ### Abilities
 
 - `viewHorizon` — required to enter the dashboard (existing Horizon gate).
-- `controlHorizon` — required for mutation endpoints (`POST /jobs/retry/{id}`, `POST /jobs/{id}/cancel`, `POST /flow/queues/{action}`, `POST /masters/{action}`, `POST /supervisors/{name}/{action}`) and for `GET /jobs/failed/{id}/parameters`, which backs retrying with edited parameters. When the gate is undefined, mutations are only allowed in `local` and `testing` environments; everywhere else, define the gate in `HorizonApplicationServiceProvider::gate()` to enable destructive actions for a trusted subset of users.
+- `controlHorizon` — required for mutation endpoints (`POST /jobs/retry/{id}`, `POST /jobs/{id}/cancel`, `POST /jobs/dispatch`, `POST /flow/queues/{action}`, `POST /masters/{action}`, `POST /supervisors/{name}/{action}`) and for the reads that back them: `GET /jobs/failed/{id}/parameters`, `GET /jobs/dispatchable`, and `GET /jobs/dispatchable/parameters`. When the gate is undefined, mutations are only allowed in `local` and `testing` environments; everywhere else, define the gate in `HorizonApplicationServiceProvider::gate()` to enable destructive actions for a trusted subset of users.
 
 ### Environment Variables
 
@@ -112,6 +121,9 @@ Live-flow behaviour is configured via `config/horizonxflow.php`:
 - `HORIZONXFLOW_FLOW_PAYLOAD_TTL` — overrides `flow.cache.payload_ttl`.
 - `HORIZONXFLOW_DISCOVER_DATABASE_QUEUES` — overrides `flow.database.discover_connections`.
 - `QUEUE_FAILED_TABLE` — overrides `flow.database.failed_table`.
+- `HORIZONXFLOW_DISPATCH_ENABLED` — overrides `dispatch.enabled`.
+- `HORIZONXFLOW_DISPATCH_DISCOVER` — overrides `dispatch.discover`.
+- `HORIZONXFLOW_DISPATCH_MAX_DELAY` — overrides `dispatch.max_delay`.
 
 ## Job and Queue Controls
 
@@ -195,6 +207,47 @@ To try it locally, `composer serve:demo` seeds three failed demo jobs. You can a
 php artisan horizonxflow:demo-jobs
 php artisan horizonxflow:demo-jobs --clear
 ```
+
+## Dispatching Jobs
+
+Putting one job on a queue by hand normally means a tinker session or a one-off Artisan command. HorizonFlow can do it from Live Flow instead, with the same reflection that backs [Retry With Parameters](#retry-with-parameters).
+
+Press **Dispatch job** in the Live Flow toolbar, or **dispatch to queue** in the Inspector to arrive with a queue already chosen. Pick a class on the left, fill in its constructor arguments, and set where and when it runs:
+
+- **connection** — any connection in `config/queue.php`. Leaving it alone uses the job's own `$connection`, or the application default.
+- **queue** — free text, with the queues Live Flow has already seen offered as suggestions. Leaving it alone uses the job's own `$queue`, or the connection default.
+- **delay** — in seconds, minutes, or hours, capped by `dispatch.max_delay`.
+
+The footer states the connection, queue, and delay the job will actually land with before you press **Dispatch job**.
+
+### Which jobs appear
+
+Discovery walks `app/Jobs` for classes implementing `ShouldQueue` that can be constructed. Point it somewhere else with `dispatch.paths`, and turn it off entirely with `dispatch.discover`.
+
+The listed set is the whole dispatchable surface. A class that is neither discovered nor named in `dispatch.allowed` is rejected with a `422`, so a request can never reach an arbitrary queueable class inside the framework or a third-party package:
+
+```php
+'dispatch' => [
+    'allowed' => [
+        'App\Jobs\*',
+        'Vendor\Package\Jobs\SyncCatalog',
+    ],
+
+    'denied' => [
+        'App\Jobs\Billing\*',
+    ],
+],
+```
+
+Both lists accept exact class names or `Str::is` patterns, and `dispatch.denied` always wins. An exact entry in `dispatch.allowed` is dispatchable even when discovery never saw it, which is how you expose a job that lives outside `app/Jobs`. Set `dispatch.enabled` to `false` to remove the controls and refuse the endpoints outright.
+
+### What you can pass
+
+Constructor parameters follow the same rules as retrying with edited parameters: `string`, `int`, `float`, `bool`, `array` and `iterable`, plus untyped ones. Arrays are entered as JSON, nullable parameters get a **send as null** toggle, and optional parameters left blank fall back to their declared defaults.
+
+A job that *requires* something HorizonFlow cannot build — an Eloquent model, a date object, any other class — is shown with the parameter that blocks it and cannot be dispatched. Values are cast to the declared type before the job is constructed, and anything that does not fit is rejected with a `422` and the reason, without queueing.
+
+Dispatching is gated by `controlHorizon`, the same ability pausing a queue needs. When Live Flow is showing demo data (`flow.source = mock`), dispatching is simulated in the browser and no job reaches Redis.
 
 ## Upstream Horizon
 
