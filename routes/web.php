@@ -57,6 +57,11 @@ Route::prefix('api')->group(function () {
     Route::get('/jobs/failed/{id}/parameters', 'RetryController@parameters')->name('horizonxflow.retry-jobs.parameters');
     Route::post('/jobs/retry/{id}', 'RetryController@store')->name('horizon.retry-jobs.show');
     Route::post('/jobs/{id}/cancel', 'JobControlController@cancel')->name('horizonxflow.jobs.cancel');
+
+    // Job Dispatch Routes...
+    Route::get('/jobs/dispatchable', 'JobDispatchController@index')->name('horizonxflow.jobs.dispatchable');
+    Route::get('/jobs/dispatchable/parameters', 'JobDispatchController@parameters')->name('horizonxflow.jobs.dispatchable-parameters');
+    Route::post('/jobs/dispatch', 'JobDispatchController@store')->name('horizonxflow.jobs.dispatch');
     Route::get('/jobs/{id}', 'JobsController@show')->name('horizon.jobs.show');
 });
 
