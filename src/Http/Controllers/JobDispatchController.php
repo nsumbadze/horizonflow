@@ -65,9 +65,7 @@ class JobDispatchController extends Controller
             abort(422, $exception->getMessage());
         }
 
-        $this->dispatchJob($job, $options);
-
-        return array_merge(['dispatched' => true, 'class' => $class], $options);
+        return array_merge(['dispatched' => true, 'class' => $class], $this->dispatchJob($job, $options));
     }
 
     /**
@@ -218,10 +216,15 @@ class JobDispatchController extends Controller
     /**
      * Dispatch the built job with the requested options.
      *
+     * A job may pick its own connection, queue, or delay in its constructor,
+     * so the options it actually carries are read back off the instance
+     * rather than echoing what was asked for.
+     *
      * @param  object  $job
      * @param  array{connection: string|null, queue: string|null, delay: int}  $options
+     * @return array{connection: string|null, queue: string|null, delay: int}
      */
-    protected function dispatchJob($job, array $options): void
+    protected function dispatchJob($job, array $options): array
     {
         // Every option is checked before the pending dispatch is created. A
         // PendingDispatch queues its job when it is destructed, so aborting
@@ -241,6 +244,49 @@ class JobDispatchController extends Controller
         if ($options['delay'] > 0) {
             $pending->delay($options['delay']);
         }
+
+        return $this->effectiveOptions($job, $options);
+    }
+
+    /**
+     * Read the connection, queue, and delay the job is carrying.
+     *
+     * @param  object  $job
+     * @param  array{connection: string|null, queue: string|null, delay: int}  $options
+     * @return array{connection: string|null, queue: string|null, delay: int}
+     */
+    protected function effectiveOptions($job, array $options): array
+    {
+        $delay = $this->jobProperty($job, 'delay');
+
+        return [
+            'connection' => $this->stringProperty($job, 'connection'),
+            'queue' => $this->stringProperty($job, 'queue'),
+            'delay' => is_numeric($delay) ? (int) $delay : $options['delay'],
+        ];
+    }
+
+    /**
+     * Read a queue option off the job as a string.
+     *
+     * @param  object  $job
+     */
+    protected function stringProperty($job, string $property): ?string
+    {
+        $value = $this->jobProperty($job, $property);
+
+        return is_string($value) && $value !== '' ? $value : null;
+    }
+
+    /**
+     * Read a property off the job without tripping over one it never declares.
+     *
+     * @param  object  $job
+     * @return mixed
+     */
+    protected function jobProperty($job, string $property)
+    {
+        return property_exists($job, $property) ? ($job->{$property} ?? null) : null;
     }
 
     /**

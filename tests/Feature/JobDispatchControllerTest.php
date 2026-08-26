@@ -9,6 +9,7 @@ use Laravel\Horizon\JobDispatchRegistry;
 use Laravel\Horizon\JobParameterInspector;
 use Laravel\Horizon\Tests\Feature\Jobs\BasicJob;
 use Laravel\Horizon\Tests\Feature\Jobs\DispatchableJob;
+use Laravel\Horizon\Tests\Feature\Jobs\SelfRoutingJob;
 use Laravel\Horizon\Tests\Feature\Jobs\UndispatchableJob;
 use Orchestra\Testbench\TestCase;
 use Symfony\Component\HttpKernel\Exception\HttpException;
@@ -126,6 +127,32 @@ class JobDispatchControllerTest extends TestCase
                 && $job->queue === null
                 && $job->delay === null;
         });
+    }
+
+    public function test_it_reports_the_queue_a_job_chooses_for_itself(): void
+    {
+        Bus::fake();
+
+        $response = $this->store(['class' => SelfRoutingJob::class, 'parameters' => ['reference' => 'abc']]);
+
+        $this->assertSame('self-routed', $response['queue']);
+
+        Bus::assertDispatched(SelfRoutingJob::class, fn (SelfRoutingJob $job) => $job->queue === 'self-routed');
+    }
+
+    public function test_a_requested_queue_overrides_the_one_a_job_chooses(): void
+    {
+        Bus::fake();
+
+        $response = $this->store([
+            'class' => SelfRoutingJob::class,
+            'parameters' => ['reference' => 'abc'],
+            'queue' => 'operator-choice',
+        ]);
+
+        $this->assertSame('operator-choice', $response['queue']);
+
+        Bus::assertDispatched(SelfRoutingJob::class, fn (SelfRoutingJob $job) => $job->queue === 'operator-choice');
     }
 
     public function test_it_rejects_a_class_that_may_not_be_dispatched(): void
