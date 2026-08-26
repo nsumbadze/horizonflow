@@ -1,4 +1,5 @@
 <script type="text/ecmascript-6">
+    import DispatchJobModal from './live-flow/DispatchJobModal.vue';
     import FailedJobModal from './live-flow/FailedJobModal.vue';
     import FlowActivity from './live-flow/FlowActivity.vue';
     import FlowGraph from './live-flow/FlowGraph.vue';
@@ -26,7 +27,7 @@
     }
 
     export default {
-        components: { FailedJobModal, FlowActivity, FlowGraph, FlowInsights, FlowInspector, FlowKpis, FlowQueueTable, FlowToolbar, SupervisorControls },
+        components: { DispatchJobModal, FailedJobModal, FlowActivity, FlowGraph, FlowInsights, FlowInspector, FlowKpis, FlowQueueTable, FlowToolbar, SupervisorControls },
 
         mixins: [formatters],
 
@@ -72,6 +73,14 @@
                 controlHistory: [],
                 mockQueueStates: {},
                 mockJobStates: {},
+                dispatchOpen: false,
+                dispatchPreset: null,
+                dispatchCatalog: null,
+                loadingDispatchCatalog: false,
+                dispatchDescription: null,
+                loadingDispatchParameters: false,
+                dispatching: false,
+                dispatchError: null,
             };
         },
 
@@ -133,6 +142,7 @@
             document.title = "Horizon - Live Flow";
             this.refreshAll().then(() => { this.ready = true; });
             this.loadSupervisorControls();
+            this.loadDispatchCatalog();
             this.loadMonitoredTags();
             this.loadIncidents();
             this.startPolling();
@@ -182,6 +192,15 @@
 
             isMock()  { return this.flow?.source === 'mock'; },
             queues()  { return this.flow?.queues ?? []; },
+
+            canDispatch() { return this.dispatchCatalog?.enabled === true; },
+
+            dispatchKnownQueues() {
+                return this.queues.map(queue => ({
+                    connection: queue.storage_connection ?? queue.connection,
+                    name: queue.name,
+                }));
+            },
             health()  { return this.flow?.health ?? []; },
 
             workspaceTabs() {
@@ -991,6 +1010,117 @@
                 return Promise.resolve();
             },
 
+            /**
+             * Load the job classes an operator may dispatch.
+             */
+            loadDispatchCatalog() {
+                if (this.loadingDispatchCatalog) return Promise.resolve();
+
+                this.loadingDispatchCatalog = true;
+
+                return this.$http.get(Horizon.basePath + '/api/jobs/dispatchable')
+                    .then(response => { this.dispatchCatalog = response.data; })
+                    .catch(() => { this.dispatchCatalog = { enabled: false, jobs: [], connections: [] }; })
+                    .finally(() => { this.loadingDispatchCatalog = false; });
+            },
+
+            /**
+             * Open the dispatch panel, optionally routed to a chosen queue.
+             */
+            openDispatch(queue = null) {
+                this.dispatchPreset = queue
+                    ? { connection: queue.storage_connection ?? queue.connection, queue: queue.name }
+                    : null;
+                this.dispatchDescription = null;
+                this.dispatchError = null;
+                this.dispatchOpen = true;
+
+                if (!this.dispatchCatalog) this.loadDispatchCatalog();
+            },
+
+            closeDispatch() {
+                this.dispatchOpen = false;
+                this.dispatchDescription = null;
+                this.dispatchError = null;
+            },
+
+            /**
+             * Read the constructor parameters of the job class being dispatched.
+             */
+            loadDispatchParameters(jobClass) {
+                this.dispatchDescription = null;
+                this.dispatchError = null;
+                this.loadingDispatchParameters = true;
+
+                return this.$http.get(Horizon.basePath + '/api/jobs/dispatchable/parameters', { params: { class: jobClass } })
+                    .then(response => { this.dispatchDescription = response.data; })
+                    .catch(error => {
+                        this.dispatchDescription = {
+                            class: jobClass,
+                            dispatchable: false,
+                            reason: error?.response?.data?.message || 'The job parameters could not be read.',
+                            parameters: [],
+                        };
+                    })
+                    .finally(() => { this.loadingDispatchParameters = false; });
+            },
+
+            /**
+             * Dispatch the job the operator configured.
+             */
+            dispatchJob(request) {
+                if (this.dispatching) return;
+
+                if (this.isMock) return this.dispatchMockJob(request);
+
+                this.dispatching = true;
+                this.dispatchError = null;
+
+                return this.$http.post(Horizon.basePath + '/api/jobs/dispatch', {
+                    class: request.class,
+                    parameters: request.parameters,
+                    connection: request.connection,
+                    queue: request.queue,
+                    delay: request.delay,
+                })
+                    .then(response => {
+                        const target = `${response.data.connection ?? request.resolved.connection} · ${response.data.queue ?? request.resolved.queue}`;
+                        const delay = Number(response.data.delay ?? 0);
+
+                        this.closeDispatch();
+                        this.showControlNotice('success', `${request.name} was dispatched to ${target}.`);
+                        this.recordControlEvent(
+                            `dispatch-${request.class}`,
+                            `${request.name} dispatched`,
+                            delay > 0
+                                ? `Queued on ${target}, becoming available in ${this.formatDuration(delay)}.`
+                                : `Queued on ${target}.`
+                        );
+                        setTimeout(() => this.refreshFlowPeriodically(), 1200);
+                    })
+                    .catch(error => {
+                        this.dispatchError = error?.response?.data?.message || `${request.name} could not be dispatched.`;
+                    })
+                    .finally(() => { this.dispatching = false; });
+            },
+
+            /**
+             * Simulate a dispatch while the workspace is showing demo data.
+             */
+            dispatchMockJob(request) {
+                const target = `${request.resolved.connection} · ${request.resolved.queue}`;
+
+                this.closeDispatch();
+                this.showControlNotice('success', `${request.name} was dispatched to ${target} in this demo only.`);
+                this.recordControlEvent(
+                    `mock-dispatch-${request.class}`,
+                    `${request.name} dispatched`,
+                    'Mock visualization only — no job reached Redis.'
+                );
+
+                return Promise.resolve();
+            },
+
             requestJobCancellation(job) {
                 if (!job?.id || this.controllingJobs.includes(job.id)) return;
 
@@ -1514,8 +1644,10 @@
             :live="live"
             v-model:filterText="filterText"
             v-model:timeRange="timeRange"
+            :can-dispatch="canDispatch"
             @refresh="refreshFlowPeriodically"
             @toggle-live="toggleLive"
+            @dispatch-job="openDispatch()"
         />
 
         <div class="lf-toast" :class="'lf-toast-' + controlNotice.type" role="status" aria-live="polite" v-if="controlNotice">
@@ -1632,6 +1764,7 @@
                             :retrying-ids="retryingJobs"
                             :controlling-job-ids="controllingJobs"
                             :queue-controlling="selectedInspector.queue ? isControllingQueue(selectedInspector.queue) : false"
+                            :can-dispatch="canDispatch"
                             :nodes="graphNodes"
                             :selected-id="selectedId"
                             :mode="flowMode"
@@ -1639,6 +1772,7 @@
                             @cancel-job="requestJobCancellation"
                             @pause-queue="requestQueuePause"
                             @resume-queue="queue => controlQueue(queue, 'resume')"
+                            @dispatch-to-queue="openDispatch"
                             @open-failed="openJobModal"
                             @open-activity="selectWorkspaceTab('activity')"
                             @open-graph="flowMode = 'graph'"
@@ -1690,6 +1824,22 @@
                 </div>
             </div>
         </div>
+
+        <DispatchJobModal
+            :open="dispatchOpen"
+            :catalog="dispatchCatalog"
+            :loading="loadingDispatchCatalog"
+            :description="dispatchDescription"
+            :loading-parameters="loadingDispatchParameters"
+            :dispatching="dispatching"
+            :error="dispatchError"
+            :mock="isMock"
+            :known-queues="dispatchKnownQueues"
+            :preset="dispatchPreset"
+            @close="closeDispatch"
+            @select-class="loadDispatchParameters"
+            @dispatch="dispatchJob"
+        />
 
         <FailedJobModal
             :job="selectedJob"

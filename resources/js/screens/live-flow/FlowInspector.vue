@@ -13,12 +13,13 @@
             retryingIds: { type: Array, default: () => [] },
             controllingJobIds: { type: Array, default: () => [] },
             queueControlling: { type: Boolean, default: false },
+            canDispatch: { type: Boolean, default: false },
             nodes: { type: Array, default: () => [] },
             selectedId: { type: String, default: null },
             mode: { type: String, default: 'graph' },
         },
 
-        emits: ['retry', 'cancel-job', 'pause-queue', 'resume-queue', 'open-failed', 'open-graph', 'open-activity', 'select'],
+        emits: ['retry', 'cancel-job', 'pause-queue', 'resume-queue', 'dispatch-to-queue', 'open-failed', 'open-graph', 'open-activity', 'select'],
 
         data() {
             return {
@@ -208,7 +209,14 @@
                     <span class="lf-insp-kind">{{ nodeKind(inspector.node) }}</span>
                     <span class="lf-insp-conn">{{ inspector.queue ? inspector.queue.connection + ' · ' + inspector.queue.name : inspector.node.id }}</span>
                 </div>
-                <div class="lf-insp-controls" v-if="inspector.queue?.driver === 'redis'">
+                <div class="lf-insp-controls" v-if="inspector.queue">
+                    <button
+                        class="lf-mini-btn"
+                        type="button"
+                        v-if="canDispatch"
+                        @click="$emit('dispatch-to-queue', inspector.queue)"
+                    >dispatch to queue</button>
+                    <template v-if="inspector.queue.driver === 'redis'">
                     <button
                         v-if="!inspector.queue.paused"
                         class="lf-mini-btn lf-mini-btn-danger"
@@ -228,6 +236,7 @@
                             ? 'Demo only; Redis and workers are never changed.'
                             : (inspector.queue.paused ? 'Jobs remain queued until resumed.' : 'Current work finishes; no new jobs will start.') }}
                     </span>
+                    </template>
                 </div>
             </div>
 
