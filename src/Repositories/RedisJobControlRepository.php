@@ -5,6 +5,7 @@ namespace Laravel\Horizon\Repositories;
 use Illuminate\Contracts\Redis\Factory as RedisFactory;
 use Illuminate\Queue\QueueManager;
 use Laravel\Horizon\Contracts\JobControlRepository;
+use Laravel\Horizon\JobRunInspector;
 use Laravel\Horizon\RedisQueue;
 
 class RedisJobControlRepository implements JobControlRepository
@@ -15,11 +16,17 @@ class RedisJobControlRepository implements JobControlRepository
     protected const PAUSED_QUEUES = 'paused_queues';
 
     /**
+     * Redis hash containing cancelled-run metadata, keyed by group.
+     */
+    protected const CANCELLED_RUNS = 'cancelled_runs';
+
+    /**
      * Create a new Redis job control repository.
      */
     public function __construct(
         protected RedisFactory $redis,
         protected QueueManager $queues,
+        protected JobRunInspector $runs,
     ) {
         //
     }
@@ -303,6 +310,227 @@ LUA,
             'cancelled_by' => $job['cancelled_by'] ?? null,
             'cancellation_requested_at' => $job['cancellation_requested_at'] ?? null,
             'cancellation_requested_by' => $job['cancellation_requested_by'] ?? null,
+        ];
+    }
+
+    /**
+     * Cancel a whole run, purging its pending jobs and blocking the rest.
+     *
+     * The mark is written before anything is purged, so a job dispatched while
+     * the purge is walking the pending index is still refused when a worker
+     * picks it up.
+     *
+     * @return array<string, mixed>
+     */
+    public function cancelRun(string $group, ?string $operator = null, ?int $ttl = null): array
+    {
+        if (! $this->runs->valid($group)) {
+            throw new \InvalidArgumentException('The run group is invalid.');
+        }
+
+        $ttl = max(60, $ttl ?? (int) config('horizonxflow.cancellation.run_ttl', 3600));
+
+        $existing = $this->cancelledRun($group);
+
+        $metadata = [
+            'group' => $group,
+            'cancelled_at' => $existing['cancelled_at'] ?? time(),
+            'cancelled_by' => $existing['cancelled_by'] ?? $operator,
+            'expires_at' => time() + $ttl,
+            'purged' => (int) ($existing['purged'] ?? 0),
+            'dropped' => (int) ($existing['dropped'] ?? 0),
+        ];
+
+        $this->writeRun($metadata);
+
+        $purge = $this->purgeRun($group, $operator);
+
+        $metadata['purged'] += $purge['purged'];
+        $this->writeRun($metadata);
+
+        return array_merge($metadata, [
+            'scanned' => $purge['scanned'],
+            'truncated' => $purge['truncated'],
+            'purged_now' => $purge['purged'],
+        ]);
+    }
+
+    /**
+     * Lift a run cancellation so its jobs may run again.
+     */
+    public function releaseRun(string $group): bool
+    {
+        if (! $this->runs->valid($group)) {
+            return false;
+        }
+
+        return (bool) $this->connection()->hdel(self::CANCELLED_RUNS, $group);
+    }
+
+    /**
+     * Determine whether the given run is currently cancelled.
+     */
+    public function runCancelled(string $group): bool
+    {
+        return $this->cancelledRun($group) !== null;
+    }
+
+    /**
+     * Get the metadata for a cancelled run.
+     *
+     * @return array<string, mixed>|null
+     */
+    public function cancelledRun(string $group): ?array
+    {
+        if (! $this->runs->valid($group)) {
+            return null;
+        }
+
+        $value = $this->connection()->hget(self::CANCELLED_RUNS, $group);
+
+        if (! is_string($value) || $value === '') {
+            return null;
+        }
+
+        $metadata = json_decode($value, true);
+
+        if (! is_array($metadata)) {
+            return null;
+        }
+
+        if ((int) ($metadata['expires_at'] ?? 0) <= time()) {
+            $this->connection()->hdel(self::CANCELLED_RUNS, $group);
+
+            return null;
+        }
+
+        return $metadata;
+    }
+
+    /**
+     * Get every run that is currently cancelled.
+     *
+     * Entries that have expired are dropped as they are read, so the hash does
+     * not accumulate marks nobody lifted.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function cancelledRuns(): array
+    {
+        $entries = $this->connection()->hgetall(self::CANCELLED_RUNS);
+
+        if (! is_array($entries)) {
+            return [];
+        }
+
+        $active = [];
+        $expired = [];
+
+        foreach ($entries as $group => $value) {
+            $metadata = is_string($value) ? json_decode($value, true) : null;
+
+            if (! is_array($metadata) || (int) ($metadata['expires_at'] ?? 0) <= time()) {
+                $expired[] = (string) $group;
+
+                continue;
+            }
+
+            $active[] = $metadata;
+        }
+
+        if ($expired !== []) {
+            $this->connection()->hdel(self::CANCELLED_RUNS, ...$expired);
+        }
+
+        usort($active, fn ($a, $b) => ($b['cancelled_at'] ?? 0) <=> ($a['cancelled_at'] ?? 0));
+
+        return $active;
+    }
+
+    /**
+     * Determine whether any run is currently cancelled.
+     */
+    public function anyRunCancelled(): bool
+    {
+        return (int) $this->connection()->hlen(self::CANCELLED_RUNS) > 0;
+    }
+
+    /**
+     * Record that a job was dropped because its run is cancelled.
+     */
+    public function recordRunDrop(string $group, ?string $id = null): void
+    {
+        $metadata = $this->cancelledRun($group);
+
+        if ($metadata === null) {
+            return;
+        }
+
+        $metadata['dropped'] = (int) ($metadata['dropped'] ?? 0) + 1;
+
+        $this->writeRun($metadata);
+
+        if ($id !== null && preg_match('/\A[A-Za-z0-9-]{1,128}\z/', $id)) {
+            $this->markCancelled($id, $metadata['cancelled_by'] ?? null);
+        }
+    }
+
+    /**
+     * Write the given run metadata back to Redis.
+     *
+     * @param  array<string, mixed>  $metadata
+     */
+    protected function writeRun(array $metadata): void
+    {
+        $this->connection()->hset(
+            self::CANCELLED_RUNS,
+            (string) $metadata['group'],
+            json_encode($metadata, JSON_THROW_ON_ERROR)
+        );
+    }
+
+    /**
+     * Remove the pending jobs that belong to the given run.
+     *
+     * @return array{purged: int, scanned: int, truncated: bool}
+     */
+    protected function purgeRun(string $group, ?string $operator): array
+    {
+        $limit = max(0, (int) config('horizonxflow.cancellation.purge_limit', 5000));
+
+        if ($limit === 0) {
+            return ['purged' => 0, 'scanned' => 0, 'truncated' => false];
+        }
+
+        $ids = $this->connection()->zrange('pending_jobs', 0, $limit - 1);
+        $ids = is_array($ids) ? $ids : [];
+
+        $purged = 0;
+
+        foreach ($ids as $id) {
+            $id = (string) $id;
+            $job = $this->job($id);
+
+            if ($job === null || ($job['status'] ?? null) !== 'pending') {
+                continue;
+            }
+
+            $payload = json_decode((string) ($job['payload'] ?? ''), true);
+
+            if (! is_array($payload) || $this->runs->groupForPayload($payload) !== $group) {
+                continue;
+            }
+
+            if ($this->removePendingPayload($job)) {
+                $this->markCancelled($id, $operator);
+                $purged++;
+            }
+        }
+
+        return [
+            'purged' => $purged,
+            'scanned' => count($ids),
+            'truncated' => count($ids) >= $limit,
         ];
     }
 

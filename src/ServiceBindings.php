@@ -16,6 +16,7 @@ trait ServiceBindings
         Contracts\IncidentRepository::class => Repositories\RedisIncidentRepository::class,
         Contracts\JobControlRepository::class => Repositories\RedisJobControlRepository::class,
         JobDispatchRegistry::class,
+        JobRunInspector::class,
         Listeners\TrimRecentJobs::class,
         Listeners\TrimFailedJobs::class,
         Listeners\TrimMonitoredJobs::class,
