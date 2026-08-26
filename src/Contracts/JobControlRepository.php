@@ -41,4 +41,47 @@ interface JobControlRepository
      * Acknowledge a cooperative cancellation request.
      */
     public function acknowledgeCancellation(string $id): bool;
+
+    /**
+     * Cancel a whole run, purging its pending jobs and blocking the rest.
+     *
+     * @return array<string, mixed>
+     */
+    public function cancelRun(string $group, ?string $operator = null, ?int $ttl = null): array;
+
+    /**
+     * Lift a run cancellation so its jobs may run again.
+     */
+    public function releaseRun(string $group): bool;
+
+    /**
+     * Determine whether the given run is currently cancelled.
+     */
+    public function runCancelled(string $group): bool;
+
+    /**
+     * Get the metadata for a cancelled run.
+     *
+     * @return array<string, mixed>|null
+     */
+    public function cancelledRun(string $group): ?array;
+
+    /**
+     * Get every run that is currently cancelled.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function cancelledRuns(): array;
+
+    /**
+     * Determine whether any run is currently cancelled.
+     *
+     * Workers call this before doing any payload work, so it must stay cheap.
+     */
+    public function anyRunCancelled(): bool;
+
+    /**
+     * Record that a job was dropped because its run is cancelled.
+     */
+    public function recordRunDrop(string $group, ?string $id = null): void;
 }

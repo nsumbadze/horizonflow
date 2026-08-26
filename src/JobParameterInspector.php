@@ -97,6 +97,152 @@ class JobParameterInspector
     }
 
     /**
+     * Describe the constructor parameters that must be supplied to dispatch the given job class.
+     *
+     * @param  string  $class
+     * @return array{class: string, dispatchable: bool, reason: string|null, parameters: array<int, array<string, mixed>>}
+     */
+    public function inspectClass($class)
+    {
+        if ($reason = $this->unsupportedReason($class)) {
+            return $this->undispatchable($class, $reason);
+        }
+
+        $constructor = (new ReflectionClass($class))->getConstructor();
+
+        $parameters = is_null($constructor) ? [] : array_map(
+            fn ($parameter) => $this->describeConstructorParameter($parameter),
+            $constructor->getParameters()
+        );
+
+        $blocked = collect($parameters)->first(fn ($parameter) => $parameter['required'] && ! $parameter['editable']);
+
+        if (! is_null($blocked)) {
+            return $this->undispatchable(
+                $class,
+                "The [{$blocked['name']}] parameter is required but may not be supplied. {$blocked['reason']}",
+                $parameters
+            );
+        }
+
+        return [
+            'class' => $class,
+            'dispatchable' => true,
+            'reason' => null,
+            'parameters' => $parameters,
+        ];
+    }
+
+    /**
+     * Build a new instance of the given job class from the supplied constructor arguments.
+     *
+     * @param  string  $class
+     * @param  array<string, mixed>  $arguments
+     * @return object
+     *
+     * @throws \Laravel\Horizon\Exceptions\InvalidJobParameterException
+     */
+    public function buildJob($class, array $arguments)
+    {
+        $description = $this->inspectClass($class);
+
+        if (! $description['dispatchable']) {
+            throw new InvalidJobParameterException($description['reason']);
+        }
+
+        $parameters = collect($description['parameters'])->keyBy('name');
+        $resolved = [];
+
+        foreach ($arguments as $name => $value) {
+            $parameter = $parameters->get($name);
+
+            if (is_null($parameter)) {
+                throw new InvalidJobParameterException("The job does not accept a [{$name}] parameter.");
+            }
+
+            if (! $parameter['editable']) {
+                throw new InvalidJobParameterException("The [{$name}] parameter may not be supplied. {$parameter['reason']}");
+            }
+
+            if (is_null($value) && ! $parameter['nullable']) {
+                throw new InvalidJobParameterException("The [{$name}] parameter may not be null.");
+            }
+
+            $resolved[$name] = $this->castValue($name, $value, $parameter);
+        }
+
+        foreach ($description['parameters'] as $parameter) {
+            if ($parameter['required'] && ! array_key_exists($parameter['name'], $resolved)) {
+                throw new InvalidJobParameterException("The [{$parameter['name']}] parameter is required.");
+            }
+        }
+
+        try {
+            return new $class(...$resolved);
+        } catch (Throwable $e) {
+            throw new InvalidJobParameterException('The job could not be constructed: '.$e->getMessage());
+        }
+    }
+
+    /**
+     * Describe a single constructor parameter of a job that has not been built yet.
+     *
+     * @param  \ReflectionParameter  $parameter
+     * @return array<string, mixed>
+     */
+    protected function describeConstructorParameter($parameter)
+    {
+        $type = $this->describeType($parameter);
+
+        $described = [
+            'name' => $parameter->getName(),
+            'type' => $type,
+            'nullable' => ! $parameter->hasType() || $parameter->getType()->allowsNull(),
+            'required' => ! $parameter->isOptional(),
+            'value' => $this->defaultValue($parameter),
+            'default' => $this->defaultValue($parameter),
+            'preview' => null,
+            'editable' => false,
+            'reason' => null,
+        ];
+
+        if ($parameter->isVariadic()) {
+            return array_merge($described, [
+                'required' => false,
+                'preview' => $type,
+                'reason' => 'Variadic parameters may not be supplied from the dashboard.',
+            ]);
+        }
+
+        if (! in_array($type, $this->editableTypes())) {
+            return array_merge($described, [
+                'preview' => $type,
+                'reason' => 'Only scalar and array parameters may be supplied from the dashboard.',
+            ]);
+        }
+
+        return array_merge($described, ['editable' => true]);
+    }
+
+    /**
+     * Build a description for a job class that may not be dispatched.
+     *
+     * @param  string  $class
+     * @param  string  $reason
+     * @param  array<int, array<string, mixed>>  $parameters
+     * @return array{class: string, dispatchable: bool, reason: string, parameters: array<int, array<string, mixed>>}
+     */
+    protected function undispatchable($class, $reason, array $parameters = [])
+    {
+        return [
+            'class' => $class,
+            'dispatchable' => false,
+            'reason' => $reason,
+            'parameters' => $parameters,
+        ];
+    }
+
+    /**
      * Get the command name from the given payload.
      *
      * @param  array<string, mixed>  $payload

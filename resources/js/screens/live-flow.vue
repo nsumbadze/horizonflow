@@ -1,4 +1,5 @@
 <script type="text/ecmascript-6">
+    import DispatchJobModal from './live-flow/DispatchJobModal.vue';
     import FailedJobModal from './live-flow/FailedJobModal.vue';
     import FlowActivity from './live-flow/FlowActivity.vue';
     import FlowGraph from './live-flow/FlowGraph.vue';
@@ -26,7 +27,7 @@
     }
 
     export default {
-        components: { FailedJobModal, FlowActivity, FlowGraph, FlowInsights, FlowInspector, FlowKpis, FlowQueueTable, FlowToolbar, SupervisorControls },
+        components: { DispatchJobModal, FailedJobModal, FlowActivity, FlowGraph, FlowInsights, FlowInspector, FlowKpis, FlowQueueTable, FlowToolbar, SupervisorControls },
 
         mixins: [formatters],
 
@@ -72,6 +73,18 @@
                 controlHistory: [],
                 mockQueueStates: {},
                 mockJobStates: {},
+                dispatchOpen: false,
+                dispatchPreset: null,
+                dispatchCatalog: null,
+                loadingDispatchCatalog: false,
+                dispatchDescription: null,
+                loadingDispatchParameters: false,
+                dispatching: false,
+                dispatchError: null,
+                cancelledRuns: [],
+                releasingRuns: [],
+                selectedJobRun: null,
+                cancellingRun: false,
             };
         },
 
@@ -133,6 +146,8 @@
             document.title = "Horizon - Live Flow";
             this.refreshAll().then(() => { this.ready = true; });
             this.loadSupervisorControls();
+            this.loadDispatchCatalog();
+            this.loadCancelledRuns();
             this.loadMonitoredTags();
             this.loadIncidents();
             this.startPolling();
@@ -182,6 +197,15 @@
 
             isMock()  { return this.flow?.source === 'mock'; },
             queues()  { return this.flow?.queues ?? []; },
+
+            canDispatch() { return this.dispatchCatalog?.enabled === true; },
+
+            dispatchKnownQueues() {
+                return this.queues.map(queue => ({
+                    connection: queue.storage_connection ?? queue.connection,
+                    name: queue.name,
+                }));
+            },
             health()  { return this.flow?.health ?? []; },
 
             workspaceTabs() {
@@ -809,6 +833,8 @@
                     this.controlQueue(confirmation.queue, confirmation.action);
                 } else if (confirmation.kind === 'job') {
                     this.controlJob(confirmation.job);
+                } else if (confirmation.kind === 'run') {
+                    this.cancelRun(confirmation.group);
                 }
             },
 
@@ -989,6 +1015,220 @@
                 );
 
                 return Promise.resolve();
+            },
+
+            /**
+             * Load the job classes an operator may dispatch.
+             */
+            loadDispatchCatalog() {
+                if (this.loadingDispatchCatalog) return Promise.resolve();
+
+                this.loadingDispatchCatalog = true;
+
+                return this.$http.get(Horizon.basePath + '/api/jobs/dispatchable')
+                    .then(response => { this.dispatchCatalog = response.data; })
+                    .catch(() => { this.dispatchCatalog = { enabled: false, jobs: [], connections: [] }; })
+                    .finally(() => { this.loadingDispatchCatalog = false; });
+            },
+
+            /**
+             * Open the dispatch panel, optionally routed to a chosen queue.
+             */
+            openDispatch(queue = null) {
+                this.dispatchPreset = queue
+                    ? { connection: queue.storage_connection ?? queue.connection, queue: queue.name }
+                    : null;
+                this.dispatchDescription = null;
+                this.dispatchError = null;
+                this.dispatchOpen = true;
+
+                if (!this.dispatchCatalog) this.loadDispatchCatalog();
+            },
+
+            closeDispatch() {
+                this.dispatchOpen = false;
+                this.dispatchDescription = null;
+                this.dispatchError = null;
+            },
+
+            /**
+             * Read the constructor parameters of the job class being dispatched.
+             */
+            loadDispatchParameters(jobClass) {
+                this.dispatchDescription = null;
+                this.dispatchError = null;
+                this.loadingDispatchParameters = true;
+
+                return this.$http.get(Horizon.basePath + '/api/jobs/dispatchable/parameters', { params: { class: jobClass } })
+                    .then(response => { this.dispatchDescription = response.data; })
+                    .catch(error => {
+                        this.dispatchDescription = {
+                            class: jobClass,
+                            dispatchable: false,
+                            reason: error?.response?.data?.message || 'The job parameters could not be read.',
+                            parameters: [],
+                        };
+                    })
+                    .finally(() => { this.loadingDispatchParameters = false; });
+            },
+
+            /**
+             * Dispatch the job the operator configured.
+             */
+            dispatchJob(request) {
+                if (this.dispatching) return;
+
+                if (this.isMock) return this.dispatchMockJob(request);
+
+                this.dispatching = true;
+                this.dispatchError = null;
+
+                return this.$http.post(Horizon.basePath + '/api/jobs/dispatch', {
+                    class: request.class,
+                    parameters: request.parameters,
+                    connection: request.connection,
+                    queue: request.queue,
+                    delay: request.delay,
+                })
+                    .then(response => {
+                        const target = `${response.data.connection ?? request.resolved.connection} · ${response.data.queue ?? request.resolved.queue}`;
+                        const delay = Number(response.data.delay ?? 0);
+
+                        this.closeDispatch();
+                        this.showControlNotice('success', `${request.name} was dispatched to ${target}.`);
+                        this.recordControlEvent(
+                            `dispatch-${request.class}`,
+                            `${request.name} dispatched`,
+                            delay > 0
+                                ? `Queued on ${target}, becoming available in ${this.formatDuration(delay)}.`
+                                : `Queued on ${target}.`
+                        );
+                        setTimeout(() => this.refreshFlowPeriodically(), 1200);
+                    })
+                    .catch(error => {
+                        this.dispatchError = error?.response?.data?.message || `${request.name} could not be dispatched.`;
+                    })
+                    .finally(() => { this.dispatching = false; });
+            },
+
+            /**
+             * Simulate a dispatch while the workspace is showing demo data.
+             */
+            dispatchMockJob(request) {
+                const target = `${request.resolved.connection} · ${request.resolved.queue}`;
+
+                this.closeDispatch();
+                this.showControlNotice('success', `${request.name} was dispatched to ${target} in this demo only.`);
+                this.recordControlEvent(
+                    `mock-dispatch-${request.class}`,
+                    `${request.name} dispatched`,
+                    'Mock visualization only — no job reached Redis.'
+                );
+
+                return Promise.resolve();
+            },
+
+            /**
+             * Load the runs that are currently cancelled.
+             */
+            loadCancelledRuns() {
+                if (this.isMock) return Promise.resolve();
+
+                return this.$http.get(Horizon.basePath + '/api/flow/runs')
+                    .then(response => { this.cancelledRuns = response.data?.runs ?? []; })
+                    .catch(() => { this.cancelledRuns = []; });
+            },
+
+            /**
+             * Read the run the opened job belongs to.
+             */
+            loadJobRun(job) {
+                this.selectedJobRun = null;
+
+                if (!job?.id || this.isMock) return Promise.resolve();
+
+                return this.$http.get(`${Horizon.basePath}/api/jobs/${encodeURIComponent(job.id)}/run`)
+                    .then(response => {
+                        if (this.selectedJob?.id === job.id) this.selectedJobRun = response.data;
+                    })
+                    .catch(() => { this.selectedJobRun = null; });
+            },
+
+            /**
+             * Ask before stopping every job in a run.
+             */
+            requestRunCancellation(group) {
+                if (!group || this.cancellingRun) return;
+
+                this.controlConfirmation = {
+                    kind: 'run',
+                    group,
+                    title: `Cancel the whole ${group} run?`,
+                    text: 'Pending jobs in this run are removed now. Jobs already queued are dropped as workers reach them, which is what stops a chained run from re-seeding itself. A job already running stops at its next cancellation checkpoint. The block lifts on its own when it expires.',
+                    confirmLabel: 'Cancel run',
+                    dismissLabel: 'Keep it running',
+                    tone: 'danger',
+                };
+            },
+
+            /**
+             * Cancel every job belonging to the given run.
+             */
+            cancelRun(group) {
+                if (!group || this.cancellingRun) return;
+
+                this.cancellingRun = true;
+
+                return this.$http.post(`${Horizon.basePath}/api/flow/runs/cancel`, { group })
+                    .then(response => {
+                        const purged = Number(response.data?.purged_now ?? 0);
+
+                        this.showControlNotice('success', `${group} was cancelled; ${this.formatNumber(purged)} pending job${purged === 1 ? '' : 's'} removed.`);
+                        this.recordControlEvent(
+                            `run-${group}-cancel`,
+                            `${group} cancelled`,
+                            'Queued jobs in this run are dropped as workers reach them; a running job stops at its next checkpoint.'
+                        );
+
+                        if (response.data?.truncated) {
+                            this.showControlNotice('error', `${group} was cancelled, but the pending scan hit its limit — raise cancellation.purge_limit to purge the rest.`);
+                        }
+
+                        this.loadCancelledRuns();
+                        if (this.selectedJob) this.loadJobRun(this.selectedJob);
+                        setTimeout(() => this.refreshFlowPeriodically(), 1200);
+                    })
+                    .catch(error => {
+                        const message = error?.response?.data?.message;
+                        this.showControlNotice('error', message || `${group} could not be cancelled.`);
+                    })
+                    .finally(() => { this.cancellingRun = false; });
+            },
+
+            /**
+             * Lift a run cancellation so its jobs may run again.
+             */
+            releaseRun(run) {
+                const group = run?.group;
+
+                if (!group || this.releasingRuns.includes(group)) return;
+
+                this.releasingRuns = [...this.releasingRuns, group];
+
+                return this.$http.post(`${Horizon.basePath}/api/flow/runs/release`, { group })
+                    .then(() => {
+                        this.cancelledRuns = this.cancelledRuns.filter(item => item.group !== group);
+                        this.showControlNotice('success', `${group} was lifted; its jobs may run again.`);
+                        this.recordControlEvent(`run-${group}-release`, `${group} lifted`, 'Jobs carrying this run key are no longer dropped.');
+                        if (this.selectedJob) this.loadJobRun(this.selectedJob);
+                    })
+                    .catch(error => {
+                        const message = error?.response?.data?.message;
+                        this.showControlNotice('error', message || `${group} could not be lifted.`);
+                    })
+                    .finally(() => {
+                        this.releasingRuns = this.releasingRuns.filter(item => item !== group);
+                    });
             },
 
             requestJobCancellation(job) {
@@ -1299,6 +1539,7 @@
 
                 this.selectedJob = job;
                 this.selectedJobDetails = null;
+                this.loadJobRun(job);
 
                 if (job.inspectable === false || !job.id) return;
 
@@ -1311,6 +1552,7 @@
             closeJobModal() {
                 this.selectedJob = null;
                 this.selectedJobDetails = null;
+                this.selectedJobRun = null;
                 this.loadingJobDetails = false;
             },
 
@@ -1514,8 +1756,10 @@
             :live="live"
             v-model:filterText="filterText"
             v-model:timeRange="timeRange"
+            :can-dispatch="canDispatch"
             @refresh="refreshFlowPeriodically"
             @toggle-live="toggleLive"
+            @dispatch-job="openDispatch()"
         />
 
         <div class="lf-toast" :class="'lf-toast-' + controlNotice.type" role="status" aria-live="polite" v-if="controlNotice">
@@ -1632,6 +1876,9 @@
                             :retrying-ids="retryingJobs"
                             :controlling-job-ids="controllingJobs"
                             :queue-controlling="selectedInspector.queue ? isControllingQueue(selectedInspector.queue) : false"
+                            :can-dispatch="canDispatch"
+                            :cancelled-runs="cancelledRuns"
+                            :releasing-runs="releasingRuns"
                             :nodes="graphNodes"
                             :selected-id="selectedId"
                             :mode="flowMode"
@@ -1639,6 +1886,8 @@
                             @cancel-job="requestJobCancellation"
                             @pause-queue="requestQueuePause"
                             @resume-queue="queue => controlQueue(queue, 'resume')"
+                            @dispatch-to-queue="openDispatch"
+                            @release-run="releaseRun"
                             @open-failed="openJobModal"
                             @open-activity="selectWorkspaceTab('activity')"
                             @open-graph="flowMode = 'graph'"
@@ -1680,7 +1929,7 @@
                     <div class="lf-confirm-text" id="lf-confirm-text">{{ controlConfirmation.text }}</div>
                 </div>
                 <div class="lf-confirm-actions">
-                    <button class="lf-control-btn" type="button" @click="cancelControlConfirmation">Cancel</button>
+                    <button class="lf-control-btn" type="button" @click="cancelControlConfirmation">{{ controlConfirmation.dismissLabel ?? 'Cancel' }}</button>
                     <button
                         class="lf-control-btn"
                         :class="controlConfirmation.tone === 'danger' ? 'lf-control-btn-danger' : 'lf-control-btn-warning'"
@@ -1691,13 +1940,32 @@
             </div>
         </div>
 
+        <DispatchJobModal
+            :open="dispatchOpen"
+            :catalog="dispatchCatalog"
+            :loading="loadingDispatchCatalog"
+            :description="dispatchDescription"
+            :loading-parameters="loadingDispatchParameters"
+            :dispatching="dispatching"
+            :error="dispatchError"
+            :mock="isMock"
+            :known-queues="dispatchKnownQueues"
+            :preset="dispatchPreset"
+            @close="closeDispatch"
+            @select-class="loadDispatchParameters"
+            @dispatch="dispatchJob"
+        />
+
         <FailedJobModal
             :job="selectedJob"
             :details="selectedJobDetails"
             :loading="loadingJobDetails"
             :retrying="selectedJob ? isRetryingJob(selectedJob) : false"
+            :run="selectedJobRun"
+            :cancelling-run="cancellingRun"
             @close="closeJobModal"
             @retry="retryJob"
+            @cancel-run="requestRunCancellation"
         />
     </div>
 </template>
@@ -2885,7 +3153,8 @@
     }
     .lf-control-btn:hover:not(:disabled) { background: var(--lf-hover); }
     .lf-control-btn-warning:hover:not(:disabled) { color: var(--lf-amber); border-color: var(--lf-amber); }
-    .lf-control-btn-danger:hover:not(:disabled) { color: var(--lf-red); border-color: var(--lf-red); }
+    .lf-control-btn-danger { color: var(--lf-red); border-color: rgba(220,38,38,.42); }
+    .lf-control-btn-danger:hover:not(:disabled) { color: var(--lf-red); border-color: var(--lf-red); background: rgba(220,38,38,.07); }
     .lf-control-btn-primary { color: var(--lf-violet); border-color: rgba(119,70,236,.35); }
     .lf-control-btn-primary:hover:not(:disabled) { border-color: var(--lf-violet); }
     .lf-control-btn:focus-visible { outline: 2px solid var(--lf-violet); outline-offset: 2px; }
@@ -3217,6 +3486,306 @@
     }
     .lf-dark .lf-modal-error { background: rgba(220,38,38,.07); }
 
+    /* ── DISPATCH JOB ────────────────────────────────────────────────────── */
+    .lf-dispatch {
+        display: grid;
+        grid-template-rows: auto minmax(0, 1fr) auto auto;
+        width: min(940px, 100%);
+        max-height: min(760px, calc(100vh - 48px));
+        overflow: hidden;
+        border: 1px solid var(--lf-border);
+        border-radius: 8px;
+        background: var(--lf-panel);
+        box-shadow: 0 24px 80px rgba(15, 23, 42, .30);
+        color: var(--lf-text);
+    }
+    .lf-dispatch-kicker { color: var(--lf-violet); }
+    .lf-dispatch-body {
+        display: grid;
+        grid-template-columns: 244px minmax(0, 1fr);
+        min-height: 0;
+    }
+
+    /* picker */
+    .lf-dispatch-picker {
+        display: grid;
+        grid-template-rows: auto minmax(0, 1fr);
+        min-height: 0;
+        border-right: 1px solid var(--lf-border);
+        background: var(--lf-hover);
+    }
+    .lf-dispatch-filter {
+        width: 100%;
+        padding: 9px 12px;
+        border: 0;
+        border-bottom: 1px solid var(--lf-border);
+        background: transparent;
+        color: var(--lf-text);
+        font-size: 11px;
+    }
+    .lf-dispatch-filter::placeholder { color: var(--lf-dim); }
+    .lf-dispatch-filter:focus { outline: none; box-shadow: inset 0 -1px 0 var(--lf-violet); }
+    .lf-dispatch-list { overflow-y: auto; padding-bottom: 6px; }
+    .lf-dispatch-list-note {
+        padding: 14px 12px;
+        color: var(--lf-muted);
+        font-size: 10.5px;
+        line-height: 1.6;
+    }
+    .lf-dispatch-list-note code {
+        color: var(--lf-violet);
+        font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+    }
+    .lf-dispatch-group {
+        position: sticky;
+        top: 0;
+        z-index: 1;
+        padding: 9px 12px 4px;
+        background: var(--lf-hover);
+        color: var(--lf-dim);
+        font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+        font-size: 9px;
+        letter-spacing: .06em;
+        overflow-wrap: anywhere;
+    }
+    .lf-dispatch-option {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 8px;
+        width: 100%;
+        padding: 5px 12px 5px 11px;
+        border: 0;
+        border-left: 2px solid transparent;
+        background: transparent;
+        color: var(--lf-text);
+        font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+        font-size: 11px;
+        text-align: left;
+    }
+    .lf-dispatch-option-highlighted { background: var(--lf-panel); }
+    .lf-dispatch-option-active {
+        border-left-color: var(--lf-violet);
+        background: var(--lf-panel);
+        color: var(--lf-violet);
+    }
+    .lf-dispatch-option:focus-visible { outline: 2px solid var(--lf-violet); outline-offset: -2px; }
+    .lf-dispatch-option-name { overflow-wrap: anywhere; }
+    .lf-dispatch-option-queue { flex-shrink: 0; color: var(--lf-dim); font-size: 9.5px; }
+
+    /* job */
+    .lf-dispatch-detail { min-height: 0; overflow-y: auto; padding: 14px 16px 16px; }
+    .lf-dispatch-empty { padding: 32px 4px; max-width: 340px; }
+    .lf-dispatch-empty-title { color: var(--lf-text); font-size: 12px; font-weight: 700; }
+    .lf-dispatch-empty-text { margin-top: 6px; color: var(--lf-muted); font-size: 11px; line-height: 1.6; }
+    .lf-dispatch-class {
+        color: var(--lf-muted);
+        font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+        font-size: 11px;
+        overflow-wrap: anywhere;
+    }
+    .lf-dispatch-note { margin-top: 12px; color: var(--lf-muted); font-size: 11px; }
+    .lf-dispatch-blocked {
+        margin-top: 12px;
+        padding: 10px 12px;
+        border: 1px solid rgba(217,119,6,.35);
+        border-radius: 6px;
+        background: rgba(217,119,6,.06);
+        color: var(--lf-amber);
+        font-size: 11px;
+        line-height: 1.6;
+    }
+    .lf-dispatch-fields { margin-top: 14px; display: grid; gap: 12px; }
+    .lf-dispatch-field-locked { opacity: .72; }
+    .lf-dispatch-label { display: flex; align-items: baseline; gap: 7px; margin-bottom: 4px; }
+    .lf-dispatch-param {
+        color: var(--lf-text);
+        font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+        font-size: 11.5px;
+        font-weight: 600;
+    }
+    .lf-dispatch-type {
+        color: var(--lf-dim);
+        font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+        font-size: 10px;
+    }
+    .lf-dispatch-required {
+        color: var(--lf-violet);
+        font-size: 8.5px;
+        font-weight: 800;
+        letter-spacing: .1em;
+        text-transform: uppercase;
+    }
+    .lf-dispatch-control {
+        width: 100%;
+        padding: 5px 8px;
+        border: 1px solid var(--lf-border);
+        border-radius: 5px;
+        background: var(--lf-panel);
+        color: var(--lf-text);
+        font-size: 11px;
+        font-family: inherit;
+    }
+    .lf-dispatch-control-mono { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; }
+    .lf-dispatch-control:focus { outline: none; border-color: var(--lf-violet); }
+    .lf-dispatch-control:focus-visible { outline: 2px solid var(--lf-violet); outline-offset: 1px; }
+    .lf-dispatch-control:disabled { opacity: .5; }
+    .lf-dispatch-control::placeholder { color: var(--lf-dim); }
+    textarea.lf-dispatch-control { resize: vertical; line-height: 1.55; }
+    .lf-dispatch-readonly {
+        padding: 5px 8px;
+        border: 1px dashed var(--lf-border);
+        border-radius: 5px;
+        color: var(--lf-dim);
+        font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+        font-size: 11px;
+    }
+    .lf-dispatch-hint {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 10px;
+        margin-top: 4px;
+        color: var(--lf-dim);
+        font-size: 10px;
+        line-height: 1.5;
+    }
+    .lf-dispatch-null { display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; margin: 0; cursor: pointer; }
+
+    /* route */
+    .lf-dispatch-route {
+        display: flex;
+        align-items: flex-end;
+        gap: 10px;
+        padding: 11px 16px;
+        border-top: 1px solid var(--lf-border);
+        border-bottom: 1px solid var(--lf-border);
+        background: var(--lf-hover);
+    }
+    .lf-dispatch-route[aria-disabled="true"] { opacity: .55; }
+    .lf-dispatch-route-head {
+        flex-shrink: 0;
+        padding-bottom: 6px;
+        color: var(--lf-dim);
+        font-size: 8.5px;
+        font-weight: 800;
+        letter-spacing: .12em;
+        text-transform: uppercase;
+    }
+    .lf-dispatch-route-leg { flex: 1 1 0; min-width: 0; }
+    .lf-dispatch-route-arrow { flex-shrink: 0; padding-bottom: 3px; color: var(--lf-violet); font-size: 17px; font-weight: 600; opacity: .8; }
+    .lf-dispatch-leg-label {
+        display: block;
+        margin-bottom: 3px;
+        color: var(--lf-muted);
+        font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+        font-size: 9.5px;
+    }
+    .lf-dispatch-delay { display: grid; grid-template-columns: minmax(0, 1fr) 62px; gap: 5px; }
+
+    /* foot */
+    .lf-dispatch-foot {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 11px 16px;
+    }
+    .lf-dispatch-status { flex: 1 1 auto; min-width: 0; font-size: 10.5px; line-height: 1.5; }
+    .lf-dispatch-summary { color: var(--lf-muted); }
+    .lf-dispatch-summary b { color: var(--lf-text); font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-weight: 600; }
+    .lf-dispatch-demo { color: var(--lf-amber); }
+    .lf-dispatch-error { color: var(--lf-red); }
+
+    /* ── RUN CANCELLATION ────────────────────────────────────────────────── */
+    /* The constructive/destructive pair: violet puts work on a queue,
+       red takes it off. Nothing new is introduced for either. */
+    .lf-run {
+        margin: 0 16px 12px;
+        padding: 11px 13px;
+        border: 1px solid var(--lf-border);
+        border-left: 2px solid var(--lf-red);
+        border-radius: 6px;
+        background: var(--lf-hover);
+    }
+    .lf-run-head { display: flex; align-items: baseline; gap: 8px; }
+    .lf-run-kicker {
+        color: var(--lf-red);
+        font-size: 8.5px;
+        font-weight: 800;
+        letter-spacing: .12em;
+        text-transform: uppercase;
+    }
+    .lf-run-key {
+        color: var(--lf-text);
+        font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+        font-size: 11.5px;
+        font-weight: 600;
+        overflow-wrap: anywhere;
+    }
+    .lf-run-text {
+        margin: 6px 0 0;
+        color: var(--lf-muted);
+        font-size: 10.5px;
+        line-height: 1.6;
+    }
+    .lf-run + .lf-modal-actions { padding-top: 0; }
+    .lf-run .lf-mini-btn { margin-top: 9px; }
+
+    /* the ledger */
+    .lf-runs {
+        margin-bottom: 12px;
+        padding: 10px 12px 4px;
+        border: 1px solid var(--lf-border);
+        border-left: 2px solid var(--lf-red);
+        border-radius: 6px;
+        background: var(--lf-hover);
+    }
+    .lf-runs-head { display: flex; align-items: baseline; gap: 7px; margin-bottom: 7px; }
+    .lf-runs-title {
+        color: var(--lf-red);
+        font-size: 8.5px;
+        font-weight: 800;
+        letter-spacing: .12em;
+        text-transform: uppercase;
+    }
+    .lf-runs-scope { color: var(--lf-dim); font-size: 9.5px; }
+    .lf-run-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 4px 10px;
+        padding: 7px 0;
+        border-top: 1px solid var(--lf-border);
+    }
+    .lf-run-row:first-of-type { border-top: 0; }
+    .lf-run-row-key {
+        align-self: center;
+        color: var(--lf-text);
+        font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+        font-size: 11px;
+        overflow-wrap: anywhere;
+    }
+    .lf-run-row .lf-mini-btn { align-self: center; grid-row: 1 / 3; grid-column: 2; }
+    .lf-run-figures { grid-column: 1; display: flex; flex-wrap: wrap; gap: 12px; }
+    .lf-run-figure { display: flex; align-items: baseline; gap: 4px; }
+    .lf-run-figure b {
+        color: var(--lf-text);
+        font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+        font-size: 11px;
+        font-weight: 600;
+    }
+    .lf-run-figure span { color: var(--lf-dim); font-size: 9px; letter-spacing: .04em; }
+    .lf-run-figure-clock b { color: var(--lf-amber); }
+
+    /* dispatch is the constructive pole, so its commit reads as one */
+    .lf-dispatch-go {
+        border-color: var(--lf-violet);
+        background: var(--lf-violet);
+        color: #fff;
+    }
+    .lf-dispatch-go:hover:not(:disabled) { background: var(--lf-violet); border-color: var(--lf-violet); filter: brightness(1.08); }
+    .lf-dispatch-go:disabled { opacity: .42; }
+    .lf-dark .lf-dispatch-go { color: #10121a; }
+
     /* ── MOBILE ──────────────────────────────────────────────────────────── */
     @media (max-width: 680px) {
         .lf-pane-head { flex-wrap: wrap; row-gap: 5px; }
@@ -3227,6 +3796,16 @@
         .lf-input { width: 120px; }
         .lf-modal { border-radius: 6px; }
         .lf-modal-error { font-size: 10.5px; }
+        .lf-dispatch { border-radius: 6px; }
+        .lf-dispatch-body { grid-template-columns: minmax(0, 1fr); }
+        .lf-dispatch-picker { border-right: 0; border-bottom: 1px solid var(--lf-border); }
+        .lf-dispatch-list { max-height: 168px; }
+        .lf-dispatch-route { flex-wrap: wrap; row-gap: 8px; }
+        .lf-dispatch-route-arrow { display: none; }
+        .lf-dispatch-route-leg { flex-basis: 100%; }
+        .lf-dispatch-foot { flex-wrap: wrap; row-gap: 8px; }
+        .lf-run-row { grid-template-columns: minmax(0, 1fr); }
+        .lf-run-row .lf-mini-btn { grid-row: auto; grid-column: 1; justify-self: start; margin-top: 4px; }
         .lf-tabs { padding-left: 0; }
         .lf-tab { padding: 0 9px; }
         .lf-tab-context { display: none; }

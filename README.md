@@ -62,7 +62,7 @@ Under a row of queue KPIs, the workspace is organised into four areas:
 - **Insights** — an incident timeline (long waits, job failures, supervisor deployments), monitored tags, and recent batches.
 - **Horizon controls** — pause and continue the master supervisors or an individual supervisor.
 
-Selecting a Redis queue in the Inspector also exposes queue pause/resume controls and safe cancellation actions for its pending or running jobs.
+Selecting a Redis queue in the Inspector also exposes queue pause/resume controls and safe cancellation actions for its pending or running jobs. The toolbar and the Inspector can also dispatch a job onto a queue; see [Dispatching Jobs](#dispatching-jobs).
 
 The active workspace, graph/table mode, time window, queue filter, and selected node are reflected in the query string, so operational views can be shared directly.
 
@@ -82,6 +82,15 @@ Live-flow behaviour is configured via `config/horizonxflow.php`:
 | `flow.database.connections`             | `[]`         | Explicit list of connections for the database driver. Empty means auto-discover from `queue.connections`. |
 | `flow.database.discover_connections`    | `false`      | When `true` the database driver also walks `database.connections` (driver: mysql/pgsql/sqlite/sqlsrv) to find candidate `jobs` tables. |
 | `flow.database.failed_table`            | `failed_jobs`| Table that holds failed-jobs entries. |
+| `dispatch.enabled`                      | `true`       | Whether jobs may be dispatched from the dashboard at all. |
+| `dispatch.discover`                     | `true`       | Whether `dispatch.paths` are walked for job classes. |
+| `dispatch.paths`                        | `[]`         | Directories searched for job classes. Empty means `app/Jobs`. |
+| `dispatch.allowed`                      | `[]`         | Class names or `Str::is` patterns an operator may dispatch. Empty means every discovered job. |
+| `dispatch.denied`                       | `[]`         | Class names or patterns that may never be dispatched. Takes precedence over `dispatch.allowed`. |
+| `dispatch.max_delay`                    | `86400`      | Largest delay, in seconds, an operator may ask for. |
+| `cancellation.run_ttl`                  | `3600`       | Seconds a cancelled run keeps blocking its jobs before lifting on its own. |
+| `cancellation.purge_limit`              | `5000`       | Most pending jobs walked when purging a cancelled run. |
+| `cancellation.on_lookup_failure`        | `defer`      | What a worker does when it cannot read whether a job's run was cancelled: `defer` holds it back, `run` lets it through. |
 
 ### Routes
 
@@ -97,11 +106,26 @@ Live-flow behaviour is configured via `config/horizonxflow.php`:
 | `POST /horizon/api/flow/queues/pause`  | Pause one Redis queue while retaining pending and newly dispatched jobs. |
 | `POST /horizon/api/flow/queues/resume` | Resume processing one paused Redis queue. |
 | `POST /horizon/api/jobs/{id}/cancel`   | Cancel a pending job or request cooperative cancellation of a running job. |
+| `GET /horizon/api/jobs/dispatchable`   | The job classes an operator may dispatch, plus the configured queue connections. |
+| `GET /horizon/api/jobs/dispatchable/parameters` | The constructor parameters of one dispatchable job class (`?class=App\Jobs\Example`). |
+| `POST /horizon/api/jobs/dispatch`      | Dispatch a job with the given constructor arguments and queue options. |
+| `GET /horizon/api/flow/runs`           | The runs that are currently cancelled, with their counters and expiry. |
+| `POST /horizon/api/flow/runs/cancel`   | Cancel a whole run, by `group` or by a `job` that belongs to it. |
+| `POST /horizon/api/flow/runs/release`  | Lift a run cancellation. |
+| `GET /horizon/api/jobs/{id}/run`       | The run a job belongs to, and whether that run is cancelled. |
 
 ### Abilities
 
 - `viewHorizon` — required to enter the dashboard (existing Horizon gate).
-- `controlHorizon` — required for mutation endpoints (`POST /jobs/retry/{id}`, `POST /jobs/{id}/cancel`, `POST /flow/queues/{action}`, `POST /masters/{action}`, `POST /supervisors/{name}/{action}`) and for `GET /jobs/failed/{id}/parameters`, which backs retrying with edited parameters. When the gate is undefined, mutations are only allowed in `local` and `testing` environments; everywhere else, define the gate in `HorizonApplicationServiceProvider::gate()` to enable destructive actions for a trusted subset of users.
+- `controlHorizon` — required for mutation endpoints (`POST /jobs/retry/{id}`, `POST /jobs/{id}/cancel`, `POST /jobs/dispatch`, `POST /flow/queues/{action}`, `POST /flow/runs/{action}`, `POST /masters/{action}`, `POST /supervisors/{name}/{action}`) and for the reads that back them: `GET /jobs/failed/{id}/parameters`, `GET /jobs/dispatchable`, `GET /jobs/dispatchable/parameters`, `GET /jobs/{id}/run`, and `GET /flow/runs`. When the gate is undefined, mutations are only allowed in `local` and `testing` environments; everywhere else, define the gate in `HorizonApplicationServiceProvider::gate()` to enable destructive actions for a trusted subset of users.
+
+**Dispatching a job and cancelling a run do not accept the environment fallback.** They run or stop application code, so `controlHorizon` must be defined and must pass, whatever `APP_ENV` says — an application deployed with `APP_ENV=local` would otherwise hand both to anyone who can reach the dashboard. With the gate undefined those routes answer `403` and name the gate in the response; the dashboard hides the controls rather than offering something that cannot work. Set `dispatch.enabled` to `false` to remove dispatch entirely.
+
+| Ability | Covers |
+| ------- | ------ |
+| `viewHorizon` | Entering the dashboard. |
+| `controlHorizon` *(environment fallback applies)* | Retry, cancel one job, pause/resume queues and supervisors. |
+| `controlHorizon` *(required, no fallback)* | `POST /jobs/dispatch`, `POST /flow/runs/{action}`, and the reads that back them. |
 
 ### Environment Variables
 
@@ -112,6 +136,12 @@ Live-flow behaviour is configured via `config/horizonxflow.php`:
 - `HORIZONXFLOW_FLOW_PAYLOAD_TTL` — overrides `flow.cache.payload_ttl`.
 - `HORIZONXFLOW_DISCOVER_DATABASE_QUEUES` — overrides `flow.database.discover_connections`.
 - `QUEUE_FAILED_TABLE` — overrides `flow.database.failed_table`.
+- `HORIZONXFLOW_DISPATCH_ENABLED` — overrides `dispatch.enabled`.
+- `HORIZONXFLOW_DISPATCH_DISCOVER` — overrides `dispatch.discover`.
+- `HORIZONXFLOW_DISPATCH_MAX_DELAY` — overrides `dispatch.max_delay`.
+- `HORIZONXFLOW_CANCELLED_RUN_TTL` — overrides `cancellation.run_ttl`.
+- `HORIZONXFLOW_CANCELLED_RUN_PURGE_LIMIT` — overrides `cancellation.purge_limit`.
+- `HORIZONXFLOW_CANCELLED_RUN_ON_LOOKUP_FAILURE` — overrides `cancellation.on_lookup_failure`.
 
 ## Job and Queue Controls
 
@@ -152,6 +182,66 @@ class SendCampaignMail implements ShouldQueue
 ```
 
 Place checkpoints before idempotent units of work. A cancellation requested while a single non-interruptible call is executing—for example, an SMTP hand-off—takes effect only after that call returns and the next checkpoint is reached.
+
+### Cancelling a whole run
+
+Cancelling one job stops one job. That is rarely what you want when a job chains its own successor or fans work out: kill page 6 and the walk carries on from page 7. HorizonFlow can stop the whole run instead.
+
+A run is whatever a job says it is. Jobs that belong together return the same key:
+
+```php
+use Laravel\Horizon\Concerns\InteractsWithCancellation;
+
+final class FetchCitrusPageJob implements ShouldQueue
+{
+    use InteractsWithCancellation;
+
+    public function __construct(
+        public readonly int $companyId,
+        public readonly int $page = 1,
+    ) {
+    }
+
+    public function cancellationGroup(): ?string
+    {
+        return "citrus-sync:{$this->companyId}";
+    }
+
+    public function handle(): void
+    {
+        foreach ($this->pageOfProducts() as $product) {
+            if ($this->cancelIfRequested()) {
+                return;
+            }
+
+            $this->process($product);
+        }
+
+        self::dispatch($this->companyId, $this->page + 1);
+    }
+}
+```
+
+Give the jobs it fans out to the same key and one cancellation covers all of them.
+
+Open any job in Live Flow and it now shows the run it belongs to, with **cancel run** next to the usual per-job actions. Cancelling has three effects, and they do not all land at once:
+
+- **Pending jobs are purged now.** Matching payloads are removed from the ready list and delayed set and retained as cancelled, exactly as a single cancellation would.
+- **Queued jobs are dropped at pickup.** A worker refuses a job whose run is cancelled before `handle()` runs. This is what ends a self-chained walk: the job in flight may still queue its successor, but that successor never starts.
+- **A running job stops at its next checkpoint.** Only if it calls `cancelIfRequested()`. Without checkpoints, the job in flight finishes its work; the run still stops at the next link.
+
+A cancellation is a standing block, not a one-off sweep, so a run cannot re-seed itself while it stands. It lifts on its own after `cancellation.run_ttl`, and the Inspector lists every active cancellation with how many jobs were purged, how many have been dropped since, and how long is left — with **lift** to end it early.
+
+Groups may contain letters, numbers, dashes, underscores, dots, and colons, and are rejected otherwise so a group can never address unrelated Redis keys. Purging walks at most `cancellation.purge_limit` pending jobs; when it hits that limit the response says so rather than reporting a clean sweep.
+
+Reading a job's run means unserializing its command, so workers do no payload work unless some run is actually cancelled — and even then, only payloads whose job class declares `cancellationGroup()` are unserialized at all.
+
+The two registry lookups a worker makes fail in deliberately different directions:
+
+- **Is any run cancelled?** Every job in the application passes this one, so an unreadable registry lets jobs run as they would without the feature. Failing closed here would turn a Horizon metadata blip into a queue-wide outage.
+- **Is *this* run cancelled?** Only reached for a job that belongs to a run while some run is already cancelled, having just read the registry successfully. Failing there is a genuine anomaly, so the job is held back for a later attempt instead of run. An operator asked for this work to stop, and a deferred job is recoverable in a way that work already performed is not. Set `cancellation.on_lookup_failure` to `run` to prefer availability instead.
+
+Neither failure is swallowed — both are reported through the application's exception handler, so a persistent blind spot is visible rather than silent.
 
 Queue and job controls currently support Redis queues. Database queues remain observable in Live Flow but do not expose these mutation controls.
 
@@ -195,6 +285,51 @@ To try it locally, `composer serve:demo` seeds three failed demo jobs. You can a
 php artisan horizonxflow:demo-jobs
 php artisan horizonxflow:demo-jobs --clear
 ```
+
+## Dispatching Jobs
+
+Putting one job on a queue by hand normally means a tinker session or a one-off Artisan command. HorizonFlow can do it from Live Flow instead, with the same reflection that backs [Retry With Parameters](#retry-with-parameters).
+
+Press **Dispatch job** in the Live Flow toolbar, or **dispatch to queue** in the Inspector to arrive with a queue already chosen. Pick a class on the left, fill in its constructor arguments, and set where and when it runs:
+
+- **connection** — any connection in `config/queue.php`. Leaving it alone uses the job's own `$connection`, or the application default.
+- **queue** — free text, with the queues Live Flow has already seen offered as suggestions. Leaving it alone uses the job's own `$queue`, or the connection default.
+- **delay** — in seconds, minutes, or hours, capped by `dispatch.max_delay`.
+
+The footer states the connection, queue, and delay the job will actually land with before you press **Dispatch job**.
+
+### Which jobs appear
+
+Discovery walks `app/Jobs` for classes implementing `ShouldQueue` that can be constructed. Point it somewhere else with `dispatch.paths`, and turn it off entirely with `dispatch.discover`.
+
+The listed set is the whole dispatchable surface. A class that is neither discovered nor named in `dispatch.allowed` is rejected with a `422`, so a request can never reach an arbitrary queueable class inside the framework or a third-party package:
+
+```php
+'dispatch' => [
+    'allowed' => [
+        'App\Jobs\*',
+        'Vendor\Package\Jobs\SyncCatalog',
+    ],
+
+    'denied' => [
+        'App\Jobs\Billing\*',
+    ],
+],
+```
+
+Both lists accept exact class names or `Str::is` patterns, and `dispatch.denied` always wins. An exact entry in `dispatch.allowed` is dispatchable even when discovery never saw it, which is how you expose a job that lives outside `app/Jobs`. Set `dispatch.enabled` to `false` to remove the controls and refuse the endpoints outright.
+
+### What you can pass
+
+Constructor parameters follow the same rules as retrying with edited parameters: `string`, `int`, `float`, `bool`, `array` and `iterable`, plus untyped ones. Arrays are entered as JSON, nullable parameters get a **send as null** toggle, and optional parameters left blank fall back to their declared defaults.
+
+A job that *requires* something HorizonFlow cannot build — an Eloquent model, a date object, any other class — is shown with the parameter that blocks it and cannot be dispatched. Values are cast to the declared type before the job is constructed, and anything that does not fit is rejected with a `422` and the reason, without queueing.
+
+Dispatching is gated by `controlHorizon`, the same ability pausing a queue needs. When Live Flow is showing demo data (`flow.source = mock`), dispatching is simulated in the browser and no job reaches Redis.
+
+To try it locally, `composer serve` points discovery at HorizonFlow's own demo jobs. `AssembleSprocket` and `PingSatellite` cover every editable parameter type, and `FlashBeacon` shows what a job that requires a `DateTimeImmutable` looks like when it cannot be dispatched.
+
+The demo jobs also declare a run, derived from a value they were queued with, so the two features can be exercised together: dispatch `AssembleSprocket` twice with the same `blueprint` — say `nightly.json` — and both land in `demo-assembly:nightly.json`. Open either one and **cancel run** stops both. Run `composer serve` rather than `serve:demo` for this: run cancellation acts on real Redis, and the demo flow source has no Redis behind it.
 
 ## Upstream Horizon
 

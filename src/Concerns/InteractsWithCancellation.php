@@ -7,14 +7,47 @@ use Laravel\Horizon\Contracts\JobControlRepository;
 trait InteractsWithCancellation
 {
     /**
+     * The run this job belongs to, if any.
+     *
+     * Jobs that are part of one logical run — a chained walk, or a fan-out of
+     * related work — should return the same key here so an operator can stop
+     * all of them at once:
+     *
+     * public function cancellationGroup(): ?string
+     * {
+     *     return "citrus-sync:{$this->companyId}";
+     * }
+     */
+    public function cancellationGroup(): ?string
+    {
+        return null;
+    }
+
+    /**
      * Determine whether an operator requested cancellation of this job.
+     *
+     * True when this job was cancelled on its own, or when the run it belongs
+     * to was cancelled.
      */
     public function cancellationRequested(): bool
     {
         $id = $this->horizonJobId();
+        $group = $this->cancellationGroup();
+        $group = is_string($group) && $group !== '' ? $group : null;
 
-        return $id !== null
-            && app(JobControlRepository::class)->cancellationRequested($id);
+        // Nothing to look up, so nothing is resolved. A job running outside a
+        // worker has neither an id nor, usually, a run.
+        if ($id === null && $group === null) {
+            return false;
+        }
+
+        $controls = app(JobControlRepository::class);
+
+        if ($id !== null && $controls->cancellationRequested($id)) {
+            return true;
+        }
+
+        return $group !== null && $controls->runCancelled($group);
     }
 
     /**
@@ -28,13 +61,13 @@ trait InteractsWithCancellation
      */
     public function cancelIfRequested(): bool
     {
-        $id = $this->horizonJobId();
-
-        if ($id === null || ! app(JobControlRepository::class)->cancellationRequested($id)) {
+        if (! $this->cancellationRequested()) {
             return false;
         }
 
-        app(JobControlRepository::class)->acknowledgeCancellation($id);
+        if (($id = $this->horizonJobId()) !== null) {
+            app(JobControlRepository::class)->acknowledgeCancellation($id);
+        }
 
         return true;
     }

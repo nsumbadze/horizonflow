@@ -9,9 +9,10 @@
             live: { type: Boolean, default: true },
             filterText: { type: String, default: '' },
             timeRange: { type: String, default: 'Last 15m' },
+            canDispatch: { type: Boolean, default: false },
         },
 
-        emits: ['update:filterText', 'update:timeRange', 'refresh', 'toggle-live'],
+        emits: ['update:filterText', 'update:timeRange', 'refresh', 'toggle-live', 'dispatch-job'],
 
         computed: {
             filterModel: {
@@ -51,6 +52,14 @@
                 <option>Last 30d</option>
             </optgroup>
         </select>
+        <button class="lf-btn" type="button" v-if="canDispatch" @click="$emit('dispatch-job')">
+            <svg width="11" height="11" viewBox="0 0 12 12" fill="none">
+                <path d="M6 1.5V8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                <path d="M3.5 5.5L6 8l2.5-2.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M1.75 8.75v1.5h8.5v-1.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            Dispatch job
+        </button>
         <button class="lf-btn" type="button" :disabled="refreshing" @click="$emit('refresh')">
             <svg :class="{ 'lf-spin': refreshing }" width="11" height="11" viewBox="0 0 12 12" fill="none">
                 <path d="M10.5 2A5 5 0 1 0 11 6.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>

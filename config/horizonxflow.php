@@ -36,4 +36,54 @@ return [
             'payload_ttl' => (int) env('HORIZONXFLOW_FLOW_PAYLOAD_TTL', 3),
         ],
     ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Job Dispatching
+    |--------------------------------------------------------------------------
+    |
+    | Live Flow can dispatch a queued job from the dashboard. Discovery walks
+    | the configured paths for classes implementing ShouldQueue, while the
+    | allow and deny lists constrain what an operator may actually dispatch.
+    | An empty allow list permits every discovered job.
+    |
+    */
+
+    'dispatch' => [
+        'enabled' => env('HORIZONXFLOW_DISPATCH_ENABLED', true),
+
+        'discover' => env('HORIZONXFLOW_DISPATCH_DISCOVER', true),
+
+        'paths' => [],
+
+        'allowed' => [],
+
+        'denied' => [],
+
+        'max_delay' => (int) env('HORIZONXFLOW_DISPATCH_MAX_DELAY', 86400),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Run Cancellation
+    |--------------------------------------------------------------------------
+    |
+    | A job may declare a cancellation group so that a whole run — a chained
+    | walk, or a fan-out of related jobs — can be stopped at once. Cancelling
+    | a run purges its pending jobs, drops matching jobs as workers pick them
+    | up, and stands until it expires or an operator lifts it.
+    |
+    */
+
+    'cancellation' => [
+        'run_ttl' => (int) env('HORIZONXFLOW_CANCELLED_RUN_TTL', 3600),
+
+        'purge_limit' => (int) env('HORIZONXFLOW_CANCELLED_RUN_PURGE_LIMIT', 5000),
+
+        // What a worker does when it cannot read whether a job's run was
+        // cancelled: 'defer' holds the job back for a later attempt, 'run'
+        // lets it through. Only reached for a job that belongs to a run
+        // while another run is already cancelled.
+        'on_lookup_failure' => env('HORIZONXFLOW_CANCELLED_RUN_ON_LOOKUP_FAILURE', 'defer'),
+    ],
 ];
