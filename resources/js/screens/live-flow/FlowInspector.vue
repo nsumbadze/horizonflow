@@ -1,14 +1,17 @@
 <script type="text/ecmascript-6">
+    import FlowRunCancellations from './FlowRunCancellations.vue';
     import formatters from './formatters';
     import Sparkline from './Sparkline.vue';
 
     export default {
-        components: { Sparkline },
+        components: { FlowRunCancellations, Sparkline },
 
         mixins: [formatters],
 
         props: {
             inspector: { type: Object, required: true },
+            cancelledRuns: { type: Array, default: () => [] },
+            releasingRuns: { type: Array, default: () => [] },
             graphNodeLookup: { type: Object, default: () => ({}) },
             retryingIds: { type: Array, default: () => [] },
             controllingJobIds: { type: Array, default: () => [] },
@@ -19,7 +22,7 @@
             mode: { type: String, default: 'graph' },
         },
 
-        emits: ['retry', 'cancel-job', 'pause-queue', 'resume-queue', 'dispatch-to-queue', 'open-failed', 'open-graph', 'open-activity', 'select'],
+        emits: ['retry', 'cancel-job', 'pause-queue', 'resume-queue', 'dispatch-to-queue', 'release-run', 'open-failed', 'open-graph', 'open-activity', 'select'],
 
         data() {
             return {
@@ -239,6 +242,12 @@
                     </template>
                 </div>
             </div>
+
+            <FlowRunCancellations
+                :runs="cancelledRuns"
+                :releasing="releasingRuns"
+                @release="run => $emit('release-run', run)"
+            />
 
             <div class="lf-action" :class="'lf-action-' + inspector.action.type">
                 <div class="lf-action-title">{{ inspector.action.title }}</div>

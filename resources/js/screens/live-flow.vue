@@ -81,6 +81,10 @@
                 loadingDispatchParameters: false,
                 dispatching: false,
                 dispatchError: null,
+                cancelledRuns: [],
+                releasingRuns: [],
+                selectedJobRun: null,
+                cancellingRun: false,
             };
         },
 
@@ -143,6 +147,7 @@
             this.refreshAll().then(() => { this.ready = true; });
             this.loadSupervisorControls();
             this.loadDispatchCatalog();
+            this.loadCancelledRuns();
             this.loadMonitoredTags();
             this.loadIncidents();
             this.startPolling();
@@ -828,6 +833,8 @@
                     this.controlQueue(confirmation.queue, confirmation.action);
                 } else if (confirmation.kind === 'job') {
                     this.controlJob(confirmation.job);
+                } else if (confirmation.kind === 'run') {
+                    this.cancelRun(confirmation.group);
                 }
             },
 
@@ -1119,6 +1126,109 @@
                 );
 
                 return Promise.resolve();
+            },
+
+            /**
+             * Load the runs that are currently cancelled.
+             */
+            loadCancelledRuns() {
+                if (this.isMock) return Promise.resolve();
+
+                return this.$http.get(Horizon.basePath + '/api/flow/runs')
+                    .then(response => { this.cancelledRuns = response.data?.runs ?? []; })
+                    .catch(() => { this.cancelledRuns = []; });
+            },
+
+            /**
+             * Read the run the opened job belongs to.
+             */
+            loadJobRun(job) {
+                this.selectedJobRun = null;
+
+                if (!job?.id || this.isMock) return Promise.resolve();
+
+                return this.$http.get(`${Horizon.basePath}/api/jobs/${encodeURIComponent(job.id)}/run`)
+                    .then(response => {
+                        if (this.selectedJob?.id === job.id) this.selectedJobRun = response.data;
+                    })
+                    .catch(() => { this.selectedJobRun = null; });
+            },
+
+            /**
+             * Ask before stopping every job in a run.
+             */
+            requestRunCancellation(group) {
+                if (!group || this.cancellingRun) return;
+
+                this.controlConfirmation = {
+                    kind: 'run',
+                    group,
+                    title: `Cancel the whole ${group} run?`,
+                    text: 'Pending jobs in this run are removed now. Jobs already queued are dropped as workers reach them, which is what stops a chained run from re-seeding itself. A job already running stops at its next cancellation checkpoint. The block lifts on its own when it expires.',
+                    confirmLabel: 'Cancel run',
+                    dismissLabel: 'Keep it running',
+                    tone: 'danger',
+                };
+            },
+
+            /**
+             * Cancel every job belonging to the given run.
+             */
+            cancelRun(group) {
+                if (!group || this.cancellingRun) return;
+
+                this.cancellingRun = true;
+
+                return this.$http.post(`${Horizon.basePath}/api/flow/runs/cancel`, { group })
+                    .then(response => {
+                        const purged = Number(response.data?.purged_now ?? 0);
+
+                        this.showControlNotice('success', `${group} was cancelled; ${this.formatNumber(purged)} pending job${purged === 1 ? '' : 's'} removed.`);
+                        this.recordControlEvent(
+                            `run-${group}-cancel`,
+                            `${group} cancelled`,
+                            'Queued jobs in this run are dropped as workers reach them; a running job stops at its next checkpoint.'
+                        );
+
+                        if (response.data?.truncated) {
+                            this.showControlNotice('error', `${group} was cancelled, but the pending scan hit its limit — raise cancellation.purge_limit to purge the rest.`);
+                        }
+
+                        this.loadCancelledRuns();
+                        if (this.selectedJob) this.loadJobRun(this.selectedJob);
+                        setTimeout(() => this.refreshFlowPeriodically(), 1200);
+                    })
+                    .catch(error => {
+                        const message = error?.response?.data?.message;
+                        this.showControlNotice('error', message || `${group} could not be cancelled.`);
+                    })
+                    .finally(() => { this.cancellingRun = false; });
+            },
+
+            /**
+             * Lift a run cancellation so its jobs may run again.
+             */
+            releaseRun(run) {
+                const group = run?.group;
+
+                if (!group || this.releasingRuns.includes(group)) return;
+
+                this.releasingRuns = [...this.releasingRuns, group];
+
+                return this.$http.post(`${Horizon.basePath}/api/flow/runs/release`, { group })
+                    .then(() => {
+                        this.cancelledRuns = this.cancelledRuns.filter(item => item.group !== group);
+                        this.showControlNotice('success', `${group} was lifted; its jobs may run again.`);
+                        this.recordControlEvent(`run-${group}-release`, `${group} lifted`, 'Jobs carrying this run key are no longer dropped.');
+                        if (this.selectedJob) this.loadJobRun(this.selectedJob);
+                    })
+                    .catch(error => {
+                        const message = error?.response?.data?.message;
+                        this.showControlNotice('error', message || `${group} could not be lifted.`);
+                    })
+                    .finally(() => {
+                        this.releasingRuns = this.releasingRuns.filter(item => item !== group);
+                    });
             },
 
             requestJobCancellation(job) {
@@ -1429,6 +1539,7 @@
 
                 this.selectedJob = job;
                 this.selectedJobDetails = null;
+                this.loadJobRun(job);
 
                 if (job.inspectable === false || !job.id) return;
 
@@ -1441,6 +1552,7 @@
             closeJobModal() {
                 this.selectedJob = null;
                 this.selectedJobDetails = null;
+                this.selectedJobRun = null;
                 this.loadingJobDetails = false;
             },
 
@@ -1765,6 +1877,8 @@
                             :controlling-job-ids="controllingJobs"
                             :queue-controlling="selectedInspector.queue ? isControllingQueue(selectedInspector.queue) : false"
                             :can-dispatch="canDispatch"
+                            :cancelled-runs="cancelledRuns"
+                            :releasing-runs="releasingRuns"
                             :nodes="graphNodes"
                             :selected-id="selectedId"
                             :mode="flowMode"
@@ -1773,6 +1887,7 @@
                             @pause-queue="requestQueuePause"
                             @resume-queue="queue => controlQueue(queue, 'resume')"
                             @dispatch-to-queue="openDispatch"
+                            @release-run="releaseRun"
                             @open-failed="openJobModal"
                             @open-activity="selectWorkspaceTab('activity')"
                             @open-graph="flowMode = 'graph'"
@@ -1814,7 +1929,7 @@
                     <div class="lf-confirm-text" id="lf-confirm-text">{{ controlConfirmation.text }}</div>
                 </div>
                 <div class="lf-confirm-actions">
-                    <button class="lf-control-btn" type="button" @click="cancelControlConfirmation">Cancel</button>
+                    <button class="lf-control-btn" type="button" @click="cancelControlConfirmation">{{ controlConfirmation.dismissLabel ?? 'Cancel' }}</button>
                     <button
                         class="lf-control-btn"
                         :class="controlConfirmation.tone === 'danger' ? 'lf-control-btn-danger' : 'lf-control-btn-warning'"
@@ -1846,8 +1961,11 @@
             :details="selectedJobDetails"
             :loading="loadingJobDetails"
             :retrying="selectedJob ? isRetryingJob(selectedJob) : false"
+            :run="selectedJobRun"
+            :cancelling-run="cancellingRun"
             @close="closeJobModal"
             @retry="retryJob"
+            @cancel-run="requestRunCancellation"
         />
     </div>
 </template>
@@ -3035,7 +3153,8 @@
     }
     .lf-control-btn:hover:not(:disabled) { background: var(--lf-hover); }
     .lf-control-btn-warning:hover:not(:disabled) { color: var(--lf-amber); border-color: var(--lf-amber); }
-    .lf-control-btn-danger:hover:not(:disabled) { color: var(--lf-red); border-color: var(--lf-red); }
+    .lf-control-btn-danger { color: var(--lf-red); border-color: rgba(220,38,38,.42); }
+    .lf-control-btn-danger:hover:not(:disabled) { color: var(--lf-red); border-color: var(--lf-red); background: rgba(220,38,38,.07); }
     .lf-control-btn-primary { color: var(--lf-violet); border-color: rgba(119,70,236,.35); }
     .lf-control-btn-primary:hover:not(:disabled) { border-color: var(--lf-violet); }
     .lf-control-btn:focus-visible { outline: 2px solid var(--lf-violet); outline-offset: 2px; }
@@ -3577,6 +3696,86 @@
     .lf-dispatch-demo { color: var(--lf-amber); }
     .lf-dispatch-error { color: var(--lf-red); }
 
+    /* ── RUN CANCELLATION ────────────────────────────────────────────────── */
+    /* The constructive/destructive pair: violet puts work on a queue,
+       red takes it off. Nothing new is introduced for either. */
+    .lf-run {
+        margin: 0 16px 12px;
+        padding: 11px 13px;
+        border: 1px solid var(--lf-border);
+        border-left: 2px solid var(--lf-red);
+        border-radius: 6px;
+        background: var(--lf-hover);
+    }
+    .lf-run-head { display: flex; align-items: baseline; gap: 8px; }
+    .lf-run-kicker {
+        color: var(--lf-red);
+        font-size: 8.5px;
+        font-weight: 800;
+        letter-spacing: .12em;
+        text-transform: uppercase;
+    }
+    .lf-run-key {
+        color: var(--lf-text);
+        font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+        font-size: 11.5px;
+        font-weight: 600;
+        overflow-wrap: anywhere;
+    }
+    .lf-run-text {
+        margin: 6px 0 0;
+        color: var(--lf-muted);
+        font-size: 10.5px;
+        line-height: 1.6;
+    }
+    .lf-run + .lf-modal-actions { padding-top: 0; }
+    .lf-run .lf-mini-btn { margin-top: 9px; }
+
+    /* the ledger */
+    .lf-runs {
+        margin-bottom: 12px;
+        padding: 10px 12px 4px;
+        border: 1px solid var(--lf-border);
+        border-left: 2px solid var(--lf-red);
+        border-radius: 6px;
+        background: var(--lf-hover);
+    }
+    .lf-runs-head { display: flex; align-items: baseline; gap: 7px; margin-bottom: 7px; }
+    .lf-runs-title {
+        color: var(--lf-red);
+        font-size: 8.5px;
+        font-weight: 800;
+        letter-spacing: .12em;
+        text-transform: uppercase;
+    }
+    .lf-runs-scope { color: var(--lf-dim); font-size: 9.5px; }
+    .lf-run-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 4px 10px;
+        padding: 7px 0;
+        border-top: 1px solid var(--lf-border);
+    }
+    .lf-run-row:first-of-type { border-top: 0; }
+    .lf-run-row-key {
+        align-self: center;
+        color: var(--lf-text);
+        font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+        font-size: 11px;
+        overflow-wrap: anywhere;
+    }
+    .lf-run-row .lf-mini-btn { align-self: center; grid-row: 1 / 3; grid-column: 2; }
+    .lf-run-figures { grid-column: 1; display: flex; flex-wrap: wrap; gap: 12px; }
+    .lf-run-figure { display: flex; align-items: baseline; gap: 4px; }
+    .lf-run-figure b {
+        color: var(--lf-text);
+        font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+        font-size: 11px;
+        font-weight: 600;
+    }
+    .lf-run-figure span { color: var(--lf-dim); font-size: 9px; letter-spacing: .04em; }
+    .lf-run-figure-clock b { color: var(--lf-amber); }
+
     /* ── MOBILE ──────────────────────────────────────────────────────────── */
     @media (max-width: 680px) {
         .lf-pane-head { flex-wrap: wrap; row-gap: 5px; }
@@ -3595,6 +3794,8 @@
         .lf-dispatch-route-arrow { display: none; }
         .lf-dispatch-route-leg { flex-basis: 100%; }
         .lf-dispatch-foot { flex-wrap: wrap; row-gap: 8px; }
+        .lf-run-row { grid-template-columns: minmax(0, 1fr); }
+        .lf-run-row .lf-mini-btn { grid-row: auto; grid-column: 1; justify-self: start; margin-top: 4px; }
         .lf-tabs { padding-left: 0; }
         .lf-tab { padding: 0 9px; }
         .lf-tab-context { display: none; }
