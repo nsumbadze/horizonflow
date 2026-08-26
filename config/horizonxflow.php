@@ -36,4 +36,30 @@ return [
             'payload_ttl' => (int) env('HORIZONXFLOW_FLOW_PAYLOAD_TTL', 3),
         ],
     ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Job Dispatching
+    |--------------------------------------------------------------------------
+    |
+    | Live Flow can dispatch a queued job from the dashboard. Discovery walks
+    | the configured paths for classes implementing ShouldQueue, while the
+    | allow and deny lists constrain what an operator may actually dispatch.
+    | An empty allow list permits every discovered job.
+    |
+    */
+
+    'dispatch' => [
+        'enabled' => env('HORIZONXFLOW_DISPATCH_ENABLED', true),
+
+        'discover' => env('HORIZONXFLOW_DISPATCH_DISCOVER', true),
+
+        'paths' => [],
+
+        'allowed' => [],
+
+        'denied' => [],
+
+        'max_delay' => (int) env('HORIZONXFLOW_DISPATCH_MAX_DELAY', 86400),
+    ],
 ];
