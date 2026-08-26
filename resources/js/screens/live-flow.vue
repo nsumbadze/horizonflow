@@ -3217,6 +3217,216 @@
     }
     .lf-dark .lf-modal-error { background: rgba(220,38,38,.07); }
 
+    /* ── DISPATCH JOB ────────────────────────────────────────────────────── */
+    .lf-dispatch {
+        display: grid;
+        grid-template-rows: auto minmax(0, 1fr) auto auto;
+        width: min(940px, 100%);
+        max-height: min(760px, calc(100vh - 48px));
+        overflow: hidden;
+        border: 1px solid var(--lf-border);
+        border-radius: 8px;
+        background: var(--lf-panel);
+        box-shadow: 0 24px 80px rgba(15, 23, 42, .30);
+        color: var(--lf-text);
+    }
+    .lf-dispatch-kicker { color: var(--lf-violet); }
+    .lf-dispatch-body {
+        display: grid;
+        grid-template-columns: 244px minmax(0, 1fr);
+        min-height: 0;
+    }
+
+    /* picker */
+    .lf-dispatch-picker {
+        display: grid;
+        grid-template-rows: auto minmax(0, 1fr);
+        min-height: 0;
+        border-right: 1px solid var(--lf-border);
+        background: var(--lf-hover);
+    }
+    .lf-dispatch-filter {
+        width: 100%;
+        padding: 9px 12px;
+        border: 0;
+        border-bottom: 1px solid var(--lf-border);
+        background: transparent;
+        color: var(--lf-text);
+        font-size: 11px;
+    }
+    .lf-dispatch-filter::placeholder { color: var(--lf-dim); }
+    .lf-dispatch-filter:focus { outline: none; box-shadow: inset 0 -1px 0 var(--lf-violet); }
+    .lf-dispatch-list { overflow-y: auto; padding-bottom: 6px; }
+    .lf-dispatch-list-note {
+        padding: 14px 12px;
+        color: var(--lf-muted);
+        font-size: 10.5px;
+        line-height: 1.6;
+    }
+    .lf-dispatch-list-note code {
+        color: var(--lf-violet);
+        font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+    }
+    .lf-dispatch-group {
+        position: sticky;
+        top: 0;
+        z-index: 1;
+        padding: 9px 12px 4px;
+        background: var(--lf-hover);
+        color: var(--lf-dim);
+        font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+        font-size: 9px;
+        letter-spacing: .06em;
+        overflow-wrap: anywhere;
+    }
+    .lf-dispatch-option {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 8px;
+        width: 100%;
+        padding: 5px 12px 5px 11px;
+        border: 0;
+        border-left: 2px solid transparent;
+        background: transparent;
+        color: var(--lf-text);
+        font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+        font-size: 11px;
+        text-align: left;
+    }
+    .lf-dispatch-option-highlighted { background: var(--lf-panel); }
+    .lf-dispatch-option-active {
+        border-left-color: var(--lf-violet);
+        background: var(--lf-panel);
+        color: var(--lf-violet);
+    }
+    .lf-dispatch-option:focus-visible { outline: 2px solid var(--lf-violet); outline-offset: -2px; }
+    .lf-dispatch-option-name { overflow-wrap: anywhere; }
+    .lf-dispatch-option-queue { flex-shrink: 0; color: var(--lf-dim); font-size: 9.5px; }
+
+    /* job */
+    .lf-dispatch-detail { min-height: 0; overflow-y: auto; padding: 14px 16px 16px; }
+    .lf-dispatch-empty { padding: 32px 4px; max-width: 340px; }
+    .lf-dispatch-empty-title { color: var(--lf-text); font-size: 12px; font-weight: 700; }
+    .lf-dispatch-empty-text { margin-top: 6px; color: var(--lf-muted); font-size: 11px; line-height: 1.6; }
+    .lf-dispatch-class {
+        color: var(--lf-muted);
+        font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+        font-size: 11px;
+        overflow-wrap: anywhere;
+    }
+    .lf-dispatch-note { margin-top: 12px; color: var(--lf-muted); font-size: 11px; }
+    .lf-dispatch-blocked {
+        margin-top: 12px;
+        padding: 10px 12px;
+        border: 1px solid rgba(217,119,6,.35);
+        border-radius: 6px;
+        background: rgba(217,119,6,.06);
+        color: var(--lf-amber);
+        font-size: 11px;
+        line-height: 1.6;
+    }
+    .lf-dispatch-fields { margin-top: 14px; display: grid; gap: 12px; }
+    .lf-dispatch-field-locked { opacity: .72; }
+    .lf-dispatch-label { display: flex; align-items: baseline; gap: 7px; margin-bottom: 4px; }
+    .lf-dispatch-param {
+        color: var(--lf-text);
+        font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+        font-size: 11.5px;
+        font-weight: 600;
+    }
+    .lf-dispatch-type {
+        color: var(--lf-dim);
+        font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+        font-size: 10px;
+    }
+    .lf-dispatch-required {
+        color: var(--lf-violet);
+        font-size: 8.5px;
+        font-weight: 800;
+        letter-spacing: .1em;
+        text-transform: uppercase;
+    }
+    .lf-dispatch-control {
+        width: 100%;
+        padding: 5px 8px;
+        border: 1px solid var(--lf-border);
+        border-radius: 5px;
+        background: var(--lf-panel);
+        color: var(--lf-text);
+        font-size: 11px;
+        font-family: inherit;
+    }
+    .lf-dispatch-control-mono { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; }
+    .lf-dispatch-control:focus { outline: none; border-color: var(--lf-violet); }
+    .lf-dispatch-control:focus-visible { outline: 2px solid var(--lf-violet); outline-offset: 1px; }
+    .lf-dispatch-control:disabled { opacity: .5; }
+    .lf-dispatch-control::placeholder { color: var(--lf-dim); }
+    textarea.lf-dispatch-control { resize: vertical; line-height: 1.55; }
+    .lf-dispatch-readonly {
+        padding: 5px 8px;
+        border: 1px dashed var(--lf-border);
+        border-radius: 5px;
+        color: var(--lf-dim);
+        font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+        font-size: 11px;
+    }
+    .lf-dispatch-hint {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 10px;
+        margin-top: 4px;
+        color: var(--lf-dim);
+        font-size: 10px;
+        line-height: 1.5;
+    }
+    .lf-dispatch-null { display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; margin: 0; cursor: pointer; }
+
+    /* route */
+    .lf-dispatch-route {
+        display: flex;
+        align-items: flex-end;
+        gap: 10px;
+        padding: 11px 16px;
+        border-top: 1px solid var(--lf-border);
+        border-bottom: 1px solid var(--lf-border);
+        background: var(--lf-hover);
+    }
+    .lf-dispatch-route[aria-disabled="true"] { opacity: .55; }
+    .lf-dispatch-route-head {
+        flex-shrink: 0;
+        padding-bottom: 6px;
+        color: var(--lf-dim);
+        font-size: 8.5px;
+        font-weight: 800;
+        letter-spacing: .12em;
+        text-transform: uppercase;
+    }
+    .lf-dispatch-route-leg { flex: 1 1 0; min-width: 0; }
+    .lf-dispatch-route-arrow { flex-shrink: 0; padding-bottom: 3px; color: var(--lf-violet); font-size: 17px; font-weight: 600; opacity: .8; }
+    .lf-dispatch-leg-label {
+        display: block;
+        margin-bottom: 3px;
+        color: var(--lf-muted);
+        font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+        font-size: 9.5px;
+    }
+    .lf-dispatch-delay { display: grid; grid-template-columns: minmax(0, 1fr) 62px; gap: 5px; }
+
+    /* foot */
+    .lf-dispatch-foot {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 11px 16px;
+    }
+    .lf-dispatch-status { flex: 1 1 auto; min-width: 0; font-size: 10.5px; line-height: 1.5; }
+    .lf-dispatch-summary { color: var(--lf-muted); }
+    .lf-dispatch-summary b { color: var(--lf-text); font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-weight: 600; }
+    .lf-dispatch-demo { color: var(--lf-amber); }
+    .lf-dispatch-error { color: var(--lf-red); }
+
     /* ── MOBILE ──────────────────────────────────────────────────────────── */
     @media (max-width: 680px) {
         .lf-pane-head { flex-wrap: wrap; row-gap: 5px; }
@@ -3227,6 +3437,14 @@
         .lf-input { width: 120px; }
         .lf-modal { border-radius: 6px; }
         .lf-modal-error { font-size: 10.5px; }
+        .lf-dispatch { border-radius: 6px; }
+        .lf-dispatch-body { grid-template-columns: minmax(0, 1fr); }
+        .lf-dispatch-picker { border-right: 0; border-bottom: 1px solid var(--lf-border); }
+        .lf-dispatch-list { max-height: 168px; }
+        .lf-dispatch-route { flex-wrap: wrap; row-gap: 8px; }
+        .lf-dispatch-route-arrow { display: none; }
+        .lf-dispatch-route-leg { flex-basis: 100%; }
+        .lf-dispatch-foot { flex-wrap: wrap; row-gap: 8px; }
         .lf-tabs { padding-left: 0; }
         .lf-tab { padding: 0 9px; }
         .lf-tab-context { display: none; }
