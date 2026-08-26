@@ -90,6 +90,7 @@ Live-flow behaviour is configured via `config/horizonxflow.php`:
 | `dispatch.max_delay`                    | `86400`      | Largest delay, in seconds, an operator may ask for. |
 | `cancellation.run_ttl`                  | `3600`       | Seconds a cancelled run keeps blocking its jobs before lifting on its own. |
 | `cancellation.purge_limit`              | `5000`       | Most pending jobs walked when purging a cancelled run. |
+| `cancellation.on_lookup_failure`        | `defer`      | What a worker does when it cannot read whether a job's run was cancelled: `defer` holds it back, `run` lets it through. |
 
 ### Routes
 
@@ -118,7 +119,13 @@ Live-flow behaviour is configured via `config/horizonxflow.php`:
 - `viewHorizon` — required to enter the dashboard (existing Horizon gate).
 - `controlHorizon` — required for mutation endpoints (`POST /jobs/retry/{id}`, `POST /jobs/{id}/cancel`, `POST /jobs/dispatch`, `POST /flow/queues/{action}`, `POST /flow/runs/{action}`, `POST /masters/{action}`, `POST /supervisors/{name}/{action}`) and for the reads that back them: `GET /jobs/failed/{id}/parameters`, `GET /jobs/dispatchable`, `GET /jobs/dispatchable/parameters`, `GET /jobs/{id}/run`, and `GET /flow/runs`. When the gate is undefined, mutations are only allowed in `local` and `testing` environments; everywhere else, define the gate in `HorizonApplicationServiceProvider::gate()` to enable destructive actions for a trusted subset of users.
 
-Dispatching a job is the most powerful control on the dashboard: it constructs and queues an application job with operator-supplied arguments. Treat `controlHorizon` as the boundary that protects it, and define the gate explicitly rather than relying on the `local` / `testing` fallback — an application deployed with `APP_ENV=local` would otherwise expose dispatch to anyone who can reach the dashboard. Set `dispatch.enabled` to `false` to remove the capability entirely.
+**Dispatching a job and cancelling a run do not accept the environment fallback.** They run or stop application code, so `controlHorizon` must be defined and must pass, whatever `APP_ENV` says — an application deployed with `APP_ENV=local` would otherwise hand both to anyone who can reach the dashboard. With the gate undefined those routes answer `403` and name the gate in the response; the dashboard hides the controls rather than offering something that cannot work. Set `dispatch.enabled` to `false` to remove dispatch entirely.
+
+| Ability | Covers |
+| ------- | ------ |
+| `viewHorizon` | Entering the dashboard. |
+| `controlHorizon` *(environment fallback applies)* | Retry, cancel one job, pause/resume queues and supervisors. |
+| `controlHorizon` *(required, no fallback)* | `POST /jobs/dispatch`, `POST /flow/runs/{action}`, and the reads that back them. |
 
 ### Environment Variables
 
@@ -134,6 +141,7 @@ Dispatching a job is the most powerful control on the dashboard: it constructs a
 - `HORIZONXFLOW_DISPATCH_MAX_DELAY` — overrides `dispatch.max_delay`.
 - `HORIZONXFLOW_CANCELLED_RUN_TTL` — overrides `cancellation.run_ttl`.
 - `HORIZONXFLOW_CANCELLED_RUN_PURGE_LIMIT` — overrides `cancellation.purge_limit`.
+- `HORIZONXFLOW_CANCELLED_RUN_ON_LOOKUP_FAILURE` — overrides `cancellation.on_lookup_failure`.
 
 ## Job and Queue Controls
 
@@ -228,7 +236,12 @@ Groups may contain letters, numbers, dashes, underscores, dots, and colons, and 
 
 Reading a job's run means unserializing its command, so workers do no payload work unless some run is actually cancelled — and even then, only payloads whose job class declares `cancellationGroup()` are unserialized at all.
 
-The pickup check is deliberately fail-open: if the cancellation lookup itself errors, the job runs as it would have without the feature. A Redis blip silently discarding jobs would be the worse failure. Run cancellation is therefore best-effort, not a guarantee.
+The two registry lookups a worker makes fail in deliberately different directions:
+
+- **Is any run cancelled?** Every job in the application passes this one, so an unreadable registry lets jobs run as they would without the feature. Failing closed here would turn a Horizon metadata blip into a queue-wide outage.
+- **Is *this* run cancelled?** Only reached for a job that belongs to a run while some run is already cancelled, having just read the registry successfully. Failing there is a genuine anomaly, so the job is held back for a later attempt instead of run. An operator asked for this work to stop, and a deferred job is recoverable in a way that work already performed is not. Set `cancellation.on_lookup_failure` to `run` to prefer availability instead.
+
+Neither failure is swallowed — both are reported through the application's exception handler, so a persistent blind spot is visible rather than silent.
 
 Queue and job controls currently support Redis queues. Database queues remain observable in Live Flow but do not expose these mutation controls.
 

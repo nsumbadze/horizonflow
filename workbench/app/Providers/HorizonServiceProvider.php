@@ -45,5 +45,11 @@ class HorizonServiceProvider extends HorizonApplicationServiceProvider
         Gate::define('viewHorizon', function ($user) {
             return true;
         });
+
+        // Dispatching a job and cancelling a run require this gate to be
+        // defined explicitly — there is no environment fallback for them.
+        Gate::define('controlHorizon', function ($user = null) {
+            return true;
+        });
     }
 }

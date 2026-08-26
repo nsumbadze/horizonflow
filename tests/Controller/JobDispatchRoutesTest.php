@@ -3,6 +3,7 @@
 namespace Laravel\Horizon\Tests\Controller;
 
 use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\Gate;
 use Laravel\Horizon\Tests\ControllerTest;
 use Laravel\Horizon\Tests\Feature\Jobs\DispatchableJob;
 
@@ -11,6 +12,8 @@ class JobDispatchRoutesTest extends ControllerTest
     protected function setUp(): void
     {
         parent::setUp();
+
+        Gate::define('controlHorizon', fn ($user = null) => true);
 
         $this->app['config']->set('horizonxflow.dispatch.paths', [dirname(__DIR__).'/Feature/Jobs']);
     }

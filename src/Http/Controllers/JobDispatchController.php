@@ -6,7 +6,7 @@ use Illuminate\Contracts\Config\Repository as Config;
 use Illuminate\Http\Request;
 use InvalidArgumentException;
 use Laravel\Horizon\Exceptions\InvalidJobParameterException;
-use Laravel\Horizon\Http\Middleware\AuthenticateControl;
+use Laravel\Horizon\Http\Middleware\AuthenticateElevatedControl;
 use Laravel\Horizon\JobDispatchRegistry;
 use Laravel\Horizon\JobParameterInspector;
 
@@ -16,7 +16,7 @@ class JobDispatchController extends Controller
     {
         parent::__construct();
 
-        $this->middleware(AuthenticateControl::class);
+        $this->middleware(AuthenticateElevatedControl::class);
     }
 
     /**

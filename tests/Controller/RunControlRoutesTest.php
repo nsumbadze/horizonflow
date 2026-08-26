@@ -3,12 +3,20 @@
 namespace Laravel\Horizon\Tests\Controller;
 
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\Gate;
 use Laravel\Horizon\Tests\ControllerTest;
 use Laravel\Horizon\Tests\Feature\Jobs\BasicJob;
 use Laravel\Horizon\Tests\Feature\Jobs\ChainedRunJob;
 
 class RunControlRoutesTest extends ControllerTest
 {
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        Gate::define('controlHorizon', fn ($user = null) => true);
+    }
+
     public function test_it_lists_nothing_when_no_run_is_cancelled()
     {
         $this->get('/horizon/api/flow/runs')

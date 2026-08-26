@@ -79,5 +79,11 @@ return [
         'run_ttl' => (int) env('HORIZONXFLOW_CANCELLED_RUN_TTL', 3600),
 
         'purge_limit' => (int) env('HORIZONXFLOW_CANCELLED_RUN_PURGE_LIMIT', 5000),
+
+        // What a worker does when it cannot read whether a job's run was
+        // cancelled: 'defer' holds the job back for a later attempt, 'run'
+        // lets it through. Only reached for a job that belongs to a run
+        // while another run is already cancelled.
+        'on_lookup_failure' => env('HORIZONXFLOW_CANCELLED_RUN_ON_LOOKUP_FAILURE', 'defer'),
     ],
 ];

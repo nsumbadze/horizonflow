@@ -6,7 +6,7 @@ use Illuminate\Http\Request;
 use InvalidArgumentException;
 use Laravel\Horizon\Contracts\JobControlRepository;
 use Laravel\Horizon\Contracts\JobRepository;
-use Laravel\Horizon\Http\Middleware\AuthenticateControl;
+use Laravel\Horizon\Http\Middleware\AuthenticateElevatedControl;
 use Laravel\Horizon\JobRunInspector;
 
 class RunControlController extends Controller
@@ -15,7 +15,7 @@ class RunControlController extends Controller
     {
         parent::__construct();
 
-        $this->middleware(AuthenticateControl::class);
+        $this->middleware(AuthenticateElevatedControl::class);
     }
 
     /**
