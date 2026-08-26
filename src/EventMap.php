@@ -36,6 +36,10 @@ trait EventMap
             Listeners\MarkJobsAsMigrated::class,
         ],
 
+        \Illuminate\Queue\Events\JobProcessing::class => [
+            Listeners\DropCancelledRunJobs::class,
+        ],
+
         \Illuminate\Queue\Events\JobExceptionOccurred::class => [
             Listeners\ForgetJobTimer::class,
         ],
